@@ -14,7 +14,8 @@ from generators import (
     generate_vitals_rules,
     generate_vitals_mvn,
     generate_vitals_llm_with_repair,
-    generate_oncology_ae
+    generate_oncology_ae,
+    generate_vitals_bootstrap
 )
 from db_utils import db, cache, startup_db, shutdown_db
 
@@ -76,6 +77,14 @@ class GenerateAERequest(BaseModel):
     n_subjects: int = Field(default=30, ge=10, le=100)
     seed: int = Field(default=7)
 
+class GenerateBootstrapRequest(BaseModel):
+    training_data: List[Dict[str, Any]] = Field(..., description="Pilot/existing data to bootstrap from")
+    n_per_arm: int = Field(default=50, ge=1, le=500, description="Number of subjects per arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
+    jitter_frac: float = Field(default=0.05, ge=0, le=0.5, description="Fraction of std for numeric noise")
+    cat_flip_prob: float = Field(default=0.05, ge=0, le=0.3, description="Probability of categorical flip")
+    seed: int = Field(default=42, description="Random seed")
+
 # Response model - returns array directly for compatibility with EDC validation service
 VitalsResponse = List[Dict[str, Any]]
 
@@ -107,11 +116,12 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Data Generation Service",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "methods": [
             "Rules-based generation",
             "MVN (Multivariate Normal) generation",
             "LLM-based generation with auto-repair",
+            "Bootstrap sampling (NEW!) - fast augmentation from pilot data",
             "Oncology AE generation"
         ],
         "endpoints": {
@@ -119,6 +129,7 @@ async def root():
             "rules": "/generate/rules",
             "mvn": "/generate/mvn",
             "llm": "/generate/llm",
+            "bootstrap": "/generate/bootstrap",
             "ae": "/generate/ae",
             "docs": "/docs"
         }
@@ -231,6 +242,66 @@ async def generate_adverse_events(request: GenerateAERequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"AE generation failed: {str(e)}"
+        )
+
+@app.post("/generate/bootstrap", response_model=VitalsResponse)
+async def generate_bootstrap_based(request: GenerateBootstrapRequest):
+    """
+    Generate synthetic vitals data using bootstrap sampling (NEW!)
+
+    **Method:** Row-based bootstrap with intelligent augmentation
+
+    **Best for:**
+    - Quick augmentation from pilot study data
+    - Expanding existing datasets
+    - Preserving real data characteristics
+    - When you have sample data but need more
+
+    **Advantages:**
+    - ⚡ Fast - no training required
+    - 💰 Free - no API costs
+    - 🎯 Preserves correlations from real data
+    - 🔧 Highly configurable noise/diversity
+    - ✅ Enforces clinical constraints
+    - 🎲 Treatment effect control
+
+    **How it works:**
+    1. Bootstrap samples complete rows with replacement
+    2. Adds Gaussian jitter to numeric columns (scaled by std)
+    3. Respects clinical ranges (BP, HR, Temp)
+    4. Randomly flips categorical values for diversity
+    5. Ensures complete visit sequences per subject
+    6. Applies target treatment effect at Week 12
+    7. Regenerates proper SubjectIDs (RA###-###)
+
+    **Parameters:**
+    - training_data: Your pilot/existing data (required)
+    - n_per_arm: Subjects per arm (default: 50)
+    - target_effect: Target SystolicBP reduction at Week 12 (default: -5.0 mmHg)
+    - jitter_frac: Noise level as fraction of std (default: 0.05 = 5%)
+    - cat_flip_prob: Categorical flip probability (default: 0.05 = 5%)
+    - seed: Random seed for reproducibility (default: 42)
+    """
+    try:
+        # Convert request data to DataFrame
+        training_df = pd.DataFrame(request.training_data)
+
+        # Generate synthetic data
+        df = generate_vitals_bootstrap(
+            training_df=training_df,
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            jitter_frac=request.jitter_frac,
+            cat_flip_prob=request.cat_flip_prob,
+            seed=request.seed
+        )
+
+        # Return just the data array for compatibility with EDC validation service
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Bootstrap generation failed: {str(e)}"
         )
 
 if __name__ == "__main__":

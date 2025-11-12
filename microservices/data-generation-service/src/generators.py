@@ -379,3 +379,220 @@ def generate_oncology_ae(n_subjects=30, seed=7) -> pd.DataFrame:
         rows.append([subj, term, bod, ser, rel, out])
 
     return pd.DataFrame(rows, columns=["USUBJID", "AETERM", "AEBODSYS", "AESER", "AEREL", "AEOUT"])
+
+
+def generate_vitals_bootstrap(
+    training_df: pd.DataFrame,
+    n_per_arm: int = 50,
+    target_effect: float = -5.0,
+    jitter_frac: float = 0.05,
+    cat_flip_prob: float = 0.05,
+    seed: int = 42
+) -> pd.DataFrame:
+    """
+    Bootstrap-based synthetic data generation with clinical trial enhancements
+
+    Uses row sampling with intelligent augmentation, fine-tuned for clinical trials:
+    - Bootstrap sampling with replacement
+    - Gaussian jitter on vitals (scaled by column std)
+    - Respects clinical constraints (BP, HR, Temp ranges)
+    - Maintains integer types for appropriate fields
+    - Generates proper SubjectIDs (RA###-###)
+    - Ensures complete visit sequences per subject
+    - Applies treatment effect at Week 12
+
+    Best for: Quick augmentation from pilot study data or existing datasets
+
+    Args:
+        training_df: Training data (pilot study or existing dataset)
+                    Must contain: SubjectID, VisitName, TreatmentArm, SystolicBP,
+                                  DiastolicBP, HeartRate, Temperature
+        n_per_arm: Number of subjects per treatment arm
+        target_effect: Target SystolicBP reduction (Active - Placebo) at Week 12
+        jitter_frac: Fraction of std for numeric noise (0.05 = 5% of std)
+        cat_flip_prob: Probability of flipping categorical values for diversity
+        seed: Random seed for reproducibility
+
+    Returns:
+        DataFrame with synthetic vitals data
+    """
+    from pandas.api.types import is_integer_dtype
+
+    rng = np.random.default_rng(seed)
+    np.random.seed(seed)
+
+    # Validate input
+    required_cols = ["SubjectID", "VisitName", "TreatmentArm", "SystolicBP",
+                     "DiastolicBP", "HeartRate", "Temperature"]
+    missing = [c for c in required_cols if c not in training_df.columns]
+    if missing:
+        raise ValueError(f"Training data missing required columns: {missing}")
+
+    # Calculate target total rows (subjects × visits × arms)
+    target_n = n_per_arm * len(VISITS) * len(ARMS)
+    n0 = len(training_df)
+
+    if n0 == 0:
+        raise ValueError("Training data is empty")
+
+    # Sample complete rows with replacement
+    needed = max(target_n - n0, 0)
+    if needed > 0:
+        syn = training_df.sample(n=needed, replace=True, random_state=seed).reset_index(drop=True)
+    else:
+        syn = training_df.sample(n=target_n, replace=False, random_state=seed).reset_index(drop=True)
+
+    # ===== Numeric Jitter with Clinical Constraints =====
+    num_cols = ["SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
+    constraints = {
+        "SystolicBP": (95, 200),
+        "DiastolicBP": (55, 130),
+        "HeartRate": (50, 120),
+        "Temperature": (35.0, 40.0)
+    }
+
+    for col in num_cols:
+        s = syn[col].copy()
+        base = pd.to_numeric(training_df[col], errors="coerce")
+        std = base.std()
+
+        if pd.isna(std) or std == 0:
+            continue
+
+        # Add Gaussian noise scaled by std
+        scale = max(std * jitter_frac, 1e-12)
+        noise = rng.normal(0.0, scale, size=len(s))
+        s_noisy = pd.to_numeric(s, errors="coerce") + noise
+
+        # Clip to clinical constraints
+        col_min, col_max = constraints[col]
+        s_noisy = np.clip(s_noisy, col_min, col_max)
+
+        # Integer columns (BP, HR)
+        if col in ["SystolicBP", "DiastolicBP", "HeartRate"]:
+            s_noisy = np.round(s_noisy).astype(np.int64)
+        else:
+            s_noisy = s_noisy.astype(float)
+
+        syn[col] = s_noisy
+
+    # ===== Ensure SystolicBP > DiastolicBP by at least 5 mmHg =====
+    mask = syn["SystolicBP"] <= syn["DiastolicBP"] + 5
+    if mask.any():
+        syn.loc[mask, "SystolicBP"] = syn.loc[mask, "DiastolicBP"] + rng.integers(5, 20, size=mask.sum())
+        # Re-clip to max
+        syn.loc[mask, "SystolicBP"] = np.clip(syn.loc[mask, "SystolicBP"], 95, 200)
+
+    # ===== Categorical Flip (VisitName and TreatmentArm - low probability) =====
+    if cat_flip_prob > 0:
+        # Flip VisitName occasionally for diversity
+        mask = rng.random(len(syn)) < cat_flip_prob
+        if mask.any():
+            syn.loc[mask, "VisitName"] = rng.choice(VISITS, size=mask.sum())
+
+        # Flip TreatmentArm occasionally
+        mask = rng.random(len(syn)) < cat_flip_prob
+        if mask.any():
+            syn.loc[mask, "TreatmentArm"] = rng.choice(ARMS, size=mask.sum())
+
+    # ===== Combine original + synthetic =====
+    out = pd.concat([training_df, syn], ignore_index=True)
+
+    # ===== Ensure complete visit sequences per subject =====
+    # Group by subject and ensure all 4 visits present
+    subjects_visits = out.groupby("SubjectID")["VisitName"].apply(set)
+    incomplete_subjects = subjects_visits[subjects_visits.apply(lambda x: len(x) < len(VISITS))].index
+
+    # Fill missing visits by duplicating existing rows
+    rows_to_add = []
+    for subj in incomplete_subjects:
+        subj_data = out[out["SubjectID"] == subj]
+        missing_visits = set(VISITS) - set(subj_data["VisitName"])
+
+        for visit in missing_visits:
+            # Use a random existing row from this subject as template
+            template = subj_data.sample(n=1, random_state=seed).iloc[0].copy()
+            template["VisitName"] = visit
+            rows_to_add.append(template)
+
+    if rows_to_add:
+        out = pd.concat([out, pd.DataFrame(rows_to_add)], ignore_index=True)
+
+    # ===== Regenerate SubjectIDs in proper format (RA###-###) =====
+    unique_subjects = out["SubjectID"].unique()
+    subject_mapping = {}
+    counter = 1
+
+    for old_subj in unique_subjects:
+        subject_mapping[old_subj] = f"RA001-{counter:03d}"
+        counter += 1
+
+    out["SubjectID"] = out["SubjectID"].map(subject_mapping)
+
+    # ===== Apply Treatment Effect at Week 12 =====
+    week12 = out["VisitName"] == "Week 12"
+    active = out["TreatmentArm"] == "Active"
+    placebo = out["TreatmentArm"] == "Placebo"
+
+    # Calculate current effect
+    active_week12_mean = out[week12 & active]["SystolicBP"].mean()
+    placebo_week12_mean = out[week12 & placebo]["SystolicBP"].mean()
+    current_effect = active_week12_mean - placebo_week12_mean
+
+    # Adjust to target effect
+    adjustment = target_effect - current_effect
+
+    # Apply adjustment to Active arm at Week 12
+    mask = week12 & active
+    out.loc[mask, "SystolicBP"] = out.loc[mask, "SystolicBP"] + adjustment
+
+    # Re-clip after adjustment
+    out.loc[mask, "SystolicBP"] = np.clip(out.loc[mask, "SystolicBP"], 95, 200).astype(int)
+
+    # ===== Sample to exact target size =====
+    # Group by treatment arm and ensure balanced
+    active_df = out[out["TreatmentArm"] == "Active"]
+    placebo_df = out[out["TreatmentArm"] == "Placebo"]
+
+    # Get unique subjects per arm
+    active_subjects = active_df["SubjectID"].unique()
+    placebo_subjects = placebo_df["SubjectID"].unique()
+
+    # Sample subjects
+    if len(active_subjects) > n_per_arm:
+        active_subjects = rng.choice(active_subjects, size=n_per_arm, replace=False)
+    if len(placebo_subjects) > n_per_arm:
+        placebo_subjects = rng.choice(placebo_subjects, size=n_per_arm, replace=False)
+
+    # Filter to selected subjects
+    out = out[
+        out["SubjectID"].isin(active_subjects) | out["SubjectID"].isin(placebo_subjects)
+    ].reset_index(drop=True)
+
+    # ===== Add 1-2 fever rows (Temperature > 38°C) =====
+    fever_mask = out["Temperature"] > 38.0
+    current_fever_count = fever_mask.sum()
+
+    if current_fever_count < 1:
+        # Add 1 fever
+        idx = rng.choice(out.index, size=1)
+        out.loc[idx, "Temperature"] = rng.uniform(38.1, 39.5, size=1)
+    elif current_fever_count > 2:
+        # Remove excess fevers
+        fever_indices = out[fever_mask].index
+        to_fix = rng.choice(fever_indices, size=current_fever_count - 2, replace=False)
+        out.loc[to_fix, "Temperature"] = rng.uniform(36.5, 37.8, size=len(to_fix))
+
+    # Ensure fever rows have HR >= 67
+    fever_mask = out["Temperature"] > 38.0
+    low_hr = out["HeartRate"] < 67
+    to_fix = fever_mask & low_hr
+    if to_fix.any():
+        out.loc[to_fix, "HeartRate"] = rng.integers(67, 100, size=to_fix.sum())
+
+    # Sort by SubjectID and VisitName for clean output
+    visit_order = {v: i for i, v in enumerate(VISITS)}
+    out["_visit_order"] = out["VisitName"].map(visit_order)
+    out = out.sort_values(["SubjectID", "_visit_order"]).drop(columns=["_visit_order"])
+
+    return out.reset_index(drop=True)

@@ -6,9 +6,9 @@ HIPAA-Compliant Security Service for Clinical Trials Platform
 
 - **JWT Authentication** - Secure token-based authentication
 - **Authorization** - Role-based access control (admin, data_analyst, clinician)
-- **PHI Encryption** - AES-256-GCM encryption for Protected Health Information
+- **PHI Encryption** - Fernet (AES-128 CBC) authenticated encryption for Protected Health Information
 - **PHI Detection** - Automatic detection and blocking of PHI in uploads
-- **Audit Logging** - Immutable audit trail for HIPAA compliance
+- **Audit Logging** - Comprehensive audit trail for HIPAA compliance
 - **Zero Trust** - All access requires authentication and authorization
 
 ## Endpoints

@@ -92,7 +92,7 @@ class EncryptRequest(BaseModel):
 
 class EncryptResponse(BaseModel):
     encrypted_data: str
-    algorithm: str = "AES-256-GCM"
+    algorithm: str = "Fernet (AES-128 CBC)"
 
 class DecryptRequest(BaseModel):
     encrypted_data: str = Field(..., description="Encrypted data to decrypt")
@@ -230,7 +230,7 @@ async def encrypt_data(
             user_id=current_user.get("sub"),
             action="ENCRYPT",
             resource="phi_data",
-            details={"algorithm": "AES-256-GCM"}
+            details={"algorithm": "Fernet (AES-128 CBC)"}
         )
         
         return EncryptResponse(encrypted_data=encrypted)
@@ -267,7 +267,7 @@ async def decrypt_data(
             user_id=current_user.get("sub"),
             action="DECRYPT",
             resource="phi_data",
-            details={"algorithm": "AES-256-GCM"}
+            details={"algorithm": "Fernet (AES-128 CBC)"}
         )
         
         return DecryptResponse(decrypted_data=decrypted)
