@@ -1,0 +1,10 @@
+# Database Layer Dependencies
+
+# PostgreSQL
+asyncpg==0.29.0
+
+# Redis
+redis==5.0.1
+
+# Utilities
+python-dotenv==1.0.0

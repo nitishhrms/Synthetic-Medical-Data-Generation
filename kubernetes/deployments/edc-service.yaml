@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edc-service
+  namespace: clinical-trials
+  labels:
+    app: edc-service
+    tier: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: edc-service
+  template:
+    metadata:
+      labels:
+        app: edc-service
+        tier: backend
+    spec:
+      containers:
+      - name: edc-service
+        image: synthetictrial/edc-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8001
+          name: http
+          protocol: TCP
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 5

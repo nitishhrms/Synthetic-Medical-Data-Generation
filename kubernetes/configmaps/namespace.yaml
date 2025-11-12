@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clinical-trials
+  labels:
+    name: clinical-trials
+    environment: production
+
+---
+# Secrets are managed separately - DO NOT commit to Git
+# Create secrets using:
+# kubectl create secret generic clinical-trials-secrets \
+#   --from-literal=jwt-secret-key=YOUR_JWT_SECRET \
+#   --from-literal=openai-api-key=YOUR_OPENAI_KEY \
+#   -n clinical-trials
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clinical-trials-config
+  namespace: clinical-trials
+data:
+  JWT_ALGORITHM: "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  ENVIRONMENT: "production"
