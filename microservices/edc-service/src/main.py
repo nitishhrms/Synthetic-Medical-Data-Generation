@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import pandas as pd
 from datetime import datetime
+import json
 import uvicorn
 
 from validation import validate_vitals
@@ -58,6 +59,19 @@ class VitalsRecord(BaseModel):
 
 class VitalsBulkRequest(BaseModel):
     records: List[VitalsRecord]
+
+# Unvalidated model for repair endpoint - accepts any values to be repaired
+class UnvalidatedVitalsRecord(BaseModel):
+    SubjectID: str = Field(..., description="Subject identifier")
+    VisitName: str = Field(..., description="Visit name")
+    TreatmentArm: str = Field(..., description="Treatment arm")
+    SystolicBP: int = Field(..., description="Systolic blood pressure (mmHg)")
+    DiastolicBP: int = Field(..., description="Diastolic blood pressure (mmHg)")
+    HeartRate: int = Field(..., description="Heart rate (bpm)")
+    Temperature: float = Field(..., description="Temperature (°C)")
+
+class UnvalidatedVitalsBulkRequest(BaseModel):
+    records: List[UnvalidatedVitalsRecord]
 
 class ValidationResponse(BaseModel):
     rows: int
@@ -140,15 +154,18 @@ async def validate_data(request: VitalsBulkRequest):
         )
 
 @app.post("/repair", response_model=RepairResponse)
-async def repair_data(request: VitalsBulkRequest):
+async def repair_data(request: UnvalidatedVitalsBulkRequest):
     """
     Auto-repair vitals data to fix constraint violations
-    
+
     Repair actions:
     - Clip values to valid ranges
     - Ensure at least 1 fever row (temp > 38°C)
     - Ensure fever rows have HR >= 67
     - Adjust Week-12 effect to target -5 mmHg
+
+    Note: This endpoint accepts unvalidated data (values outside normal ranges)
+    and repairs them to meet clinical constraints.
     """
     try:
         # Convert to DataFrame
@@ -205,31 +222,35 @@ async def store_vitals(request: VitalsBulkRequest):
             # In production, you'd look up the actual patient_id from the patients table
             subject_number = record.SubjectID
 
+            # Default tenant for demo purposes (in production, get from auth context)
+            tenant_id = "DEFAULT_TENANT"
+
             # Check if patient exists, if not create placeholder
             patient = await db.fetchrow(
-                "SELECT patient_id FROM patients WHERE subject_number = $1",
-                subject_number
+                "SELECT patient_id FROM patients WHERE tenant_id = $1 AND subject_number = $2",
+                tenant_id, subject_number
             )
 
             if not patient:
                 # Create patient record
                 patient_id = await db.fetchval("""
-                    INSERT INTO patients (subject_number, site_id, protocol_id, enrollment_date, treatment_arm)
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO patients (tenant_id, subject_number, site_id, protocol_id, enrollment_date, treatment_arm)
+                    VALUES ($1, $2, $3, $4, $5, $6)
                     RETURNING patient_id
-                """, subject_number, "SITE001", "PROTO-001", datetime.utcnow().date(), record.TreatmentArm)
+                """, tenant_id, subject_number, "SITE001", "PROTO-001", datetime.utcnow().date(), record.TreatmentArm)
             else:
                 patient_id = patient["patient_id"]
 
             # Store vital signs
             await db.execute("""
                 INSERT INTO vital_signs (
-                    patient_id, visit_date, measurement_time,
+                    tenant_id, patient_id, visit_date, measurement_time,
                     systolic_bp, diastolic_bp, heart_rate, temperature,
                     data_batch
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
             """,
+                tenant_id,
                 patient_id,
                 datetime.utcnow().date(),
                 datetime.utcnow(),
@@ -237,7 +258,7 @@ async def store_vitals(request: VitalsBulkRequest):
                 record.DiastolicBP,
                 record.HeartRate,
                 record.Temperature,
-                {"visit_name": record.VisitName, "treatment_arm": record.TreatmentArm}
+                json.dumps({"visit_name": record.VisitName, "treatment_arm": record.TreatmentArm})
             )
 
             stored_count += 1

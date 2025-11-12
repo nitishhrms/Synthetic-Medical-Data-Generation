@@ -30,7 +30,7 @@ def calculate_week12_statistics(df: pd.DataFrame) -> Dict[str, Any]:
         df: DataFrame with vitals data
 
     Returns:
-        Dict with statistical test results
+        Dict with statistical test results in nested format
     """
     # Filter to Week 12 only
     wk12 = df[df["VisitName"] == "Week 12"].copy()
@@ -55,28 +55,80 @@ def calculate_week12_statistics(df: pd.DataFrame) -> Dict[str, Any]:
     m2 = x_placebo.mean() if n2 else np.nan
     s1 = x_active.std(ddof=1) if n1 > 1 else np.nan
     s2 = x_placebo.std(ddof=1) if n2 > 1 else np.nan
-    diff = m1 - m2
-    se = np.sqrt((s1**2) / n1 + (s2**2) / n2) if (n1 > 1 and n2 > 1) else np.nan
+    se1 = s1 / np.sqrt(n1) if n1 > 1 else np.nan
+    se2 = s2 / np.sqrt(n2) if n2 > 1 else np.nan
 
-    # Calculate p-value
+    diff = m1 - m2
+    se_diff = np.sqrt((s1**2) / n1 + (s2**2) / n2) if (n1 > 1 and n2 > 1) else np.nan
+
+    # Calculate p-value and t-statistic
+    t_stat = diff / se_diff if (se_diff and np.isfinite(se_diff) and se_diff > 0) else np.nan
+
     if HAS_SCIPY and n1 > 1 and n2 > 1:
         p = float(ttest_ind(x_active, x_placebo, equal_var=False).pvalue)
     else:
         # Fallback to normal approximation
-        z = diff / se if (se and np.isfinite(se)) else np.nan
+        z = diff / se_diff if (se_diff and np.isfinite(se_diff)) else np.nan
         p = 2.0 * (1.0 - _phi(abs(z))) if np.isfinite(z) else np.nan
 
-    return dict(
-        n_active=int(n1),
-        n_placebo=int(n2),
-        mean_active=float(m1),
-        mean_placebo=float(m2),
-        sd_active=float(s1) if np.isfinite(s1) else 0.0,
-        sd_placebo=float(s2) if np.isfinite(s2) else 0.0,
-        diff_active_minus_placebo=float(diff),
-        se=float(se) if np.isfinite(se) else 0.0,
-        p_value_two_sided=float(p) if np.isfinite(p) else 1.0
-    )
+    # Calculate 95% confidence interval (t-distribution approximation)
+    # Using z=1.96 for 95% CI (normal approximation)
+    ci_95_lower = diff - 1.96 * se_diff if np.isfinite(se_diff) else np.nan
+    ci_95_upper = diff + 1.96 * se_diff if np.isfinite(se_diff) else np.nan
+
+    # Interpretation
+    significant = p < 0.05 if np.isfinite(p) else False
+
+    # Cohen's d for effect size
+    pooled_sd = np.sqrt(((n1-1)*s1**2 + (n2-1)*s2**2) / (n1 + n2 - 2)) if (n1 > 1 and n2 > 1) else np.nan
+    cohens_d = abs(diff) / pooled_sd if np.isfinite(pooled_sd) and pooled_sd > 0 else 0
+
+    if cohens_d < 0.2:
+        effect_size = "negligible"
+    elif cohens_d < 0.5:
+        effect_size = "small"
+    elif cohens_d < 0.8:
+        effect_size = "medium"
+    else:
+        effect_size = "large"
+
+    # Clinical relevance (5+ mmHg reduction is clinically meaningful)
+    if abs(diff) >= 5 and significant:
+        clinical_relevance = "clinically significant"
+    elif abs(diff) >= 5:
+        clinical_relevance = "borderline"
+    else:
+        clinical_relevance = "not clinically meaningful"
+
+    return {
+        "treatment_groups": {
+            "Active": {
+                "n": int(n1),
+                "mean_systolic": round(float(m1), 1),
+                "std_systolic": round(float(s1), 1) if np.isfinite(s1) else 0.0,
+                "se_systolic": round(float(se1), 1) if np.isfinite(se1) else 0.0
+            },
+            "Placebo": {
+                "n": int(n2),
+                "mean_systolic": round(float(m2), 1),
+                "std_systolic": round(float(s2), 1) if np.isfinite(s2) else 0.0,
+                "se_systolic": round(float(se2), 1) if np.isfinite(se2) else 0.0
+            }
+        },
+        "treatment_effect": {
+            "difference": round(float(diff), 1),
+            "se_difference": round(float(se_diff), 1) if np.isfinite(se_diff) else 0.0,
+            "t_statistic": round(float(t_stat), 2) if np.isfinite(t_stat) else 0.0,
+            "p_value": round(float(p), 3) if np.isfinite(p) else 1.0,
+            "ci_95_lower": round(float(ci_95_lower), 1) if np.isfinite(ci_95_lower) else 0.0,
+            "ci_95_upper": round(float(ci_95_upper), 1) if np.isfinite(ci_95_upper) else 0.0
+        },
+        "interpretation": {
+            "significant": bool(significant),
+            "effect_size": effect_size,
+            "clinical_relevance": clinical_relevance
+        }
+    }
 
 
 def ks_distance(x, y) -> float:

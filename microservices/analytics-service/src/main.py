@@ -59,16 +59,29 @@ class VitalsData(BaseModel):
 class StatisticsRequest(BaseModel):
     vitals_data: List[Dict[str, Any]]
 
+class TreatmentGroupStats(BaseModel):
+    n: int
+    mean_systolic: float
+    std_systolic: float
+    se_systolic: float
+
+class TreatmentEffect(BaseModel):
+    difference: float
+    se_difference: float
+    t_statistic: float
+    p_value: float
+    ci_95_lower: float
+    ci_95_upper: float
+
+class Interpretation(BaseModel):
+    significant: bool
+    effect_size: str
+    clinical_relevance: str
+
 class StatisticsResponse(BaseModel):
-    n_active: int
-    n_placebo: int
-    mean_active: float
-    mean_placebo: float
-    sd_active: float
-    sd_placebo: float
-    diff_active_minus_placebo: float
-    se: float
-    p_value_two_sided: float
+    treatment_groups: Dict[str, TreatmentGroupStats]
+    treatment_effect: TreatmentEffect
+    interpretation: Interpretation
 
 class RECISTRequest(BaseModel):
     vitals_data: List[Dict[str, Any]]
@@ -154,12 +167,25 @@ async def calculate_statistics(request: StatisticsRequest):
     Calculate Week-12 statistics (Active vs Placebo)
 
     Performs Welch's t-test on Week-12 Systolic BP data
+
+    Returns nested structure with:
+    - treatment_groups: Statistics for Active and Placebo arms
+    - treatment_effect: Difference, t-statistic, p-value, confidence intervals
+    - interpretation: Significance, effect size, clinical relevance
     """
     try:
         df = pd.DataFrame(request.vitals_data)
         stats = calculate_week12_statistics(df)
 
-        return StatisticsResponse(**stats)
+        # Parse nested structure
+        return StatisticsResponse(
+            treatment_groups={
+                "Active": TreatmentGroupStats(**stats["treatment_groups"]["Active"]),
+                "Placebo": TreatmentGroupStats(**stats["treatment_groups"]["Placebo"])
+            },
+            treatment_effect=TreatmentEffect(**stats["treatment_effect"]),
+            interpretation=Interpretation(**stats["interpretation"])
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

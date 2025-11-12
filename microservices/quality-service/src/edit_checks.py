@@ -113,8 +113,15 @@ def run_edit_checks_yaml(df: pd.DataFrame, rules_yaml: str) -> pd.DataFrame:
             "CheckID", "Severity", "Message", "SubjectID", "VisitName", "Field", "Value"
         ])
 
-    spec = yaml.safe_load(rules_yaml) or {}
-    rules = spec.get("rules", [])
+    spec = yaml.safe_load(rules_yaml)
+
+    # Handle both formats: direct list or wrapped in "rules:" key
+    if isinstance(spec, list):
+        rules = spec
+    elif isinstance(spec, dict):
+        rules = spec.get("rules", [])
+    else:
+        rules = []
     queries = []
 
     def add_q(rid, sev, msg, subj, visit, field, value):
@@ -129,48 +136,81 @@ def run_edit_checks_yaml(df: pd.DataFrame, rules_yaml: str) -> pd.DataFrame:
             "Value": value
         })
 
-    per_subj = df.groupby("SubjectID")
+    # Check if required columns exist for grouping
+    has_subject_id = "SubjectID" in df.columns
+    per_subj = df.groupby("SubjectID") if has_subject_id else None
 
     for rule in rules:
         t = rule.get("type")
-        rid = rule.get("id", "RULE")
+        # Support both "id" and "name" for rule identifier
+        rid = rule.get("id") or rule.get("name", "RULE")
         sev = rule.get("severity", "Major")
         msg = rule.get("message", "")
 
         if t == "range":
             # Check if value is within [min, max]
-            f, lo, hi = rule["field"], rule["min"], rule["max"]
+            # Support both "field" and "column" keys
+            f = rule.get("field") or rule.get("column")
+            if not f:
+                continue
+            lo, hi = rule["min"], rule["max"]
+            if f not in df.columns:
+                continue
             x = pd.to_numeric(df[f], errors="coerce")
             mask = ~x.between(lo, hi)
             for _, r in df[mask].iterrows():
-                add_q(rid, sev, msg, r.SubjectID, r.VisitName, f, r[f])
+                subj = r.get("SubjectID", "")
+                visit = r.get("VisitName", "")
+                add_q(rid, sev, msg, subj, visit, f, r[f])
 
         elif t == "diff_at_least":
             # Check if larger >= smaller + delta
             a, b, d = rule["larger"], rule["smaller"], float(rule["delta"])
+            if a not in df.columns or b not in df.columns:
+                continue
             xa = pd.to_numeric(df[a], errors="coerce")
             xb = pd.to_numeric(df[b], errors="coerce")
             mask = (xa < xb + d)
             for _, r in df[mask].iterrows():
-                add_q(rid, sev, msg, r.SubjectID, r.VisitName, f"{a}/{b}", f"{r[a]}/{r[b]}")
+                subj = r.get("SubjectID", "")
+                visit = r.get("VisitName", "")
+                add_q(rid, sev, msg, subj, visit, f"{a}/{b}", f"{r[a]}/{r[b]}")
 
         elif t == "allowed_values":
             # Check if value is in allowed set
-            f, vals = rule["field"], set(rule["values"])
+            f = rule.get("field") or rule.get("column")
+            if not f:
+                continue
+            vals = set(rule["values"])
+            if f not in df.columns:
+                continue
             mask = ~df[f].isin(vals)
             for _, r in df[mask].iterrows():
-                add_q(rid, sev, msg, r.SubjectID, r.VisitName, f, r[f])
+                subj = r.get("SubjectID", "")
+                visit = r.get("VisitName", "")
+                add_q(rid, sev, msg, subj, visit, f, r[f])
 
         elif t == "regex":
             # Check if value matches regex pattern
-            f, pat = rule["field"], re.compile(rule["pattern"])
+            f = rule.get("field") or rule.get("column")
+            if not f:
+                continue
+            pat = re.compile(rule["pattern"])
+            if f not in df.columns:
+                continue
             mask = ~df[f].astype(str).str.match(pat)
             for _, r in df[mask].iterrows():
-                add_q(rid, sev, msg, r.SubjectID, r.VisitName, f, r[f])
+                subj = r.get("SubjectID", "")
+                visit = r.get("VisitName", "")
+                add_q(rid, sev, msg, subj, visit, f, r[f])
 
         elif t == "constant_within_subject":
             # Check if field is constant per subject
-            f = rule["field"]
+            if per_subj is None:
+                continue
+            f = rule.get("field") or rule.get("column")
+            if not f or f not in df.columns:
+                continue
             bad = per_subj[f].nunique()
             bad = bad[bad > 1].index
             for subj in bad:
@@ -178,6 +218,8 @@ def run_edit_checks_yaml(df: pd.DataFrame, rules_yaml: str) -> pd.DataFrame:
 
         elif t == "required_visits":
             # Check if all required visits are present per subject
+            if per_subj is None or "VisitName" not in df.columns:
+                continue
             visits = set(rule["visits"])
             seen = per_subj["VisitName"].apply(set)
             for subj, s in seen.items():
@@ -188,9 +230,14 @@ def run_edit_checks_yaml(df: pd.DataFrame, rules_yaml: str) -> pd.DataFrame:
         elif t == "unique_combo":
             # Check if field combination is unique
             fields = rule["fields"]
+            # Check if all fields exist
+            if not all(f in df.columns for f in fields):
+                continue
             dup_mask = df.duplicated(subset=fields, keep=False)
             for _, r in df[dup_mask].iterrows():
-                add_q(rid, sev, msg, r.SubjectID, r.VisitName, "+".join(fields), "")
+                subj = r.get("SubjectID", "")
+                visit = r.get("VisitName", "")
+                add_q(rid, sev, msg, subj, visit, "+".join(fields), "")
 
     return pd.DataFrame(queries)
 

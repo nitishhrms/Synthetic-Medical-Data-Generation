@@ -76,15 +76,10 @@ class GenerateAERequest(BaseModel):
     n_subjects: int = Field(default=30, ge=10, le=100)
     seed: int = Field(default=7)
 
-class VitalsResponse(BaseModel):
-    data: List[Dict[str, Any]]
-    rows: int
-    columns: List[str]
+# Response model - returns array directly for compatibility with EDC validation service
+VitalsResponse = List[Dict[str, Any]]
 
-class AEResponse(BaseModel):
-    data: List[Dict[str, Any]]
-    rows: int
-    columns: List[str]
+AEResponse = List[Dict[str, Any]]
 
 class LLMGenerationResponse(BaseModel):
     data: List[Dict[str, Any]]
@@ -147,11 +142,8 @@ async def generate_rules_based(request: GenerateRulesRequest):
             seed=request.seed
         )
 
-        return VitalsResponse(
-            data=df.to_dict(orient="records"),
-            rows=len(df),
-            columns=df.columns.tolist()
-        )
+        # Return just the data array for compatibility with EDC validation service
+        return df.to_dict(orient="records")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -180,11 +172,8 @@ async def generate_mvn_based(request: GenerateMVNRequest):
             current_df=current_df
         )
 
-        return VitalsResponse(
-            data=df.to_dict(orient="records"),
-            rows=len(df),
-            columns=df.columns.tolist()
-        )
+        # Return just the data array for compatibility with EDC validation service
+        return df.to_dict(orient="records")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -236,11 +225,8 @@ async def generate_adverse_events(request: GenerateAERequest):
             seed=request.seed
         )
 
-        return AEResponse(
-            data=df.to_dict(orient="records"),
-            rows=len(df),
-            columns=df.columns.tolist()
-        )
+        # Return just the data array
+        return df.to_dict(orient="records")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

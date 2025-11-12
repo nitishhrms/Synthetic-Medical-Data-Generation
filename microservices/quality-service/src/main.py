@@ -51,9 +51,11 @@ class EditChecksRequest(BaseModel):
     rules_yaml: Optional[str] = None
 
 class EditChecksResponse(BaseModel):
-    queries: List[Dict[str, Any]]
-    total_queries: int
-    severity_breakdown: Dict[str, int]
+    total_records: int
+    total_checks: int
+    violations: List[Dict[str, Any]]
+    quality_score: float
+    passed: bool
 
 class NoiseRequest(BaseModel):
     data: List[Dict[str, Any]]
@@ -131,6 +133,7 @@ async def validate_with_edit_checks(request: EditChecksRequest):
     """
     try:
         df = pd.DataFrame(request.data)
+        total_records = len(df)
 
         # Use default rules if none provided
         rules_yaml = request.rules_yaml or load_default_rules()
@@ -138,16 +141,44 @@ async def validate_with_edit_checks(request: EditChecksRequest):
         # Run edit checks
         queries_df = run_edit_checks_yaml(df, rules_yaml)
 
-        # Calculate severity breakdown
-        severity_breakdown = {}
-        if not queries_df.empty and "Severity" in queries_df.columns:
-            severity_counts = queries_df["Severity"].value_counts().to_dict()
-            severity_breakdown = {k: int(v) for k, v in severity_counts.items()}
+        # Count total checks run (from YAML rules)
+        import yaml
+        spec = yaml.safe_load(rules_yaml)
+        if isinstance(spec, list):
+            total_checks = len(spec)
+        elif isinstance(spec, dict):
+            total_checks = len(spec.get("rules", []))
+        else:
+            total_checks = 0
+
+        # Format violations
+        violations = []
+        if not queries_df.empty:
+            for _, row in queries_df.iterrows():
+                violations.append({
+                    "record": row.get("SubjectID", ""),
+                    "rule": row.get("CheckID", ""),
+                    "severity": row.get("Severity", "").lower(),
+                    "message": row.get("Message", "")
+                })
+
+        # Calculate quality score (1.0 = perfect, 0.0 = all checks failed)
+        # Score = (total_checks - violations) / total_checks
+        num_violations = len(violations)
+        if total_checks > 0:
+            quality_score = max(0.0, (total_records * total_checks - num_violations) / (total_records * total_checks))
+        else:
+            quality_score = 1.0
+
+        # Passed = no violations
+        passed = num_violations == 0
 
         return EditChecksResponse(
-            queries=queries_df.to_dict(orient="records") if not queries_df.empty else [],
-            total_queries=len(queries_df),
-            severity_breakdown=severity_breakdown
+            total_records=total_records,
+            total_checks=total_checks,
+            violations=violations,
+            quality_score=round(quality_score, 2),
+            passed=passed
         )
     except Exception as e:
         raise HTTPException(
