@@ -11,8 +11,11 @@
 ## Step 1: Start All Services
 
 ```bash
-# From project root
-cd /Users/himanshu_jain/272-slides-midterm/272-project/synthetictrial-enterprise
+# Navigate to project directory
+cd /Users/himanshu_jain/272/Synthetic-Medical-Data-Generation
+
+# Or from parent directory:
+cd Synthetic-Medical-Data-Generation
 
 # Start everything (database + all microservices)
 docker-compose up -d

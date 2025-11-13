@@ -8,42 +8,43 @@ This project transforms the monolithic Streamlit application into a scalable mic
 
 ### Microservices (6 Core Services)
 
-1. **EDC Service** (Port 8001) - Electronic Data Capture
+1. **API Gateway** (Port 8000) - Central Routing
+   - Request routing to all services
+   - Token validation
+   - Rate limiting
+   - Service discovery
+
+2. **EDC Service** (Port 8001) - Electronic Data Capture
    - Subject data validation
    - Auto-repair functionality
    - Visit data management
+   - Database persistence
 
-2. **Data Generation Service** (Port 8002) - Synthetic Data
+3. **Data Generation Service** (Port 8002) - Synthetic Data
    - Rules-based generation
    - MVN (Multivariate Normal) generation
    - LLM-based generation with auto-repair
    - Oncology AE generation
 
-3. **Analytics Service** (Port 8003) - Statistics & Reporting
+4. **Analytics Service** (Port 8003) - Statistics & Reporting
    - Week-12 statistics (Welch's t-test)
    - RECIST + ORR analysis
    - RBQM summaries
    - CSR draft generation
    - SDTM export
 
-4. **Quality Service** (Port 8004) - Edit Checks
+5. **Quality Service** (Port 8004) - Edit Checks
    - YAML-based edit check engine
    - Range validation
    - Pattern matching
    - Duplicate detection
    - Entry noise simulation
 
-5. **Security Service** (Port 8005) - Authentication & Authorization
+6. **Security Service** (Port 8005) - Authentication & Authorization
    - JWT authentication
    - PHI encryption/decryption
    - PHI detection
    - HIPAA audit logging
-
-6. **API Gateway** (Port 8000) - Central Routing
-   - Request routing to all services
-   - Token validation
-   - Rate limiting
-   - Service discovery
 
 ## 🚀 Quick Start
 
@@ -57,8 +58,11 @@ This project transforms the monolithic Streamlit application into a scalable mic
 ### Local Development with Docker Compose
 
 ```bash
-# Clone the repository
-cd synthetictrial-enterprise
+# Navigate to the project directory
+cd /Users/himanshu_jain/272/Synthetic-Medical-Data-Generation
+
+# Or if you're already in the parent directory:
+cd Synthetic-Medical-Data-Generation
 
 # Start all services
 docker-compose up --build
@@ -70,6 +74,9 @@ docker-compose up --build
 # Analytics: http://localhost:8003
 # Quality: http://localhost:8004
 # Security: http://localhost:8005
+
+# PostgreSQL: localhost:5432
+# Redis: localhost:6379
 ```
 
 ### Kubernetes Deployment
@@ -281,30 +288,40 @@ k6 run load-test.js
 ## 📁 Project Structure
 
 ```
-synthetictrial-enterprise/
+Synthetic-Medical-Data-Generation/
 ├── microservices/
-│   ├── api-gateway/
+│   ├── api-gateway/           # Port 8000 - Central routing
 │   │   ├── src/main.py
 │   │   ├── requirements.txt
 │   │   └── Dockerfile
-│   ├── edc-service/
+│   ├── edc-service/           # Port 8001 - Data validation
 │   │   ├── src/
 │   │   │   ├── main.py
 │   │   │   ├── validation.py
 │   │   │   └── repair.py
 │   │   ├── requirements.txt
 │   │   └── Dockerfile
-│   ├── data-generation-service/
-│   ├── analytics-service/
-│   ├── quality-service/
-│   └── security-service/
+│   ├── data-generation-service/  # Port 8002 - Data generation
+│   ├── analytics-service/     # Port 8003 - Analytics
+│   ├── quality-service/       # Port 8004 - Quality checks
+│   ├── security-service/      # Port 8005 - Auth & Security
+│   └── shared/                # Shared utilities
+├── database/
+│   ├── init.sql              # PostgreSQL schema
+│   ├── database.py           # Database client
+│   └── cache.py              # Redis cache layer
 ├── kubernetes/
 │   ├── deployments/
 │   ├── services/
 │   ├── hpa/
 │   └── configmaps/
+├── terraform/                 # AWS infrastructure
+├── scripts/                   # Deployment scripts
+├── data/                      # Sample data
 ├── docker-compose.yml
-└── README.md
+├── README.md
+├── CLAUDE.md                  # Backend API reference
+└── QUICKSTART_GUIDE.md        # Getting started guide
 ```
 
 ## 🛠️ Development

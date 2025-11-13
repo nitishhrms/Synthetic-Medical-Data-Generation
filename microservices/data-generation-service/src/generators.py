@@ -159,19 +159,61 @@ def fit_mvn_models(train_df: pd.DataFrame) -> Dict:
     return models
 
 
-def load_pilot_vitals() -> pd.DataFrame:
-    """Load pilot vitals data from the existing-app directory"""
-    # Correctly locate the pilot data relative to the microservices directory
+def load_pilot_vitals(use_cleaned: bool = True) -> pd.DataFrame:
+    """
+    Load pilot vitals data from CDISC clinical trial data.
+
+    This data is derived from real clinical trials and provides realistic
+    distributions for vital signs across different visits and treatment arms.
+
+    Args:
+        use_cleaned: If True (default), load the validated and repaired data.
+                    If False, load the original unprocessed data.
+
+    Returns:
+        DataFrame with clinical trial vital signs data
+
+    Note:
+        The cleaned data has been validated and repaired to ensure:
+        - All values within valid clinical ranges
+        - No duplicate records
+        - No missing values
+        - Consistent treatment arms per subject
+
+        To generate cleaned data, run: python data/validate_and_repair_real_data.py
+    """
+    # Locate the pilot data in the data directory
     base_path = Path(__file__).resolve().parents[3]
-    pilot_data_path = base_path / "existing-app" / "data" / "pilot" / "vitals.csv"
+
+    if use_cleaned:
+        # Use validated and cleaned data (recommended)
+        pilot_data_path = base_path / "data" / "pilot_trial_cleaned.csv"
+
+        if not pilot_data_path.exists():
+            # Fall back to original if cleaned doesn't exist
+            print("⚠️  Warning: Cleaned data not found. Using original data.")
+            print("   Run 'python data/validate_and_repair_real_data.py' to generate cleaned data.")
+            pilot_data_path = base_path / "data" / "pilot_trial.csv"
+    else:
+        # Use original unprocessed data
+        pilot_data_path = base_path / "data" / "pilot_trial.csv"
 
     if not pilot_data_path.exists():
         raise FileNotFoundError(
-            f"Pilot data not found at the expected path: {pilot_data_path}. "
-            "Ensure the 'existing-app' directory is at the root of the repository."
+            f"Pilot data not found at: {pilot_data_path}. "
+            "Run 'python data/process_cdisc_data.py' to generate the pilot data from CDISC sources."
         )
 
-    return pd.read_csv(pilot_data_path)
+    df = pd.read_csv(pilot_data_path)
+
+    # Validate expected columns
+    required_cols = ["SubjectID", "VisitName", "TreatmentArm",
+                     "SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"Pilot data missing required columns: {missing}")
+
+    return df
 
 
 def generate_vitals_mvn(n_per_arm=50, target_effect=-5.0, seed=123,

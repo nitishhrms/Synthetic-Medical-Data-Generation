@@ -77,11 +77,14 @@ curl --version
 ### Step 1: Navigate to Project Directory
 
 ```bash
-# Windows (Command Prompt or PowerShell)
-cd "D:\Downloads\SyntheticTrialStudio-Enterprise-main (1)\SyntheticTrialStudio-Enterprise-main\synthetictrial-enterprise"
+# Navigate to the project directory
+cd /Users/himanshu_jain/272/Synthetic-Medical-Data-Generation
 
-# macOS/Linux
-cd /path/to/SyntheticTrialStudio-Enterprise-main/synthetictrial-enterprise
+# Or from the parent directory:
+cd Synthetic-Medical-Data-Generation
+
+# Verify you're in the correct directory
+ls -la docker-compose.yml  # Should show the docker-compose file
 ```
 
 ### Step 2: Start Docker Desktop
