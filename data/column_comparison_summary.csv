@@ -1,0 +1,8 @@
+Field,Field Type,Real Unique,MVN Unique,Bootstrap Unique,Real Most Common,MVN Most Common,Bootstrap Most Common,Real Mean,MVN Mean,Bootstrap Mean,Real Std,MVN Std,Bootstrap Std,Real Range,MVN Range,Bootstrap Range
+SubjectID,Categorical,254.0,100.0,97.0,01-701-1015,RA001-001,RA001-010,,,,,,,,,
+VisitName,Categorical,4.0,4.0,4.0,Week 12,Day 1,Week 12,,,,,,,,,
+TreatmentArm,Categorical,2.0,2.0,2.0,Active,Active,Placebo,,,,,,,,,
+SystolicBP,Numeric,,,,,,,134.66,135.21,135.06,16.86,17.43,16.95,"[82, 200]","[95, 185]","[85, 200]"
+DiastolicBP,Numeric,,,,,,,75.96,76.85,75.78,9.65,10.10,9.97,"[43, 107]","[55, 106]","[44, 107]"
+HeartRate,Numeric,,,,,,,72.88,73.28,72.22,9.62,9.48,8.81,"[47, 118]","[50, 106]","[47, 103]"
+Temperature,Numeric,,,,,,,36.59,36.60,36.63,0.44,0.44,0.42,"[34, 38]","[35, 38]","[35, 38]"

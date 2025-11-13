@@ -1,0 +1,9 @@
+DATA VALIDATION AND REPAIR REPORT
+================================================================================
+
+Original records: 2,079
+Cleaned records: 945
+Issues found: 10
+Repairs applied: 5
+
+Output file: /Users/himanshu_jain/272/Synthetic-Medical-Data-Generation/data/pilot_trial_cleaned.csv

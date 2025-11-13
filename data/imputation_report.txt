@@ -1,0 +1,69 @@
+================================================================================
+K-NEAREST NEIGHBOR IMPUTATION ANALYSIS REPORT
+MAR (Missing at Random) Pattern
+================================================================================
+
+Dataset: 945 records
+Total values: 3780
+Missing values introduced: 944 (25.0%)
+
+================================================================================
+IMPUTATION QUALITY METRICS BY FEATURE
+================================================================================
+
+SystolicBP:
+----------------------------------------
+  Values imputed: 236
+  RMSE: 19.973
+  MAE: 15.848
+  Wasserstein Distance: 11.116
+  Correlation: 0.141
+  Bias (mean diff): -10.408
+
+DiastolicBP:
+----------------------------------------
+  Values imputed: 236
+  RMSE: 11.246
+  MAE: 9.316
+  Wasserstein Distance: 5.960
+  Correlation: 0.068
+  Bias (mean diff): -5.899
+
+HeartRate:
+----------------------------------------
+  Values imputed: 236
+  RMSE: 13.454
+  MAE: 10.535
+  Wasserstein Distance: 8.503
+  Correlation: 0.000
+  Bias (mean diff): -8.503
+
+Temperature:
+----------------------------------------
+  Values imputed: 236
+  RMSE: 0.485
+  MAE: 0.390
+  Wasserstein Distance: 0.235
+  Correlation: 0.003
+  Bias (mean diff): -0.232
+
+================================================================================
+OVERALL SUMMARY
+================================================================================
+
+Average RMSE: 11.290
+Average MAE: 9.022
+Average Wasserstein: 6.454
+Average Correlation: 0.053
+
+Quality Assessment: FAIR
+Summary: K-NN imputation shows moderate performance. Consider adjusting K or using alternative methods.
+
+================================================================================
+BUSINESS VALUE
+================================================================================
+
+• Reduces trial re-runs by recovering missing data
+• Maintains statistical power with complete datasets
+• Cost savings from avoiding data collection re-do
+• Enables complete case analysis without data loss

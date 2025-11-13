@@ -1,0 +1,22 @@
+Column,Source,Type,Unique Values,Missing Count,Missing %,Most Common,Most Common %,Mean,Median,Std Dev,Min,Max
+SubjectID,Real CDISC,Categorical,254.0,0,0.00%,01-701-1015,0.5%,,,,,
+VisitName,Real CDISC,Categorical,4.0,0,0.00%,Week 12,41.0%,,,,,
+TreatmentArm,Real CDISC,Categorical,2.0,0,0.00%,Active,61.3%,,,,,
+SystolicBP,Real CDISC,Numeric,,0,0.00%,,,134.66,133.00,16.86,82.00,200.00
+DiastolicBP,Real CDISC,Numeric,,0,0.00%,,,75.96,76.00,9.65,43.00,107.00
+HeartRate,Real CDISC,Numeric,,0,0.00%,,,72.88,72.00,9.62,47.00,118.00
+Temperature,Real CDISC,Numeric,,0,0.00%,,,36.59,36.70,0.44,34.30,38.10
+SubjectID,MVN Synthetic,Categorical,100.0,0,0.00%,RA001-001,1.0%,,,,,
+VisitName,MVN Synthetic,Categorical,4.0,0,0.00%,Day 1,25.0%,,,,,
+TreatmentArm,MVN Synthetic,Categorical,2.0,0,0.00%,Active,50.0%,,,,,
+SystolicBP,MVN Synthetic,Numeric,,0,0.00%,,,135.21,135.00,17.43,95.00,185.00
+DiastolicBP,MVN Synthetic,Numeric,,0,0.00%,,,76.85,76.00,10.10,55.00,106.00
+HeartRate,MVN Synthetic,Numeric,,0,0.00%,,,73.28,73.00,9.48,50.00,106.00
+Temperature,MVN Synthetic,Numeric,,0,0.00%,,,36.60,36.60,0.44,35.35,38.26
+SubjectID,Bootstrap Synthetic,Categorical,97.0,0,0.00%,RA001-010,1.7%,,,,,
+VisitName,Bootstrap Synthetic,Categorical,4.0,0,0.00%,Week 12,42.3%,,,,,
+TreatmentArm,Bootstrap Synthetic,Categorical,2.0,0,0.00%,Placebo,51.2%,,,,,
+SystolicBP,Bootstrap Synthetic,Numeric,,0,0.00%,,,135.06,134.00,16.95,85.00,200.00
+DiastolicBP,Bootstrap Synthetic,Numeric,,0,0.00%,,,75.78,76.00,9.97,44.00,107.00
+HeartRate,Bootstrap Synthetic,Numeric,,0,0.00%,,,72.22,71.00,8.81,47.00,103.00
+Temperature,Bootstrap Synthetic,Numeric,,0,0.00%,,,36.63,36.70,0.42,34.90,38.10
