@@ -131,6 +131,8 @@ async def root():
             "llm": "/generate/llm",
             "bootstrap": "/generate/bootstrap",
             "ae": "/generate/ae",
+            "compare": "/compare",
+            "pilot_data": "/data/pilot",
             "docs": "/docs"
         }
     }
@@ -302,6 +304,152 @@ async def generate_bootstrap_based(request: GenerateBootstrapRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Bootstrap generation failed: {str(e)}"
+        )
+
+@app.get("/compare")
+async def compare_methods(
+    n_per_arm: int = 50,
+    target_effect: float = -5.0,
+    seed: int = 42
+):
+    """
+    Compare all generation methods (MVN, Bootstrap, Rules)
+
+    Returns generated data from each method along with performance metrics.
+    Useful for evaluating which method produces the best quality synthetic data.
+
+    Query Parameters:
+    - n_per_arm: Number of subjects per treatment arm (default: 50)
+    - target_effect: Target treatment effect in mmHg (default: -5.0)
+    - seed: Random seed for reproducibility (default: 42)
+
+    Returns:
+    - mvn_data: Synthetic data from MVN method
+    - bootstrap_data: Synthetic data from Bootstrap method
+    - rules_data: Synthetic data from Rules method
+    - comparison: Performance metrics and statistics for each method
+    """
+    try:
+        import time
+
+        # Load pilot data for bootstrap
+        pilot_path = "/Users/himanshu_jain/272/Synthetic-Medical-Data-Generation/data/pilot_trial_cleaned.csv"
+        pilot_df = pd.read_csv(pilot_path)
+
+        # Generate with MVN
+        start_mvn = time.time()
+        mvn_df = generate_vitals_mvn(
+            n_per_arm=n_per_arm,
+            target_effect=target_effect,
+            seed=seed
+        )
+        mvn_time_ms = (time.time() - start_mvn) * 1000
+
+        # Generate with Bootstrap
+        start_bootstrap = time.time()
+        bootstrap_df = generate_vitals_bootstrap(
+            training_df=pilot_df,
+            n_per_arm=n_per_arm,
+            target_effect=target_effect,
+            seed=seed
+        )
+        bootstrap_time_ms = (time.time() - start_bootstrap) * 1000
+
+        # Generate with Rules
+        start_rules = time.time()
+        rules_df = generate_vitals_rules(
+            n_per_arm=n_per_arm,
+            target_effect=target_effect,
+            seed=seed
+        )
+        rules_time_ms = (time.time() - start_rules) * 1000
+
+        # Calculate basic statistics for comparison
+        def get_stats(df):
+            week12 = df[df['VisitName'] == 'Week 12']
+            active = week12[week12['TreatmentArm'] == 'Active']['SystolicBP']
+            placebo = week12[week12['TreatmentArm'] == 'Placebo']['SystolicBP']
+
+            return {
+                "total_records": len(df),
+                "total_subjects": df['SubjectID'].nunique(),
+                "week12_mean_active": float(active.mean()) if len(active) > 0 else None,
+                "week12_mean_placebo": float(placebo.mean()) if len(placebo) > 0 else None,
+                "week12_effect": float(active.mean() - placebo.mean()) if len(active) > 0 and len(placebo) > 0 else None
+            }
+
+        return {
+            "mvn": {
+                "data": mvn_df.to_dict(orient="records"),
+                "stats": get_stats(mvn_df),
+                "generation_time_ms": round(mvn_time_ms, 2)
+            },
+            "bootstrap": {
+                "data": bootstrap_df.to_dict(orient="records"),
+                "stats": get_stats(bootstrap_df),
+                "generation_time_ms": round(bootstrap_time_ms, 2)
+            },
+            "rules": {
+                "data": rules_df.to_dict(orient="records"),
+                "stats": get_stats(rules_df),
+                "generation_time_ms": round(rules_time_ms, 2)
+            },
+            "comparison": {
+                "fastest_method": min(
+                    [("mvn", mvn_time_ms), ("bootstrap", bootstrap_time_ms), ("rules", rules_time_ms)],
+                    key=lambda x: x[1]
+                )[0],
+                "performance": {
+                    "mvn_time_ms": round(mvn_time_ms, 2),
+                    "bootstrap_time_ms": round(bootstrap_time_ms, 2),
+                    "rules_time_ms": round(rules_time_ms, 2)
+                },
+                "parameters": {
+                    "n_per_arm": n_per_arm,
+                    "target_effect": target_effect,
+                    "seed": seed
+                }
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Method comparison failed: {str(e)}"
+        )
+
+@app.get("/data/pilot", response_model=VitalsResponse)
+async def get_pilot_data():
+    """
+    Get real pilot trial data (CDISC SDTM Pilot Study)
+
+    Returns the cleaned and validated pilot data used for training/comparison.
+    This is real clinical trial data that has been cleaned and validated.
+
+    Returns:
+    - Array of VitalsRecords from the pilot study (945 records)
+    - Same schema as generated synthetic data
+    - Used by frontend for quality assessment and comparison
+    """
+    try:
+        pilot_path = "/Users/himanshu_jain/272/Synthetic-Medical-Data-Generation/data/pilot_trial_cleaned.csv"
+
+        # Check if file exists
+        if not os.path.exists(pilot_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Pilot data file not found"
+            )
+
+        # Read and return pilot data
+        pilot_df = pd.read_csv(pilot_path)
+
+        return pilot_df.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load pilot data: {str(e)}"
         )
 
 if __name__ == "__main__":

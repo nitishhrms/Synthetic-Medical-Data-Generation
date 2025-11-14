@@ -44,6 +44,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 def get_user(db: Session, username: str):
     return db.query(models.User).filter(models.User.username == username).first()
 
+def hash_password(plain_password: str) -> str:
+    """Hash a password using bcrypt"""
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(plain_password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash using bcrypt"""
     try:
@@ -56,14 +62,17 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Dic
     user = get_user(db, username)
     if not user:
         return None
-    
+
     if not verify_password(password, user.hashed_password):
         return None
-    
+
     return {
         "user_id": user.id,
         "username": user.username,
-        "roles": user.roles.split(",") if user.roles else []
+        "email": user.email,
+        "role": user.role,
+        "tenant_id": user.tenant_id,
+        "roles": [user.role] if user.role else []  # For backward compatibility
     }
 
 def create_access_token(user: Dict) -> str:

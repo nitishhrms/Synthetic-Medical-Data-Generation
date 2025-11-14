@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { dataGenerationApi } from "@/services/api";
+import { useData } from "@/contexts/DataContext";
 import type { GenerationMethod, VitalsRecord } from "@/types";
 import { Download, Loader2 } from "lucide-react";
 
 export function DataGeneration() {
+  const { setGeneratedData: setGlobalGeneratedData, setGenerationMethod } = useData();
   const [selectedMethod, setSelectedMethod] = useState<GenerationMethod>("mvn");
   const [nPerArm, setNPerArm] = useState(50);
   const [targetEffect, setTargetEffect] = useState(-5.0);
@@ -78,6 +80,9 @@ export function DataGeneration() {
 
       setGeneratedData(response.data);
       setMetadata(response.metadata);
+      // Store in global context for Analytics/Quality screens
+      setGlobalGeneratedData(response.data);
+      setGenerationMethod(selectedMethod);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {

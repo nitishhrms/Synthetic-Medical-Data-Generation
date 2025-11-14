@@ -77,7 +77,7 @@ export const authApi = {
   },
 
   async verifyToken(): Promise<{ valid: boolean }> {
-    const response = await fetch(`${SECURITY_SERVICE}/auth/verify`, {
+    const response = await fetch(`${SECURITY_SERVICE}/auth/validate`, {
       headers: getAuthHeaders(),
     });
     return handleResponse(response);
@@ -99,16 +99,37 @@ export const dataGenerationApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify(params),
     });
-    return handleResponse(response);
+    const data = await handleResponse<VitalsRecord[]>(response);
+    // Backend returns array directly, wrap it in expected format
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "mvn",
+      },
+    };
   },
 
   async generateBootstrap(params: GenerationRequest): Promise<GenerationResponse> {
+    // First, fetch pilot data to use as training data
+    const pilotData = await this.getPilotData();
+
     const response = await fetch(`${DATA_GEN_SERVICE}/generate/bootstrap`, {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        training_data: pilotData,
+      }),
     });
-    return handleResponse(response);
+    const data = await handleResponse<VitalsRecord[]>(response);
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "bootstrap",
+      },
+    };
   },
 
   async generateRules(params: GenerationRequest): Promise<GenerationResponse> {
@@ -117,7 +138,14 @@ export const dataGenerationApi = {
       headers: getAuthHeaders(),
       body: JSON.stringify(params),
     });
-    return handleResponse(response);
+    const data = await handleResponse<VitalsRecord[]>(response);
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "rules",
+      },
+    };
   },
 
   async generateLLM(params: GenerationRequest): Promise<GenerationResponse> {
@@ -265,7 +293,7 @@ export const edcApi = {
 
 export const qualityApi = {
   async validateVitals(data: VitalsRecord[]): Promise<ValidationResponse> {
-    const response = await fetch(`${QUALITY_SERVICE}/validate/vitals`, {
+    const response = await fetch(`${QUALITY_SERVICE}/checks/validate`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({ data }),

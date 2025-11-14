@@ -84,6 +84,49 @@ class RepairResponse(BaseModel):
     repaired_records: List[VitalsRecord]
     validation_after: ValidationResponse
 
+# Study Management Models
+class StudyCreate(BaseModel):
+    study_name: str
+    indication: str
+    phase: str = Field(..., pattern=r'^Phase [123]$')
+    sponsor: str
+    start_date: str
+    status: str = Field(default="active")
+
+class Study(BaseModel):
+    study_id: str
+    study_name: str
+    indication: str
+    phase: str
+    sponsor: str
+    start_date: str
+    status: str
+    subjects_enrolled: int = 0
+    created_at: str
+
+class SubjectCreate(BaseModel):
+    study_id: str
+    site_id: str
+    treatment_arm: str = Field(..., pattern=r'^(Active|Placebo)$')
+
+class Subject(BaseModel):
+    subject_id: str
+    study_id: str
+    site_id: str
+    treatment_arm: str
+    enrollment_date: str
+    status: str
+
+class ImportSyntheticRequest(BaseModel):
+    study_id: str
+    data: List[VitalsRecord]
+    source: str
+
+class ImportSyntheticResponse(BaseModel):
+    subjects_imported: int
+    observations_imported: int
+    message: str
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -277,6 +320,132 @@ async def store_vitals(request: VitalsBulkRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to store vitals: {str(e)}"
         )
+
+# ============================================================================
+# Study Management Endpoints
+# ============================================================================
+
+# In-memory storage for studies and subjects (for development)
+# In production, these would be stored in a proper database
+studies_db: Dict[str, Dict] = {}
+subjects_db: Dict[str, Dict] = {}
+
+@app.post("/studies")
+async def create_study(study: StudyCreate):
+    """Create a new clinical trial study"""
+    study_id = f"STU{len(studies_db) + 1:03d}"
+
+    study_data = {
+        "study_id": study_id,
+        "study_name": study.study_name,
+        "indication": study.indication,
+        "phase": study.phase,
+        "sponsor": study.sponsor,
+        "start_date": study.start_date,
+        "status": study.status,
+        "subjects_enrolled": 0,
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+    studies_db[study_id] = study_data
+
+    return {
+        "study_id": study_id,
+        "message": "Study created successfully"
+    }
+
+@app.get("/studies")
+async def list_studies():
+    """List all studies"""
+    return {
+        "studies": list(studies_db.values())
+    }
+
+@app.get("/studies/{study_id}")
+async def get_study(study_id: str):
+    """Get study details"""
+    if study_id not in studies_db:
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    return studies_db[study_id]
+
+@app.post("/subjects")
+async def enroll_subject(subject: SubjectCreate):
+    """Enroll a new subject in a study"""
+    # Verify study exists
+    if subject.study_id not in studies_db:
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    # Generate subject ID
+    study_subjects = [s for s in subjects_db.values() if s["study_id"] == subject.study_id]
+    subject_num = len(study_subjects) + 1
+    subject_id = f"{subject.study_id.replace('STU', 'RA')}-{subject_num:03d}"
+
+    subject_data = {
+        "subject_id": subject_id,
+        "study_id": subject.study_id,
+        "site_id": subject.site_id,
+        "treatment_arm": subject.treatment_arm,
+        "enrollment_date": datetime.utcnow().isoformat(),
+        "status": "enrolled"
+    }
+
+    subjects_db[subject_id] = subject_data
+
+    # Update study subject count
+    studies_db[subject.study_id]["subjects_enrolled"] += 1
+
+    return {
+        "subject_id": subject_id,
+        "message": "Subject enrolled successfully"
+    }
+
+@app.get("/subjects/{subject_id}")
+async def get_subject(subject_id: str):
+    """Get subject details"""
+    if subject_id not in subjects_db:
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    return subjects_db[subject_id]
+
+@app.post("/import/synthetic")
+async def import_synthetic_data(request: ImportSyntheticRequest):
+    """Import synthetic data into a study"""
+    # Verify study exists
+    if request.study_id not in studies_db:
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    # Extract unique subjects from the data
+    unique_subjects = set(record.SubjectID for record in request.data)
+
+    # Create subjects if they don't exist
+    subjects_created = 0
+    for subject_id in unique_subjects:
+        if subject_id not in subjects_db:
+            # Extract treatment arm from first record
+            treatment_arm = next(r.TreatmentArm for r in request.data if r.SubjectID == subject_id)
+
+            subject_data = {
+                "subject_id": subject_id,
+                "study_id": request.study_id,
+                "site_id": "Site001",  # Default site
+                "treatment_arm": treatment_arm,
+                "enrollment_date": datetime.utcnow().isoformat(),
+                "status": "enrolled"
+            }
+            subjects_db[subject_id] = subject_data
+            subjects_created += 1
+
+    # Update study subject count
+    studies_db[request.study_id]["subjects_enrolled"] = len(
+        [s for s in subjects_db.values() if s["study_id"] == request.study_id]
+    )
+
+    return ImportSyntheticResponse(
+        subjects_imported=subjects_created,
+        observations_imported=len(request.data),
+        message=f"Successfully imported {len(request.data)} observations for {subjects_created} subjects from {request.source}"
+    )
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)

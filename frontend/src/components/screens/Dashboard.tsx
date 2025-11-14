@@ -1,35 +1,44 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, BarChart3, Database, Users } from "lucide-react";
+import type { Screen } from "@/components/layout/NavigationRail";
 
-export function Dashboard() {
+interface DashboardProps {
+  onNavigate?: (screen: Screen) => void;
+}
+
+export function Dashboard({ onNavigate }: DashboardProps) {
   const stats = [
     {
       title: "Total Studies",
       value: "0",
       description: "Active clinical trials",
       icon: Database,
-      color: "text-blue-600",
+      gradient: "from-blue-500 to-cyan-500",
+      bg: "bg-blue-50",
     },
     {
       title: "Generated Records",
       value: "0",
       description: "Synthetic vitals records",
       icon: Activity,
-      color: "text-green-600",
+      gradient: "from-green-500 to-emerald-500",
+      bg: "bg-green-50",
     },
     {
       title: "Enrolled Subjects",
       value: "0",
       description: "Across all studies",
       icon: Users,
-      color: "text-purple-600",
+      gradient: "from-purple-500 to-pink-500",
+      bg: "bg-purple-50",
     },
     {
       title: "Quality Score",
       value: "N/A",
       description: "Latest generation",
       icon: BarChart3,
-      color: "text-orange-600",
+      gradient: "from-orange-500 to-red-500",
+      bg: "bg-orange-50",
     },
   ];
 
@@ -46,16 +55,19 @@ export function Dashboard() {
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.title}>
+            <Card key={stat.title} className="overflow-hidden border-2 hover:shadow-lg transition-shadow">
+              <div className={`h-2 bg-gradient-to-r ${stat.gradient}`} />
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
                   {stat.title}
                 </CardTitle>
-                <Icon className={`h-4 w-4 ${stat.color}`} />
+                <div className={`p-2 rounded-lg ${stat.bg}`}>
+                  <Icon className={`h-5 w-5 bg-gradient-to-r ${stat.gradient} bg-clip-text text-transparent`} style={{ backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }} />
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground">
+                <div className="text-3xl font-bold">{stat.value}</div>
+                <p className="text-xs text-muted-foreground mt-1">
                   {stat.description}
                 </p>
               </CardContent>
@@ -73,7 +85,10 @@ export function Dashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex items-center gap-2 p-3 rounded-lg hover:bg-accent cursor-pointer">
+            <div
+              className="flex items-center gap-2 p-3 rounded-lg hover:bg-accent cursor-pointer transition-colors"
+              onClick={() => onNavigate?.("generate")}
+            >
               <Activity className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-sm font-medium">Generate Synthetic Data</p>
@@ -82,7 +97,10 @@ export function Dashboard() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 p-3 rounded-lg hover:bg-accent cursor-pointer">
+            <div
+              className="flex items-center gap-2 p-3 rounded-lg hover:bg-accent cursor-pointer transition-colors"
+              onClick={() => onNavigate?.("quality")}
+            >
               <BarChart3 className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-sm font-medium">Analyze Quality</p>
@@ -91,7 +109,10 @@ export function Dashboard() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 p-3 rounded-lg hover:bg-accent cursor-pointer">
+            <div
+              className="flex items-center gap-2 p-3 rounded-lg hover:bg-accent cursor-pointer transition-colors"
+              onClick={() => onNavigate?.("studies")}
+            >
               <Database className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-sm font-medium">Create Study</p>

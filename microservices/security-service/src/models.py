@@ -7,8 +7,11 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    roles = Column(String)
+    role = Column(String)  # Single role: admin, researcher, viewer
+    tenant_id = Column(String, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"

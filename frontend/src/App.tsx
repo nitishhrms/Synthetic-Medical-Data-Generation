@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { DataProvider } from "@/contexts/DataContext";
 import { Login } from "@/components/screens/Login";
 import { Dashboard } from "@/components/screens/Dashboard";
 import { DataGeneration } from "@/components/screens/DataGeneration";
 import { Analytics } from "@/components/screens/Analytics";
+import { Quality } from "@/components/screens/Quality";
 import { Studies } from "@/components/screens/Studies";
 import { Settings } from "@/components/screens/Settings";
+import { SystemCheck } from "@/components/screens/SystemCheck";
 import { TopAppBar } from "@/components/layout/TopAppBar";
 import { NavigationRail, type Screen } from "@/components/layout/NavigationRail";
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
   const [activeScreen, setActiveScreen] = useState<Screen>("dashboard");
+  const [showSystemCheck, setShowSystemCheck] = useState(false);
 
   if (isLoading) {
     return (
@@ -25,29 +29,50 @@ function AppContent() {
   }
 
   if (!isAuthenticated) {
-    return <Login />;
+    if (showSystemCheck) {
+      return (
+        <div className="min-h-screen flex flex-col">
+          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
+            <div className="container flex h-16 items-center justify-between">
+              <h1 className="text-xl font-semibold">System Health Check</h1>
+              <button
+                onClick={() => setShowSystemCheck(false)}
+                className="text-sm text-primary hover:underline"
+              >
+                Back to Login
+              </button>
+            </div>
+          </header>
+          <SystemCheck />
+        </div>
+      );
+    }
+    return <Login onShowSystemCheck={() => setShowSystemCheck(true)} />;
   }
 
   const renderScreen = () => {
     switch (activeScreen) {
       case "dashboard":
-        return <Dashboard />;
+        return <Dashboard onNavigate={setActiveScreen} />;
       case "generate":
         return <DataGeneration />;
       case "analytics":
-      case "quality":
         return <Analytics />;
+      case "quality":
+        return <Quality />;
       case "studies":
         return <Studies />;
       case "settings":
         return <Settings />;
+      case "system-check":
+        return <SystemCheck />;
       default:
         return <Dashboard />;
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-background via-primary/5 to-background">
       <TopAppBar />
       <div className="flex flex-1">
         <NavigationRail activeScreen={activeScreen} onScreenChange={setActiveScreen} />
@@ -62,7 +87,9 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <DataProvider>
+        <AppContent />
+      </DataProvider>
     </AuthProvider>
   );
 }

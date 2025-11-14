@@ -113,7 +113,8 @@ export interface RegisterRequest {
 export interface AuthResponse {
   access_token: string;
   token_type: string;
-  user: User;
+  user_id: string;
+  roles: string[];
 }
 
 export interface User {
@@ -151,27 +152,16 @@ export interface Subject {
 
 // Validation Response
 export interface ValidationResponse {
-  valid: boolean;
   total_records: number;
-  validation_results: {
-    range_checks: {
-      passed: number;
-      failed: number;
-      errors: string[];
-    };
-    bp_differential: {
-      passed: number;
-      failed: number;
-      errors: string[];
-    };
-    completeness: {
-      missing_values: number;
-      completeness_rate: number;
-    };
-    duplicates: {
-      duplicate_count: number;
-    };
-  };
+  total_checks: number;
+  violations: Array<{
+    record: string;
+    rule: string;
+    severity: string;
+    message: string;
+  }>;
+  quality_score: number;
+  passed: boolean;
 }
 
 // PCA Comparison Response

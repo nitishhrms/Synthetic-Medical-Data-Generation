@@ -81,6 +81,18 @@ class LoginResponse(BaseModel):
     user_id: str
     roles: List[str]
 
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6)
+    email: str = Field(..., pattern=r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    role: str = Field(default="researcher", pattern=r'^(admin|researcher|viewer)$')
+    tenant_id: str = Field(default="default")
+
+class RegisterResponse(BaseModel):
+    user_id: str
+    message: str
+    user: Dict[str, Any]
+
 class TokenValidationResponse(BaseModel):
     valid: bool
     user_id: Optional[str] = None
@@ -182,6 +194,64 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
         roles=user.get("roles", [])
     )
 
+@app.post("/auth/register", response_model=RegisterResponse)
+async def register(user_data: RegisterRequest, db: Session = Depends(get_db)):
+    """
+    Register a new user
+
+    Creates a new user account with hashed password
+    """
+    # Check if username already exists
+    existing_user = auth.get_user(db, user_data.username)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
+
+    # Check if email already exists
+    existing_email = db.query(models.User).filter(models.User.email == user_data.email).first()
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+
+    # Create new user
+    hashed_password = auth.hash_password(user_data.password)
+    new_user = models.User(
+        username=user_data.username,
+        email=user_data.email,
+        hashed_password=hashed_password,
+        role=user_data.role,
+        tenant_id=user_data.tenant_id
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    # Log registration event
+    await log_audit_event(
+        db=db,
+        user_id=str(new_user.id),
+        action="REGISTER",
+        resource="security-service",
+        details={"username": user_data.username, "role": user_data.role}
+    )
+
+    return RegisterResponse(
+        user_id=str(new_user.id),
+        message="User registered successfully",
+        user={
+            "id": str(new_user.id),
+            "username": new_user.username,
+            "email": new_user.email,
+            "role": new_user.role,
+            "tenant_id": new_user.tenant_id
+        }
+    )
+
 @app.post("/auth/validate", response_model=TokenValidationResponse)
 async def validate_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
@@ -201,12 +271,24 @@ async def validate_token(credentials: HTTPAuthorizationCredentials = Depends(sec
         return TokenValidationResponse(valid=False)
 
 @app.get("/auth/me")
-async def get_current_user_info(current_user: Dict = Depends(get_current_user)):
+async def get_current_user_info(
+    current_user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Get current authenticated user information"""
+    # Get full user details from database
+    user = db.query(models.User).filter(models.User.id == int(current_user.get("sub"))).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     return {
-        "user_id": current_user.get("sub"),
-        "roles": current_user.get("roles", []),
-        "authenticated": True
+        "id": str(user.id),
+        "user_id": str(user.id),
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "tenant_id": user.tenant_id,
+        "created_at": user.created_at.isoformat() if user.created_at else None
     }
 
 # Encryption Endpoints

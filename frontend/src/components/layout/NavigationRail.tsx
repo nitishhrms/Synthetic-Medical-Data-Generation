@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Home, Activity, BarChart3, Beaker, FileText, Settings } from "lucide-react";
 
-export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings";
+export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings" | "system-check";
 
 interface NavigationRailProps {
   activeScreen: Screen;
@@ -19,7 +19,7 @@ const navItems = [
 
 export function NavigationRail({ activeScreen, onScreenChange }: NavigationRailProps) {
   return (
-    <nav className="w-20 border-r bg-muted/10 flex flex-col items-center py-4 gap-2">
+    <nav className="w-20 border-r border-primary/10 bg-gradient-to-b from-primary/5 via-primary/3 to-background flex flex-col items-center py-6 gap-3">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = activeScreen === item.id;
@@ -29,15 +29,15 @@ export function NavigationRail({ activeScreen, onScreenChange }: NavigationRailP
             key={item.id}
             onClick={() => onScreenChange(item.id)}
             className={cn(
-              "flex flex-col items-center justify-center w-16 h-16 rounded-lg transition-colors",
+              "flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-200",
               isActive
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
+                : "bg-background/60 hover:bg-primary/10 hover:text-primary text-muted-foreground hover:scale-105 shadow-sm"
             )}
             title={item.label}
           >
             <Icon className="h-6 w-6" />
-            <span className="text-xs mt-1">{item.label}</span>
+            <span className="text-xs mt-1 font-medium">{item.label}</span>
           </button>
         );
       })}

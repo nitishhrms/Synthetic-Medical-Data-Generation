@@ -4,8 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
+import { AlertCircle } from "lucide-react";
 
-export function Login() {
+interface LoginProps {
+  onShowSystemCheck?: () => void;
+}
+
+export function Login({ onShowSystemCheck }: LoginProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -21,8 +26,10 @@ export function Login() {
     setIsLoading(true);
 
     try {
+      console.log(`Attempting to ${isLogin ? "login" : "register"}...`);
       if (isLogin) {
         await login({ username, password });
+        console.log("Login successful!");
       } else {
         await register({
           username,
@@ -31,9 +38,17 @@ export function Login() {
           role: "researcher",
           tenant_id: "default",
         });
+        console.log("Registration successful!");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      console.error("Authentication error:", err);
+      const errorMessage = err instanceof Error ? err.message : "An error occurred";
+      setError(errorMessage);
+
+      // Add helpful context to the error
+      if (errorMessage.includes("fetch") || errorMessage.includes("Failed to fetch")) {
+        setError("Cannot connect to backend service. Please check if the security service (port 8005) is running.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -45,11 +60,13 @@ export function Login() {
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <svg
-              className="h-12 w-12 text-primary"
+              width="48"
+              height="48"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
+              className="text-primary"
             >
               <path d="M12 2L2 7l10 5 10-5-10-5z" />
               <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
@@ -105,8 +122,20 @@ export function Login() {
             </div>
 
             {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
+              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p>{error}</p>
+                  {onShowSystemCheck && (
+                    <button
+                      type="button"
+                      onClick={onShowSystemCheck}
+                      className="text-xs underline mt-1"
+                    >
+                      Check system health
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
