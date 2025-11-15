@@ -1,0 +1,210 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: compliance-watcher
+  namespace: clinical-trials
+  labels:
+    app: linkup-integration-service
+    component: compliance-watcher
+spec:
+  # Run at 2 AM daily
+  schedule: "0 2 * * *"
+
+  # Timezone (requires Kubernetes 1.25+)
+  timeZone: "UTC"
+
+  # Keep last 3 successful and 1 failed job for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+
+  # Don't run if previous job is still running
+  concurrencyPolicy: Forbid
+
+  jobTemplate:
+    metadata:
+      labels:
+        app: linkup-integration-service
+        component: compliance-watcher-job
+    spec:
+      # Retry once if job fails
+      backoffLimit: 1
+
+      # Clean up job after 6 hours
+      ttlSecondsAfterFinished: 21600
+
+      template:
+        metadata:
+          labels:
+            app: linkup-integration-service
+            component: compliance-watcher-pod
+        spec:
+          restartPolicy: OnFailure
+
+          # Service account for API access
+          serviceAccountName: linkup-integration-service
+
+          containers:
+          - name: compliance-scanner
+            image: synthetictrial/linkup-integration-service:latest
+            imagePullPolicy: IfNotPresent
+
+            # Override command to run compliance scan
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting compliance scan at $(date)"
+
+              # Wait for service to be ready
+              sleep 10
+
+              # Execute compliance scan via HTTP endpoint
+              curl -X POST \
+                http://linkup-integration-service:8007/compliance/scan \
+                -H "Content-Type: application/json" \
+                -w "\nHTTP Status: %{http_code}\n" \
+                -o /tmp/scan_result.json
+
+              # Check if scan was successful
+              if [ $? -eq 0 ]; then
+                echo "Compliance scan completed successfully"
+                cat /tmp/scan_result.json | python -m json.tool
+                exit 0
+              else
+                echo "Compliance scan failed"
+                exit 1
+              fi
+
+            # Environment variables
+            env:
+            - name: LINKUP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: linkup-secrets
+                  key: api-key
+                  optional: false
+
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: database-url
+                  optional: false
+
+            - name: LOG_LEVEL
+              value: "INFO"
+
+            # Resource limits
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+
+            # Health check (initial delay for startup)
+            livenessProbe:
+              exec:
+                command:
+                - /bin/sh
+                - -c
+                - "test -f /tmp/scan_result.json || true"
+              initialDelaySeconds: 30
+              periodSeconds: 30
+              timeoutSeconds: 10
+              failureThreshold: 3
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: linkup-integration-service
+  namespace: clinical-trials
+  labels:
+    app: linkup-integration-service
+
+---
+# Optional: ConfigMap for advanced cron job settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: compliance-watcher-config
+  namespace: clinical-trials
+data:
+  # Scan configuration
+  lookback_days: "30"
+
+  # Alert thresholds
+  high_impact_alert_threshold: "1"
+
+  # Notification settings
+  enable_slack_notifications: "true"
+  enable_email_notifications: "true"
+
+  # Regulatory sources to scan
+  sources: |
+    FDA,ICH,CDISC,TransCelerate,EMA
+
+---
+# Secret template (create this separately with actual values)
+# kubectl create secret generic linkup-secrets \
+#   --from-literal=api-key=YOUR_LINKUP_API_KEY \
+#   -n clinical-trials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: linkup-secrets
+  namespace: clinical-trials
+type: Opaque
+data:
+  # Base64 encoded Linkup API key
+  # Replace with: echo -n "YOUR_API_KEY" | base64
+  api-key: ""  # REPLACE THIS
+
+---
+# Alternative: Manual CronJob trigger (for testing)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: compliance-watcher-manual
+  namespace: clinical-trials
+  labels:
+    app: linkup-integration-service
+    component: compliance-watcher-manual
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: linkup-integration-service
+        component: compliance-watcher-manual-pod
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: linkup-integration-service
+      containers:
+      - name: compliance-scanner
+        image: synthetictrial/linkup-integration-service:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Manual compliance scan triggered"
+          curl -X POST http://linkup-integration-service:8007/compliance/scan \
+            -H "Content-Type: application/json" \
+            -o /tmp/scan_result.json
+          cat /tmp/scan_result.json | python -m json.tool
+        env:
+        - name: LINKUP_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: linkup-secrets
+              key: api-key
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
