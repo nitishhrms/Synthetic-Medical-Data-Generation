@@ -12,7 +12,6 @@ import os
 import uvicorn
 from sqlalchemy.orm import Session
 import logging
-import sentry_sdk
 
 # Core modules
 import auth
@@ -31,26 +30,6 @@ from token_refresh import token_refresh_manager
 from password_policy import get_password_policy_description
 
 logger = logging.getLogger(__name__)
-
-# ==================== Sentry Initialization ====================
-
-sentry_sdk.init(
-    dsn="https://ad29eaef4a806c3f27f5f2181373aa36@o4510369986904064.ingest.us.sentry.io/4510369988018176",
-    # Set traces_sample_rate to 1.0 to capture 100% of transactions for performance monitoring.
-    # Adjust this value in production (e.g., 0.1 = 10% of transactions)
-    traces_sample_rate=1.0,
-    # Set profiles_sample_rate to 1.0 to profile 100% of sampled transactions.
-    # Adjust this value in production
-    profiles_sample_rate=1.0,
-    # Add data like request headers and IP for users
-    send_default_pii=True,
-    # Enable sending logs to Sentry
-    enable_logs=True,
-    # Set environment
-    environment=os.getenv("ENVIRONMENT", "development"),
-)
-
-logger.info("✅ Sentry initialized successfully")
 
 # ==================== Database Initialization ====================
 
@@ -877,15 +856,6 @@ async def reset_rate_limit_admin(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to reset rate limit: {str(e)}"
         )
-
-
-# ==================== Sentry Debug Endpoint ====================
-
-@app.get("/sentry-debug")
-async def trigger_error():
-    """Trigger a test error to verify Sentry integration"""
-    division_by_zero = 1 / 0
-    return {"message": "This should never be reached"}
 
 
 if __name__ == "__main__":
