@@ -22,7 +22,7 @@ class PostgresDatabase:
         # For local development
         DATABASE_URL = os.getenv(
             "DATABASE_URL",
-            "postgresql://clinical_user:clinical_pass@localhost:5432/clinical_trials"
+            "postgresql://clinical_user:clinical_pass@localhost:5433/clinical_trials"
         )
 
         # For AWS RDS (commented for reference)
