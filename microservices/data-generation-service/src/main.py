@@ -346,7 +346,9 @@ async def compare_methods(
         import time
 
         # Load pilot data for bootstrap
-        pilot_path = "/Users/himanshu_jain/272/Synthetic-Medical-Data-Generation/data/pilot_trial_cleaned.csv"
+        # Use environment variable or fallback to relative path from project root
+        project_root = os.getenv("PROJECT_ROOT", "/home/user/Synthetic-Medical-Data-Generation")
+        pilot_path = os.path.join(project_root, "data", "pilot_trial_cleaned.csv")
         pilot_df = pd.read_csv(pilot_path)
 
         # Generate with MVN
@@ -444,13 +446,15 @@ async def get_pilot_data():
     - Used by frontend for quality assessment and comparison
     """
     try:
-        pilot_path = "/Users/himanshu_jain/272/Synthetic-Medical-Data-Generation/data/pilot_trial_cleaned.csv"
+        # Use environment variable or fallback to relative path from project root
+        project_root = os.getenv("PROJECT_ROOT", "/home/user/Synthetic-Medical-Data-Generation")
+        pilot_path = os.path.join(project_root, "data", "pilot_trial_cleaned.csv")
 
         # Check if file exists
         if not os.path.exists(pilot_path):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Pilot data file not found"
+                detail=f"Pilot data file not found at: {pilot_path}"
             )
 
         # Read and return pilot data
