@@ -1,0 +1,179 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: linkup-integration-service
+  namespace: clinical-trials
+  labels:
+    app: linkup-integration-service
+    tier: backend
+    service: ai-intelligence
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: linkup-integration-service
+  template:
+    metadata:
+      labels:
+        app: linkup-integration-service
+        version: v1
+    spec:
+      serviceAccountName: linkup-integration-service
+
+      containers:
+      - name: linkup-integration
+        image: synthetictrial/linkup-integration-service:latest
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - name: http
+          containerPort: 8007
+          protocol: TCP
+
+        env:
+        # Service configuration
+        - name: PORT
+          value: "8007"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: LOG_LEVEL
+          value: "INFO"
+
+        # Linkup API configuration
+        - name: LINKUP_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: linkup-secrets
+              key: api-key
+              optional: false
+
+        # Database connection
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: database-url
+
+        # CORS configuration
+        - name: ALLOWED_ORIGINS
+          value: "*"  # Change to specific origins in production
+
+        # Feature flags
+        - name: ENABLE_EVIDENCE_PACK
+          value: "true"
+        - name: ENABLE_EDIT_CHECK_GENERATOR
+          value: "true"
+        - name: ENABLE_COMPLIANCE_WATCHER
+          value: "true"
+
+        # Resource limits
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8007
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8007
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Startup probe (for slow startup)
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8007
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+
+        # Volume mounts (if needed)
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+
+      # Volumes
+      volumes:
+      - name: logs
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: linkup-integration-service
+  namespace: clinical-trials
+  labels:
+    app: linkup-integration-service
+spec:
+  type: ClusterIP
+  selector:
+    app: linkup-integration-service
+  ports:
+  - name: http
+    port: 8007
+    targetPort: 8007
+    protocol: TCP
+
+---
+# Optional: HorizontalPodAutoscaler for auto-scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: linkup-integration-service-hpa
+  namespace: clinical-trials
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: linkup-integration-service
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# Optional: PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: linkup-integration-service-pdb
+  namespace: clinical-trials
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: linkup-integration-service
