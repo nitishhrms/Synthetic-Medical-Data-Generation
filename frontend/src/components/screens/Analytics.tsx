@@ -40,6 +40,8 @@ export function Analytics() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [pcaData, setPcaData] = useState<PCAComparisonResponse | null>(null);
+  const [mvnData, setMvnData] = useState<VitalsRecord[] | null>(null);
+  const [bootstrapData, setBootstrapData] = useState<VitalsRecord[] | null>(null);
 
   // Load pilot data on mount
   useEffect(() => {
@@ -77,6 +79,18 @@ export function Analytics() {
       if (!pilotData) {
         await loadPilotData();
       }
+
+      // Generate comparison datasets (MVN and Bootstrap) for distribution analysis
+      // Use same sample size as current generated data
+      const nPerArm = Math.floor(new Set(generatedData.map(r => r.SubjectID)).size / 2);
+
+      const [mvnResponse, bootstrapResponse] = await Promise.all([
+        dataGenerationApi.generateMVN({ n_per_arm: nPerArm, target_effect: -5.0, seed: 42 }),
+        dataGenerationApi.generateBootstrap({ n_per_arm: nPerArm, target_effect: -5.0, seed: 42 }),
+      ]);
+
+      setMvnData(mvnResponse.data);
+      setBootstrapData(bootstrapResponse.data);
 
       // Get quality assessment and PCA comparison
       if (pilotData) {
@@ -185,6 +199,63 @@ export function Analytics() {
 
     return result;
   }, [pilotData, generatedData]);
+
+  // Three-way distribution data (Real vs MVN vs Bootstrap)
+  const threeWayDistributionData = useMemo(() => {
+    if (!pilotData || !mvnData || !bootstrapData) return { SystolicBP: [], DiastolicBP: [], HeartRate: [], Temperature: [] };
+
+    const createBins = (data: number[], binCount: number = 20) => {
+      const min = Math.min(...data);
+      const max = Math.max(...data);
+      const binWidth = (max - min) / binCount;
+      const bins = new Array(binCount).fill(0);
+
+      data.forEach(val => {
+        const binIndex = Math.min(Math.floor((val - min) / binWidth), binCount - 1);
+        bins[binIndex]++;
+      });
+
+      return bins.map((count, i) => ({
+        bin: Number((min + i * binWidth + binWidth / 2).toFixed(1)),
+        count,
+      }));
+    };
+
+    const vitals = ['SystolicBP', 'DiastolicBP', 'HeartRate', 'Temperature'] as const;
+    const result: any = {};
+
+    vitals.forEach(vital => {
+      const realValues = pilotData.map(r => r[vital]).filter(v => v != null);
+      const mvnValues = mvnData.map(r => r[vital]).filter(v => v != null);
+      const bootstrapValues = bootstrapData.map(r => r[vital]).filter(v => v != null);
+
+      const realBins = createBins(realValues);
+      const mvnBins = createBins(mvnValues);
+      const bootstrapBins = createBins(bootstrapValues);
+
+      // Merge bins for comparison
+      const allBinValues = [...new Set([
+        ...realBins.map(b => b.bin),
+        ...mvnBins.map(b => b.bin),
+        ...bootstrapBins.map(b => b.bin)
+      ])].sort((a, b) => a - b);
+
+      result[vital] = allBinValues.map(binValue => {
+        const realBin = realBins.find(b => Math.abs(b.bin - binValue) < 1);
+        const mvnBin = mvnBins.find(b => Math.abs(b.bin - binValue) < 1);
+        const bootstrapBin = bootstrapBins.find(b => Math.abs(b.bin - binValue) < 1);
+
+        return {
+          bin: binValue,
+          Real: realBin ? realBin.count : 0,
+          MVN: mvnBin ? mvnBin.count : 0,
+          Bootstrap: bootstrapBin ? bootstrapBin.count : 0,
+        };
+      });
+    });
+
+    return result;
+  }, [pilotData, mvnData, bootstrapData]);
 
   // Box plot data (showing quartiles, median, outliers)
   const boxPlotData = useMemo(() => {
@@ -634,68 +705,122 @@ export function Analytics() {
               </CardContent>
             </Card>
 
-            {/* Distribution Visualizations */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Field Distribution Comparisons</CardTitle>
-                <CardDescription>
-                  Visual comparison of vital sign distributions across real pilot data and synthetic methods
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Three-way comparison */}
-                <div>
-                  <h4 className="font-medium mb-3">Three-Way Comparison: Real vs MVN vs Bootstrap</h4>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Complete distribution comparison showing how different generation methods (MVN and Bootstrap)
-                    preserve the statistical characteristics of real pilot data across all vital signs.
-                  </p>
-                  <img
-                    src="/field_distributions_three_way.png"
-                    alt="Three-way distribution comparison - Real vs MVN vs Bootstrap"
-                    className="w-full rounded-lg border"
-                  />
-                </div>
+            {/* Distribution Visualizations - Dynamic Charts */}
+            {mvnData && bootstrapData && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Field Distribution Comparisons</CardTitle>
+                  <CardDescription>
+                    Dynamic comparison of vital sign distributions across real pilot data and synthetic generation methods
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-8">
+                  {/* Three-way comparison */}
+                  <div>
+                    <h4 className="font-medium mb-3">Three-Way Comparison: Real vs MVN vs Bootstrap</h4>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Complete distribution comparison showing how different generation methods (MVN and Bootstrap)
+                      preserve the statistical characteristics of real pilot data across all vital signs.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {Object.keys(threeWayDistributionData).map((vital) => (
+                        <div key={vital} className="border rounded-lg p-4">
+                          <h5 className="text-sm font-medium mb-3">{vital.replace(/([A-Z])/g, ' $1').trim()}</h5>
+                          <ResponsiveContainer width="100%" height={250}>
+                            <ComposedChart data={(threeWayDistributionData as any)[vital]}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="bin"
+                                tick={{ fontSize: 11 }}
+                                label={{ value: vital.replace(/([A-Z])/g, ' $1').trim(), position: 'insideBottom', offset: -5, fontSize: 12 }}
+                              />
+                              <YAxis tick={{ fontSize: 11 }} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 12 }} />
+                              <Tooltip />
+                              <Legend wrapperStyle={{ fontSize: '12px' }} />
+                              <Bar dataKey="Real" fill="#10b981" fillOpacity={0.7} name="Real (Pilot)" />
+                              <Bar dataKey="MVN" fill="#3b82f6" fillOpacity={0.7} name="MVN" />
+                              <Bar dataKey="Bootstrap" fill="#f59e0b" fillOpacity={0.7} name="Bootstrap" />
+                            </ComposedChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-                {/* Real vs MVN */}
-                <div>
-                  <h4 className="font-medium mb-3">Real vs MVN Generated Data</h4>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Distribution comparison between real pilot data and MVN (Multivariate Normal) generated synthetic data.
-                    MVN method preserves mean and covariance structure while generating statistically realistic variations.
-                  </p>
-                  <img
-                    src="/field_distributions_real_vs_mvn.png"
-                    alt="Distribution comparison - Real vs MVN generated data"
-                    className="w-full rounded-lg border"
-                  />
-                </div>
+                  {/* Real vs MVN */}
+                  <div>
+                    <h4 className="font-medium mb-3">Real vs MVN Generated Data</h4>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Distribution comparison between real pilot data and MVN (Multivariate Normal) generated synthetic data.
+                      MVN method preserves mean and covariance structure while generating statistically realistic variations.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {Object.keys(threeWayDistributionData).map((vital) => (
+                        <div key={vital} className="border rounded-lg p-4">
+                          <h5 className="text-sm font-medium mb-3">{vital.replace(/([A-Z])/g, ' $1').trim()}</h5>
+                          <ResponsiveContainer width="100%" height={250}>
+                            <ComposedChart data={(threeWayDistributionData as any)[vital]}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="bin"
+                                tick={{ fontSize: 11 }}
+                                label={{ value: vital.replace(/([A-Z])/g, ' $1').trim(), position: 'insideBottom', offset: -5, fontSize: 12 }}
+                              />
+                              <YAxis tick={{ fontSize: 11 }} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 12 }} />
+                              <Tooltip />
+                              <Legend wrapperStyle={{ fontSize: '12px' }} />
+                              <Bar dataKey="Real" fill="#10b981" fillOpacity={0.7} name="Real (Pilot)" />
+                              <Bar dataKey="MVN" fill="#3b82f6" fillOpacity={0.7} name="MVN Synthetic" />
+                            </ComposedChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-                {/* Real vs Bootstrap */}
-                <div>
-                  <h4 className="font-medium mb-3">Real vs Bootstrap Generated Data</h4>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Distribution comparison between real pilot data and Bootstrap generated synthetic data.
-                    Bootstrap method resamples from real data with added jitter to create similar but unique observations.
-                  </p>
-                  <img
-                    src="/field_distributions_real_vs_bootstrap.png"
-                    alt="Distribution comparison - Real vs Bootstrap generated data"
-                    className="w-full rounded-lg border"
-                  />
-                </div>
+                  {/* Real vs Bootstrap */}
+                  <div>
+                    <h4 className="font-medium mb-3">Real vs Bootstrap Generated Data</h4>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Distribution comparison between real pilot data and Bootstrap generated synthetic data.
+                      Bootstrap method resamples from real data with added jitter to create similar but unique observations.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {Object.keys(threeWayDistributionData).map((vital) => (
+                        <div key={vital} className="border rounded-lg p-4">
+                          <h5 className="text-sm font-medium mb-3">{vital.replace(/([A-Z])/g, ' $1').trim()}</h5>
+                          <ResponsiveContainer width="100%" height={250}>
+                            <ComposedChart data={(threeWayDistributionData as any)[vital]}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="bin"
+                                tick={{ fontSize: 11 }}
+                                label={{ value: vital.replace(/([A-Z])/g, ' $1').trim(), position: 'insideBottom', offset: -5, fontSize: 12 }}
+                              />
+                              <YAxis tick={{ fontSize: 11 }} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 12 }} />
+                              <Tooltip />
+                              <Legend wrapperStyle={{ fontSize: '12px' }} />
+                              <Bar dataKey="Real" fill="#10b981" fillOpacity={0.7} name="Real (Pilot)" />
+                              <Bar dataKey="Bootstrap" fill="#f59e0b" fillOpacity={0.7} name="Bootstrap Synthetic" />
+                            </ComposedChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <p className="text-sm font-medium mb-2">Key Observations:</p>
-                  <ul className="text-sm space-y-1 list-disc list-inside">
-                    <li><strong>Distribution Fidelity:</strong> Both methods closely match real data distributions</li>
-                    <li><strong>MVN Smoothness:</strong> MVN generates smoother distributions based on statistical moments</li>
-                    <li><strong>Bootstrap Preservation:</strong> Bootstrap better preserves multi-modal patterns and outliers</li>
-                    <li><strong>Quality Validation:</strong> Visual overlap confirms high-quality synthetic data generation</li>
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <p className="text-sm font-medium mb-2">Key Observations:</p>
+                    <ul className="text-sm space-y-1 list-disc list-inside">
+                      <li><strong>Distribution Fidelity:</strong> Both methods closely match real data distributions</li>
+                      <li><strong>MVN Smoothness:</strong> MVN generates smoother distributions based on statistical moments</li>
+                      <li><strong>Bootstrap Preservation:</strong> Bootstrap better preserves multi-modal patterns and outliers</li>
+                      <li><strong>Quality Validation:</strong> Visual overlap confirms high-quality synthetic data generation</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* ====== QUALITY METRICS TAB ====== */}
@@ -883,17 +1008,108 @@ export function Analytics() {
                       </ul>
                     </div>
 
-                    {/* MAR Imputation Analysis Visualization */}
+                    {/* MAR Imputation Analysis Visualization - Dynamic */}
                     <div className="border rounded-lg p-4">
                       <h4 className="font-medium mb-3">MAR (Missing At Random) Imputation Analysis</h4>
                       <p className="text-sm text-muted-foreground mb-4">
                         Visual analysis of K-NN imputation quality across different vital signs showing prediction accuracy and distribution preservation.
                       </p>
-                      <img
-                        src="/mar_imputation_analysis.png"
-                        alt="MAR Imputation Analysis - K-NN performance visualization"
-                        className="w-full rounded-lg border"
-                      />
+
+                      {/* RMSE by Vital Sign */}
+                      <div className="mb-6">
+                        <h5 className="text-sm font-medium mb-3">K-NN Imputation RMSE by Vital Sign (K=5)</h5>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart
+                            data={Object.entries(qualityMetrics.rmse_by_column).map(([vital, rmse]) => ({
+                              vital: vital.replace(/([A-Z])/g, ' $1').trim(),
+                              RMSE: Number(rmse.toFixed(2)),
+                              threshold: 10, // Good threshold
+                            }))}
+                            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                              dataKey="vital"
+                              angle={-45}
+                              textAnchor="end"
+                              height={80}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <YAxis label={{ value: 'RMSE (Lower = Better)', angle: -90, position: 'insideLeft' }} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="RMSE" name="Imputation Error (RMSE)">
+                              {Object.entries(qualityMetrics.rmse_by_column).map((entry, index) => {
+                                const rmse = entry[1];
+                                const color = rmse < 5 ? '#10b981' : rmse < 10 ? '#f59e0b' : '#ef4444';
+                                return <Cell key={`cell-${index}`} fill={color} />;
+                              })}
+                            </Bar>
+                            <ReferenceLine y={5} stroke="#10b981" strokeDasharray="3 3" label="Excellent" />
+                            <ReferenceLine y={10} stroke="#f59e0b" strokeDasharray="3 3" label="Good" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Wasserstein Distance by Vital Sign */}
+                      <div className="mb-6">
+                        <h5 className="text-sm font-medium mb-3">Distribution Match Quality (Wasserstein Distance)</h5>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart
+                            data={Object.entries(qualityMetrics.wasserstein_distances).map(([vital, distance]) => ({
+                              vital: vital.replace(/([A-Z])/g, ' $1').trim(),
+                              Distance: Number(distance.toFixed(2)),
+                            }))}
+                            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis
+                              dataKey="vital"
+                              angle={-45}
+                              textAnchor="end"
+                              height={80}
+                              tick={{ fontSize: 12 }}
+                            />
+                            <YAxis label={{ value: 'Wasserstein Distance (Lower = Better)', angle: -90, position: 'insideLeft' }} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="Distance" name="Distribution Distance">
+                              {Object.entries(qualityMetrics.wasserstein_distances).map((entry, index) => {
+                                const distance = entry[1];
+                                const color = distance < 5 ? '#10b981' : distance < 10 ? '#f59e0b' : '#ef4444';
+                                return <Cell key={`cell-${index}`} fill={color} />;
+                              })}
+                            </Bar>
+                            <ReferenceLine y={5} stroke="#10b981" strokeDasharray="3 3" label="Excellent" />
+                            <ReferenceLine y={10} stroke="#f59e0b" strokeDasharray="3 3" label="Good" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Quality Score Summary */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-lg text-center">
+                          <p className="text-xs text-muted-foreground mb-1">Avg RMSE</p>
+                          <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                            {(Object.values(qualityMetrics.rmse_by_column).reduce((a, b) => a + b, 0) / Object.values(qualityMetrics.rmse_by_column).length).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">Imputation accuracy</p>
+                        </div>
+                        <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-center">
+                          <p className="text-xs text-muted-foreground mb-1">Avg Wasserstein</p>
+                          <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
+                            {(Object.values(qualityMetrics.wasserstein_distances).reduce((a, b) => a + b, 0) / Object.values(qualityMetrics.wasserstein_distances).length).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">Distribution match</p>
+                        </div>
+                        <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-center">
+                          <p className="text-xs text-muted-foreground mb-1">K-NN Score</p>
+                          <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">
+                            {qualityMetrics.knn_imputation_score.toFixed(3)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">Neighbor similarity</p>
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
