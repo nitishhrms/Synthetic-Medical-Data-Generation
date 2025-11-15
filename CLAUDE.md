@@ -1,5 +1,8 @@
 # CLAUDE.md - Backend Reference for Frontend Development
 
+
+## !!!Important Note: You are not allowed make any changes in the backend code while doing the frontend development!!!
+
 ## 📋 Document Purpose
 
 This document provides a comprehensive reference of the **backend implementation** for the Synthetic Medical Data Generation platform. Use this as your primary reference when developing the frontend to avoid re-discovering backend details.

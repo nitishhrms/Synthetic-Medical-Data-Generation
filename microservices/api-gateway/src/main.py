@@ -10,10 +10,22 @@ from typing import Optional
 from datetime import datetime
 import uvicorn
 import os
+import sentry_sdk
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+
+# ==================== Sentry Initialization ====================
+
+sentry_sdk.init(
+    dsn="https://ad29eaef4a806c3f27f5f2181373aa36@o4510369986904064.ingest.us.sentry.io/4510369988018176",
+    traces_sample_rate=1.0,
+    profiles_sample_rate=1.0,
+    send_default_pii=True,
+    enable_logs=True,
+    environment=os.getenv("ENVIRONMENT", "development"),
+)
 
 # Rate limiting setup
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
@@ -254,6 +266,15 @@ async def gateway_route(service: str, path: str, request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Gateway error: {str(e)}"
         )
+
+
+# ==================== Sentry Debug Endpoint ====================
+
+@app.get("/sentry-debug")
+async def trigger_error():
+    """Trigger a test error to verify Sentry integration"""
+    division_by_zero = 1 / 0
+    return {"message": "This should never be reached"}
 
 
 if __name__ == "__main__":

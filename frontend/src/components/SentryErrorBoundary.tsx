@@ -1,0 +1,75 @@
+import * as Sentry from '@sentry/react';
+import { ReactNode } from 'react';
+
+interface ErrorFallbackProps {
+  error: Error;
+  resetError: () => void;
+}
+
+/**
+ * Custom fallback UI shown when an error is caught by the error boundary
+ */
+function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
+        <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+          <svg
+            className="w-6 h-6 text-red-600"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold text-center text-gray-900 mb-2">
+          Oops! Something went wrong
+        </h2>
+        <p className="text-gray-600 text-center mb-4">
+          An unexpected error occurred. Our team has been notified and we're working on a fix.
+        </p>
+        <details className="mb-4">
+          <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-700">
+            Error details
+          </summary>
+          <pre className="mt-2 p-3 bg-gray-50 rounded text-xs overflow-auto max-h-40">
+            {error.message}
+          </pre>
+        </details>
+        <button
+          onClick={resetError}
+          className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface SentryErrorBoundaryProps {
+  children: ReactNode;
+}
+
+/**
+ * Sentry Error Boundary wrapper component
+ * Catches React component errors and reports them to Sentry
+ */
+export function SentryErrorBoundary({ children }: SentryErrorBoundaryProps) {
+  return (
+    <Sentry.ErrorBoundary
+      fallback={({ error, resetError }) => (
+        <ErrorFallback error={error} resetError={resetError} />
+      )}
+      showDialog={false}
+    >
+      {children}
+    </Sentry.ErrorBoundary>
+  );
+}

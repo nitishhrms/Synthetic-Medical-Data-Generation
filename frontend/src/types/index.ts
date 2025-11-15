@@ -32,9 +32,9 @@ export interface GenerationResponse {
   data: VitalsRecord[];
   metadata: {
     records: number;
-    subjects: number;
+    subjects?: number; // Optional - calculated if not provided
     method: GenerationMethod;
-    generation_time_ms: number;
+    generation_time_ms?: number; // Optional - not always available
     prompt_used?: string; // for LLM
   };
 }
@@ -118,12 +118,12 @@ export interface AuthResponse {
 }
 
 export interface User {
-  id: string;
+  user_id: string;
   username: string;
-  email: string;
+  email?: string;  // Optional - may not be in login response
   role: "admin" | "researcher" | "viewer";
   tenant_id: string;
-  created_at: string;
+  created_at?: string;  // Optional - may not be in login response
 }
 
 // Study Management Types

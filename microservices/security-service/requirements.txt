@@ -16,3 +16,9 @@ python-dotenv==1.0.0
 
 # Monitoring
 prometheus-client==0.19.0
+
+# Security enhancements
+pyotp>=2.9.0            # MFA (TOTP) support
+qrcode>=7.4.2           # QR code generation for MFA
+pillow>=10.1.0          # Image support for QR codes
+cryptography>=41.0.0    # AES-256-GCM encryption upgrade

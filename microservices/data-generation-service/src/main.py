@@ -9,6 +9,8 @@ from typing import List, Optional, Dict, Any
 import pandas as pd
 from datetime import datetime
 import uvicorn
+import os
+import sentry_sdk
 
 from generators import (
     generate_vitals_rules,
@@ -18,6 +20,17 @@ from generators import (
     generate_vitals_bootstrap
 )
 from db_utils import db, cache, startup_db, shutdown_db
+
+# ==================== Sentry Initialization ====================
+
+sentry_sdk.init(
+    dsn="https://ad29eaef4a806c3f27f5f2181373aa36@o4510369986904064.ingest.us.sentry.io/4510369988018176",
+    traces_sample_rate=1.0,
+    profiles_sample_rate=1.0,
+    send_default_pii=True,
+    enable_logs=True,
+    environment=os.getenv("ENVIRONMENT", "development"),
+)
 
 app = FastAPI(
     title="Data Generation Service",
@@ -451,6 +464,16 @@ async def get_pilot_data():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load pilot data: {str(e)}"
         )
+
+
+# ==================== Sentry Debug Endpoint ====================
+
+@app.get("/sentry-debug")
+async def trigger_error():
+    """Trigger a test error to verify Sentry integration"""
+    division_by_zero = 1 / 0
+    return {"message": "This should never be reached"}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)

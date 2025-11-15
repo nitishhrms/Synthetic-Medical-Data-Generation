@@ -76,13 +76,6 @@ export const authApi = {
     return handleResponse(response);
   },
 
-  async verifyToken(): Promise<{ valid: boolean }> {
-    const response = await fetch(`${SECURITY_SERVICE}/auth/validate`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
-  },
-
   logout() {
     localStorage.removeItem("token");
   },
@@ -101,10 +94,12 @@ export const dataGenerationApi = {
     });
     const data = await handleResponse<VitalsRecord[]>(response);
     // Backend returns array directly, wrap it in expected format
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
     return {
       data,
       metadata: {
         records: data.length,
+        subjects: uniqueSubjects,
         method: "mvn",
       },
     };
@@ -123,10 +118,12 @@ export const dataGenerationApi = {
       }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
     return {
       data,
       metadata: {
         records: data.length,
+        subjects: uniqueSubjects,
         method: "bootstrap",
       },
     };
@@ -139,10 +136,12 @@ export const dataGenerationApi = {
       body: JSON.stringify(params),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
     return {
       data,
       metadata: {
         records: data.length,
+        subjects: uniqueSubjects,
         method: "rules",
       },
     };
