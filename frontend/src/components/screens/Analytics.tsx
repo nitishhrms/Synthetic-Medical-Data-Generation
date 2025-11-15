@@ -633,6 +633,69 @@ export function Analytics() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Distribution Visualizations */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Field Distribution Comparisons</CardTitle>
+                <CardDescription>
+                  Visual comparison of vital sign distributions across real pilot data and synthetic methods
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Three-way comparison */}
+                <div>
+                  <h4 className="font-medium mb-3">Three-Way Comparison: Real vs MVN vs Bootstrap</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Complete distribution comparison showing how different generation methods (MVN and Bootstrap)
+                    preserve the statistical characteristics of real pilot data across all vital signs.
+                  </p>
+                  <img
+                    src="/field_distributions_three_way.png"
+                    alt="Three-way distribution comparison - Real vs MVN vs Bootstrap"
+                    className="w-full rounded-lg border"
+                  />
+                </div>
+
+                {/* Real vs MVN */}
+                <div>
+                  <h4 className="font-medium mb-3">Real vs MVN Generated Data</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Distribution comparison between real pilot data and MVN (Multivariate Normal) generated synthetic data.
+                    MVN method preserves mean and covariance structure while generating statistically realistic variations.
+                  </p>
+                  <img
+                    src="/field_distributions_real_vs_mvn.png"
+                    alt="Distribution comparison - Real vs MVN generated data"
+                    className="w-full rounded-lg border"
+                  />
+                </div>
+
+                {/* Real vs Bootstrap */}
+                <div>
+                  <h4 className="font-medium mb-3">Real vs Bootstrap Generated Data</h4>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Distribution comparison between real pilot data and Bootstrap generated synthetic data.
+                    Bootstrap method resamples from real data with added jitter to create similar but unique observations.
+                  </p>
+                  <img
+                    src="/field_distributions_real_vs_bootstrap.png"
+                    alt="Distribution comparison - Real vs Bootstrap generated data"
+                    className="w-full rounded-lg border"
+                  />
+                </div>
+
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <p className="text-sm font-medium mb-2">Key Observations:</p>
+                  <ul className="text-sm space-y-1 list-disc list-inside">
+                    <li><strong>Distribution Fidelity:</strong> Both methods closely match real data distributions</li>
+                    <li><strong>MVN Smoothness:</strong> MVN generates smoother distributions based on statistical moments</li>
+                    <li><strong>Bootstrap Preservation:</strong> Bootstrap better preserves multi-modal patterns and outliers</li>
+                    <li><strong>Quality Validation:</strong> Visual overlap confirms high-quality synthetic data generation</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ====== QUALITY METRICS TAB ====== */}
@@ -647,9 +710,9 @@ export function Analytics() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center justify-between p-6 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950 rounded-lg mb-6">
+                    <div className="flex items-center justify-between p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg mb-6 border border-blue-200 dark:border-blue-800">
                       <div>
-                        <p className="text-sm font-medium text-muted-foreground">Overall Quality Score</p>
+                        <p className="text-sm font-medium">Overall Quality Score</p>
                         <p className="text-4xl font-bold mt-2">{qualityMetrics.overall_quality_score.toFixed(3)}</p>
                         <p className="text-sm text-muted-foreground mt-1">
                           Based on 4 statistical measures (n=945 real records)
@@ -792,9 +855,9 @@ export function Analytics() {
                           <div>
                             <p className="text-sm text-muted-foreground mb-1">Overall K-NN Score</p>
                             <div className="flex items-center gap-3">
-                              <div className="flex-1 bg-gray-200 rounded-full h-3">
+                              <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                                 <div
-                                  className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full"
+                                  className="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full"
                                   style={{ width: `${qualityMetrics.knn_imputation_score * 100}%` }}
                                 ></div>
                               </div>
@@ -809,15 +872,28 @@ export function Analytics() {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                       <p className="text-sm font-medium mb-2">Business Value of K-NN Imputation:</p>
-                      <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                      <ul className="text-sm space-y-1 list-disc list-inside">
                         <li><strong>Reduces trial re-runs</strong> by recovering missing vital signs data</li>
                         <li><strong>Maintains statistical power</strong> with complete datasets for analysis</li>
                         <li><strong>Cost savings</strong> from avoiding expensive data collection re-do</li>
                         <li><strong>Enables complete case analysis</strong> without data loss or subject exclusion</li>
                         <li><strong>Regulatory compliance</strong> with validated imputation methodology</li>
                       </ul>
+                    </div>
+
+                    {/* MAR Imputation Analysis Visualization */}
+                    <div className="border rounded-lg p-4">
+                      <h4 className="font-medium mb-3">MAR (Missing At Random) Imputation Analysis</h4>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Visual analysis of K-NN imputation quality across different vital signs showing prediction accuracy and distribution preservation.
+                      </p>
+                      <img
+                        src="/mar_imputation_analysis.png"
+                        alt="MAR Imputation Analysis - K-NN performance visualization"
+                        className="w-full rounded-lg border"
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -1027,9 +1103,9 @@ export function Analytics() {
                   </div>
                 </div>
 
-                <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border rounded-lg">
+                <div className="p-4 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-900/20 dark:to-blue-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
                   <h4 className="font-medium mb-3">Regulatory Considerations</h4>
-                  <ul className="text-sm text-muted-foreground space-y-2 list-disc list-inside">
+                  <ul className="text-sm space-y-2 list-disc list-inside">
                     <li>All metrics align with FDA guidance on synthetic data validation</li>
                     <li>K-NN imputation follows ICH E9(R1) statistical principles for missing data</li>
                     <li>PCA methodology supports EMA Scientific Advice on modeling & simulation</li>
