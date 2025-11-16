@@ -11,22 +11,10 @@ from datetime import datetime
 import json
 import uvicorn
 import os
-import sentry_sdk
 
 from validation import validate_vitals
 from repair import auto_repair_vitals
 from db_utils import db, cache, startup_db, shutdown_db
-
-# ==================== Sentry Initialization ====================
-
-sentry_sdk.init(
-    dsn="https://ad29eaef4a806c3f27f5f2181373aa36@o4510369986904064.ingest.us.sentry.io/4510369988018176",
-    traces_sample_rate=1.0,
-    profiles_sample_rate=1.0,
-    send_default_pii=True,
-    enable_logs=True,
-    environment=os.getenv("ENVIRONMENT", "development"),
-)
 
 app = FastAPI(
     title="EDC Service",
@@ -459,15 +447,6 @@ async def import_synthetic_data(request: ImportSyntheticRequest):
         observations_imported=len(request.data),
         message=f"Successfully imported {len(request.data)} observations for {subjects_created} subjects from {request.source}"
     )
-
-
-# ==================== Sentry Debug Endpoint ====================
-
-@app.get("/sentry-debug")
-async def trigger_error():
-    """Trigger a test error to verify Sentry integration"""
-    division_by_zero = 1 / 0
-    return {"message": "This should never be reached"}
 
 
 if __name__ == "__main__":

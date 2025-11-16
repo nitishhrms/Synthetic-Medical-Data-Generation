@@ -11,7 +11,6 @@ import { Settings } from "@/components/screens/Settings";
 import { SystemCheck } from "@/components/screens/SystemCheck";
 import { TopAppBar } from "@/components/layout/TopAppBar";
 import { NavigationRail, type Screen } from "@/components/layout/NavigationRail";
-import { SentryTestPanel } from "@/components/SentryTestPanel";
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -81,9 +80,6 @@ function AppContent() {
           {renderScreen()}
         </main>
       </div>
-
-      {/* Sentry Test Panel - Only visible in development */}
-      {import.meta.env.DEV && <SentryTestPanel />}
     </div>
   );
 }
