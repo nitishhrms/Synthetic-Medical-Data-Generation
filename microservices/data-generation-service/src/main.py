@@ -334,6 +334,10 @@ async def compare_methods(
         import time
 
         # Load pilot data for bootstrap
+        # Use dynamic path resolution to work in any environment
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
+        pilot_path = os.path.join(project_root, "data/pilot_trial_cleaned.csv")
         # Use environment variable or fallback to relative path from project root
         project_root = os.getenv("PROJECT_ROOT", "/home/user/Synthetic-Medical-Data-Generation")
         pilot_path = os.path.join(project_root, "data", "pilot_trial_cleaned.csv")
@@ -434,6 +438,10 @@ async def get_pilot_data():
     - Used by frontend for quality assessment and comparison
     """
     try:
+        # Use dynamic path resolution to work in any environment
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
+        pilot_path = os.path.join(project_root, "data/pilot_trial_cleaned.csv")
         # Use environment variable or fallback to relative path from project root
         project_root = os.getenv("PROJECT_ROOT", "/home/user/Synthetic-Medical-Data-Generation")
         pilot_path = os.path.join(project_root, "data", "pilot_trial_cleaned.csv")
