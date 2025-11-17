@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
-import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare } from "lucide-react";
+import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare, ClipboardEdit } from "lucide-react";
 
-export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries";
+export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry";
 
 interface NavigationRailProps {
   activeScreen: Screen;
@@ -15,6 +15,7 @@ const navItems = [
   { id: "quality" as Screen, label: "Quality", icon: Activity },
   { id: "rbqm" as Screen, label: "RBQM", icon: TrendingUp },
   { id: "queries" as Screen, label: "Queries", icon: MessageSquare },
+  { id: "data-entry" as Screen, label: "Data Entry", icon: ClipboardEdit },
   { id: "studies" as Screen, label: "Studies", icon: FileText },
   { id: "settings" as Screen, label: "Settings", icon: Settings },
 ];
