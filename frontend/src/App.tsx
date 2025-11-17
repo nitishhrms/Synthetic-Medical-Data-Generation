@@ -9,6 +9,8 @@ import { Quality } from "@/components/screens/Quality";
 import { Studies } from "@/components/screens/Studies";
 import { Settings } from "@/components/screens/Settings";
 import { SystemCheck } from "@/components/screens/SystemCheck";
+import { RBQMDashboard } from "@/components/screens/RBQMDashboard";
+import { QueryManagement } from "@/components/screens/QueryManagement";
 import { TopAppBar } from "@/components/layout/TopAppBar";
 import { NavigationRail, type Screen } from "@/components/layout/NavigationRail";
 
@@ -60,6 +62,10 @@ function AppContent() {
         return <Analytics />;
       case "quality":
         return <Quality />;
+      case "rbqm":
+        return <RBQMDashboard />;
+      case "queries":
+        return <QueryManagement />;
       case "studies":
         return <Studies />;
       case "settings":
