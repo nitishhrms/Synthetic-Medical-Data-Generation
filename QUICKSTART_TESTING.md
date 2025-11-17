@@ -1,71 +1,89 @@
 # Quick Start - Testing the Complete System
 
-**Complete microservices platform with PostgreSQL + Redis integration**
+**Current Setup**: Frontend (React/Vite) + Backend Microservices (FastAPI)
+
+> 📚 **For comprehensive testing with detailed analytics procedures, see [COMPREHENSIVE_TESTING_GUIDE.md](COMPREHENSIVE_TESTING_GUIDE.md)**
 
 ## Prerequisites
 
-- Docker & Docker Compose installed
+- Python 3.9+ (backend services)
+- Node.js 18+ (frontend)
 - curl or Postman for API testing
-- (Optional) PostgreSQL client (psql)
+- Browser (Chrome, Firefox, Safari)
 
 ## Step 1: Start All Services
 
+### Backend Services
+
+Start each backend service in a separate terminal:
+
 ```bash
-# Navigate to project directory
-cd /Users/himanshu_jain/272/Synthetic-Medical-Data-Generation
+# Terminal 1: Data Generation Service
+cd microservices/data-generation-service/src
+python3 -m uvicorn main:app --reload --port 8002
 
-# Or from parent directory:
-cd Synthetic-Medical-Data-Generation
+# Terminal 2: Analytics Service
+cd microservices/analytics-service/src
+python3 -m uvicorn main:app --reload --port 8003
 
-# Start everything (database + all microservices)
-docker-compose up -d
+# Terminal 3: EDC Service
+cd microservices/edc-service/src
+python3 -m uvicorn main:app --reload --port 8004
 
-# Wait 30 seconds for all services to initialize
+# Terminal 4: Security Service
+cd microservices/security-service/src
+python3 -m uvicorn main:app --reload --port 8005
 
-# Check all containers are running
-docker-compose ps
+# Terminal 5: Quality Service
+cd microservices/quality-service/src
+python3 -m uvicorn main:app --reload --port 8006
+```
+
+### Frontend
+
+```bash
+# Terminal 6: Frontend
+cd frontend
+npm install  # First time only
+npm run dev
 ```
 
 You should see:
-- ✅ clinical_postgres (PostgreSQL)
-- ✅ clinical_redis (Redis)
-- ✅ api-gateway (port 8000)
-- ✅ security-service (port 8005)
-- ✅ edc-service (port 8001)
-- ✅ data-generation-service (port 8002)
-- ✅ analytics-service (port 8003)
-- ✅ quality-service (port 8004)
+- ✅ Data Generation Service (port 8002)
+- ✅ Analytics Service (port 8003)
+- ✅ EDC Service (port 8004)
+- ✅ Security Service (port 8005)
+- ✅ Quality Service (port 8006)
+- ✅ Frontend (port 3000)
 
-## Step 2: Verify Database Connectivity
+## Step 2: Verify Services Are Running
 
-Check that all services are connected to the database:
+Check that all services are healthy:
 
 ```bash
 # Check each service health
-curl http://localhost:8001/health | jq  # EDC Service
-curl http://localhost:8002/health | jq  # Data Generation
-curl http://localhost:8003/health | jq  # Analytics
-curl http://localhost:8004/health | jq  # Quality
-curl http://localhost:8005/health | jq  # Security
-curl http://localhost:8000/health | jq  # API Gateway
+curl http://localhost:8002/health  # Data Generation
+curl http://localhost:8003/health  # Analytics
+curl http://localhost:8004/health  # EDC
+curl http://localhost:8005/health  # Security
+curl http://localhost:8006/health  # Quality
+
+# Check frontend
+curl http://localhost:3000  # Should return HTML
 ```
 
-**Expected output:**
+**Expected output** (Data Generation Service):
 ```json
 {
   "status": "healthy",
-  "service": "edc-service",
-  "timestamp": "2025-01-15T10:30:00.123456",
-  "database": "connected",
-  "cache": "connected"
+  "service": "data-generation-service",
+  "timestamp": "2025-11-16T10:30:00.123456",
+  "database": "disconnected",  // OK - not required for basic functionality
+  "cache": "disconnected"      // OK - not required for basic functionality
 }
 ```
 
-If you see `"database": "disconnected"`, check logs:
-```bash
-docker-compose logs edc-service
-docker-compose logs postgres
-```
+**Note**: Database and cache being "disconnected" is normal for the current setup. Core data generation and analytics functionality works without database.
 
 ## Step 3: Test Data Flow (End-to-End)
 

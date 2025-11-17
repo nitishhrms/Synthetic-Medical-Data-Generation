@@ -1,5 +1,391 @@
-Linkup Integration Analysis for SyntheticTrialStudio Enterprise
+# Linkup Integration Analysis for SyntheticTrialStudio Enterprise
+
+## Prerequisites: Linkup SDK Setup
+
+### Installation
+```bash
+pip install linkup-sdk
+```
+
+### Environment Configuration
+Add your Linkup API key to your environment variables:
+```bash
+# .env file
+LINKUP_API_KEY=your_linkup_api_key_here
+```
+
+### Basic Usage Pattern
+```python
+from linkup import LinkupClient
+import os
+
+# Initialize client (do this once at service startup)
+linkup_client = LinkupClient(api_key=os.getenv("LINKUP_API_KEY"))
+
+# Make a search request
+response = linkup_client.search(
+    query="What is Microsoft's 2024 revenue?",
+    depth="deep",  # or "standard"
+    output_type="searchResults"  # or "sourcedAnswer" or "structured"
+)
+
+# Access results
+for result in response.get("results", []):
+    print(result["name"], result["url"])
+```
+
+### Key Parameters
+- **depth**: 
+  - `"standard"`: Faster results (€0.005/call)
+  - `"deep"`: More comprehensive, iterative search (€0.05/call)
+- **output_type**:
+  - `"searchResults"`: Returns search results with snippets
+  - `"sourcedAnswer"`: Returns a natural language answer with sources
+  - `"structured"`: Returns structured data matching your JSON schema
+- **from_date/to_date**: Filter results by date (format: "YYYY-MM-DD")
+- **include_domains/exclude_domains**: Filter by specific domains
+
+### Response Structure
+For `output_type="searchResults"`:
+```python
+{
+    "results": [
+        {
+            "name": "Document Title",
+            "url": "https://example.com/doc",
+            "snippet": "Relevant excerpt from the document..."
+        }
+    ]
+}
+```
+
+For `output_type="sourcedAnswer"`:
+```python
+{
+    "answer": "Direct answer to your question",
+    "sources": [
+        {
+            "name": "Source Name",
+            "url": "https://example.com",
+            "snippet": "Supporting excerpt"
+        }
+    ]
+}
+```
+
+### Rate Limits
+- 10 queries per second per account
+- Contact Linkup for higher limits if needed
+
+---
+
+## Complete API Reference: /search Endpoint
+
+### Endpoint URL
+```
+POST https://api.linkup.so/v1/search
+```
+
+### Authentication
+Bearer authentication header required:
+```
+Authorization: Bearer <your_api_key>
+```
+
+### Python SDK Usage
+```python
+from linkup import LinkupClient
+
+client = LinkupClient(api_key="your_api_key")
+response = client.search(
+    query="your search query",
+    depth="deep",
+    output_type="searchResults"
+)
+```
+
+### Request Body Parameters
+
+#### Required Parameters
+
+| Parameter | Type | Description | Values |
+|-----------|------|-------------|--------|
+| `query` (or `q`) | string | The natural language question for which you want to retrieve context | Example: `"What is Microsoft's 2024 revenue?"` |
+| `depth` | enum | Defines the precision of the search | `"standard"` (faster) or `"deep"` (more comprehensive) |
+| `output_type` (or `outputType`) | enum | The type of output you want | `"searchResults"`, `"sourcedAnswer"`, or `"structured"` |
+
+#### Optional Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `structured_output_schema` (or `structuredOutputSchema`) | string (JSON) | - | **Required** only when `output_type="structured"`. Provide a JSON schema representing the desired response format. Root must be type `object`. |
+| `include_sources` (or `includeSources`) | boolean | `false` | Relevant only when `output_type="structured"`. Defines whether the response should include sources. Modifies the schema of the response. |
+| `include_images` (or `includeImages`) | boolean | `false` | Defines whether the API should include images in its results. |
+| `from_date` (or `fromDate`) | string | - | Date from which search results should be considered, in ISO 8601 format (YYYY-MM-DD). Example: `"2025-01-01"` |
+| `to_date` (or `toDate`) | string | - | Date until which search results should be considered, in ISO 8601 format (YYYY-MM-DD). Example: `"2025-01-01"` |
+| `include_domains` (or `includeDomains`) | string[] | - | The domains you want to search on. By default, doesn't restrict the search. Example: `["microsoft.com", "fda.gov"]` |
+| `exclude_domains` (or `excludeDomains`) | string[] | - | The domains you want to exclude from search. By default, doesn't restrict the search. Example: `["wikipedia.com"]` |
+| `include_inline_citations` (or `includeInlineCitations`) | boolean | `false` | Relevant only when `output_type="sourcedAnswer"`. Defines whether the answer should include inline citations. |
+| `max_results` (or `maxResults`) | number | - | The maximum number of results to return. |
+
+### Response Formats
+
+#### For `output_type="searchResults"`
+Returns a list of search results with snippets:
+```json
+{
+  "results": [
+    {
+      "name": "Document Title",
+      "url": "https://example.com/document",
+      "snippet": "Relevant excerpt from the document that matches your query..."
+    },
+    {
+      "name": "Another Document",
+      "url": "https://example2.com/page",
+      "snippet": "Another relevant excerpt..."
+    }
+  ]
+}
+```
+
+#### For `output_type="sourcedAnswer"`
+Returns a natural language answer with source attributions:
+```json
+{
+  "answer": "Microsoft's revenue for fiscal year 2024 was $245.1 billion, reflecting a 16% increase from the previous year.",
+  "sources": [
+    {
+      "name": "Microsoft 2024 Annual Report",
+      "url": "https://www.microsoft.com/investor/reports/ar24/index.html",
+      "snippet": "Highlights from fiscal year 2024..."
+    }
+  ]
+}
+```
+
+#### For `output_type="structured"`
+Returns data matching your custom JSON schema:
+```python
+# Example: Request structured data
+response = client.search(
+    query="List Microsoft's top 3 products and their revenue",
+    depth="deep",
+    output_type="structured",
+    structured_output_schema=json.dumps({
+        "type": "object",
+        "properties": {
+            "products": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "revenue": {"type": "string"}
+                    }
+                }
+            }
+        }
+    })
+)
+
+# Response:
+{
+  "products": [
+    {"name": "Azure", "revenue": "$137.4B"},
+    {"name": "Office 365", "revenue": "$52.3B"},
+    {"name": "LinkedIn", "revenue": "$15.7B"}
+  ]
+}
+```
+
+### Complete Code Examples
+
+#### Example 1: Basic Search
+```python
+from linkup import LinkupClient
+import os
+
+client = LinkupClient(api_key=os.getenv("LINKUP_API_KEY"))
+
+response = client.search(
+    query="What is Microsoft's 2024 revenue?",
+    depth="deep",
+    output_type="sourcedAnswer"
+)
+
+print(response["answer"])
+for source in response["sources"]:
+    print(f"- {source['name']}: {source['url']}")
+```
+
+#### Example 2: Domain-Filtered Search
+```python
+# Search only FDA and ICH websites
+response = client.search(
+    query="clinical trial data quality requirements",
+    depth="deep",
+    output_type="searchResults",
+    include_domains=["fda.gov", "ich.org"]
+)
+
+for result in response["results"]:
+    print(f"{result['name']}: {result['url']}")
+```
+
+#### Example 3: Date-Filtered Search
+```python
+# Search for recent regulatory updates (last 30 days)
+from datetime import datetime, timedelta
+
+thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+
+response = client.search(
+    query="FDA guidance clinical trials",
+    depth="deep",
+    output_type="searchResults",
+    from_date=thirty_days_ago
+)
+```
+
+#### Example 4: Structured Output
+```python
+import json
+
+schema = {
+    "type": "object",
+    "properties": {
+        "metric_name": {"type": "string"},
+        "normal_range": {
+            "type": "object",
+            "properties": {
+                "min": {"type": "number"},
+                "max": {"type": "number"},
+                "unit": {"type": "string"}
+            }
+        }
+    }
+}
+
+response = client.search(
+    query="systolic blood pressure normal range FDA guidelines",
+    depth="deep",
+    output_type="structured",
+    structured_output_schema=json.dumps(schema),
+    include_sources=True  # Include citations with structured data
+)
+
+print(response)
+# Output:
+# {
+#   "metric_name": "Systolic Blood Pressure",
+#   "normal_range": {"min": 90, "max": 120, "unit": "mmHg"},
+#   "sources": [...]
+# }
+```
+
+### Best Practices for Query Crafting
+
+#### ✅ Good Queries (Specific and Detailed)
+```python
+# Good: Specific with context
+"What are the FDA requirements for clinical trial data quality validation?"
+
+# Good: Includes relevant keywords
+"Systolic blood pressure normal range hypertension clinical guidelines"
+
+# Good: Specifies industry and location
+"French company Total website energy sector"
+```
+
+#### ❌ Poor Queries (Too Generic)
+```python
+# Poor: Too vague
+"data quality"
+
+# Poor: Missing context
+"blood pressure"
+
+# Poor: Ambiguous
+"Total website"
+```
+
+#### Query Optimization Tips
+1. **Be specific**: Add relevant context (industry, location, time period)
+2. **Use natural language**: Full questions work well
+3. **Include domain-specific terms**: Use industry jargon when relevant
+4. **Add temporal context**: "2024", "recent", "current" when time matters
+5. **Specify source types**: "FDA guidance", "ICH standard", "clinical trial"
+
+### Cost Optimization
+
+| Depth | Cost per Call | When to Use |
+|-------|---------------|-------------|
+| `standard` | €0.005 | Quick lookups, simple queries, low-latency needs |
+| `deep` | €0.05 | Complex research, regulatory compliance, critical accuracy |
+
+**Cost-Saving Strategy:**
+1. Start with `standard` for initial queries
+2. Use `deep` only when:
+   - Initial results are insufficient
+   - High accuracy is critical (regulatory, safety)
+   - Multi-faceted research questions
+   - Need comprehensive coverage
+
+### Error Handling
+
+#### HTTP Status Codes
+- `200`: Success
+- `400`: Bad Request (missing/invalid parameters)
+- `401`: Unauthorized (invalid API key)
+- `429`: Too Many Requests (rate limit exceeded or insufficient credit)
+
+#### Python Error Handling Example
+```python
+from linkup import LinkupClient
+from linkup.exceptions import LinkupError
+
+client = LinkupClient(api_key=os.getenv("LINKUP_API_KEY"))
+
+try:
+    response = client.search(
+        query="your query",
+        depth="deep",
+        output_type="searchResults"
+    )
+    
+    # Process results
+    for result in response.get("results", []):
+        print(result["name"])
+        
+except LinkupError as e:
+    if e.status_code == 401:
+        print("Invalid API key")
+    elif e.status_code == 429:
+        print("Rate limit exceeded or insufficient credits")
+    else:
+        print(f"Error: {e}")
+```
+
+### Integration Checklist
+
+- [ ] Install SDK: `pip install linkup-sdk`
+- [ ] Set environment variable: `LINKUP_API_KEY=your_key`
+- [ ] Initialize client once at startup (reuse across requests)
+- [ ] Start with `standard` depth for testing
+- [ ] Implement error handling for 401, 429 errors
+- [ ] Add retry logic for rate limits
+- [ ] Monitor costs (log depth usage)
+- [ ] Use domain filtering for authoritative sources
+- [ ] Use date filtering for time-sensitive queries
+- [ ] Cache results when appropriate to reduce API calls
+
+
+---
+
+## Integration Use Cases
 Based on your clinical trials platform, here's how to implement the 3 Linkup use cases with specific evidence from your codebase:
+
 
 1. Evidence Pack Citation Service
 Current State (Evidence from your code)
@@ -15,7 +401,14 @@ Your platform already computes these metrics in /quality/comprehensive:
 Current gap: No citations or regulatory references backing these metrics.
 Implementation Plan
 Add to analytics-service/src/main.py:
-pythonfrom mcp-search-linkup import search_web
+```python
+from linkup import LinkupClient
+from urllib.parse import urlparse
+from typing import List, Dict
+import os
+
+# Initialize Linkup client (add API key to environment variables)
+linkup_client = LinkupClient(api_key=os.getenv("LINKUP_API_KEY"))
 
 async def fetch_metric_citations(metric_name: str, metric_value: float) -> List[Dict]:
     """
@@ -25,11 +418,12 @@ async def fetch_metric_citations(metric_name: str, metric_value: float) -> List[
     """
     query = f"{metric_name} clinical trial data quality validation FDA ICH guidance"
     
-    result = await search_web(
+    result = linkup_client.search(
         query=query,
         depth="deep",  # More thorough for regulatory docs
-        outputType="structured"  # Get clean JSON
+        output_type="searchResults"  # Get sources with snippets
     )
+```
     
     # Filter to authoritative domains
     authoritative_domains = [
@@ -38,18 +432,19 @@ async def fetch_metric_citations(metric_name: str, metric_value: float) -> List[
     ]
     
     citations = []
-    for source in result.get("sources", [])[:4]:  # Top 4
+    # Linkup returns 'results' for searchResults output_type
+    for source in result.get("results", [])[:4]:  # Top 4
         domain = urlparse(source["url"]).netloc
         if any(auth in domain for auth in authoritative_domains):
             citations.append({
-                "title": source.get("title"),
+                "title": source.get("name"),
                 "url": source.get("url"),
                 "snippet": source.get("snippet"),
-                "domain": domain,
-                "relevance_score": source.get("score", 0)
+                "domain": domain
             })
     
     return citations
+```
 
 
 # Enhanced quality assessment endpoint
@@ -124,7 +519,17 @@ Your platform has a complete YAML edit check engine with these rule types:
 Current gap: Rules are manually authored. No AI-assisted rule generation with clinical citations.
 Implementation Plan
 Add new endpoint to quality-service/src/main.py:
-pythonfrom mcp-search-linkup import search_web
+```python
+from linkup import LinkupClient
+from urllib.parse import urlparse
+from typing import Dict, List
+from datetime import datetime
+import yaml
+import re
+import os
+
+# Initialize Linkup client
+linkup_client = LinkupClient(api_key=os.getenv("LINKUP_API_KEY"))
 
 @app.post("/checks/generate-rule")
 async def generate_edit_check_rule(variable: str, indication: str = "general"):
@@ -140,11 +545,12 @@ async def generate_edit_check_rule(variable: str, indication: str = "general"):
     # Step 1: Search for clinical guidance
     query = f"{variable} normal range clinical guidelines {indication} FDA ICH"
     
-    result = await search_web(
+    result = linkup_client.search(
         query=query,
         depth="deep",
-        outputType="structured"
+        output_type="searchResults"
     )
+```
     
     # Step 2: Extract range from authoritative sources
     # Prioritize: FDA > ICH > CDISC > medical literature
@@ -208,8 +614,8 @@ def extract_clinical_ranges(search_result: Dict, variable: str) -> Dict:
     
     regex = re.compile(pattern, re.IGNORECASE)
     
-    # Scan authoritative sources
-    for source in search_result.get("sources", []):
+    # Scan authoritative sources (Linkup returns 'results' for searchResults)
+    for source in search_result.get("results", []):
         if not any(domain in source["url"] for domain in ["fda.gov", "ich.org", "ema.europa.eu"]):
             continue
             
@@ -218,7 +624,7 @@ def extract_clinical_ranges(search_result: Dict, variable: str) -> Dict:
             ranges["min"] = int(match.group(1))
             ranges["max"] = int(match.group(2))
             ranges["citations"].append({
-                "title": source["title"],
+                "title": source["name"],
                 "url": source["url"],
                 "snippet": match.group(0)  # The matched range text
             })
@@ -226,6 +632,7 @@ def extract_clinical_ranges(search_result: Dict, variable: str) -> Dict:
             break
     
     return ranges
+```
 Frontend Integration (add to your React/Vue app):
 typescript// Edit Check Rule Builder UI
 async function generateRuleFromVariable(variable: string, indication: string) {
@@ -269,12 +676,19 @@ Current gap: Static rules. No automated monitoring of regulatory changes.
 Implementation Plan
 Create new service: microservices/compliance-watcher/
 File: microservices/compliance-watcher/src/main.py
-pythonfrom fastapi import FastAPI
-from mcp-search-linkup import search_web
+```python
+from fastapi import FastAPI
+from linkup import LinkupClient
+from typing import Dict, List
 import asyncio
 from datetime import datetime, timedelta
+import os
 
 app = FastAPI(title="Compliance Watcher Service")
+
+# Initialize Linkup client
+linkup_client = LinkupClient(api_key=os.getenv("LINKUP_API_KEY"))
+```
 
 # Regulatory sources to monitor
 REGULATORY_SOURCES = {
@@ -307,23 +721,24 @@ async def deep_search_regulatory_updates(source_name: str, config: Dict) -> List
     
     Uses deep mode for comprehensive coverage
     """
-    query = " OR ".join([
-        f"{kw} site:{domain}" 
-        for kw in config["keywords"] 
-        for domain in config["domains"]
-    ])
+    # Build query with keywords
+    query = " ".join(config["keywords"])
     
-    # Add time filter for "new" content (last 30 days)
-    query += f" after:{(datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')}"
+    # Use Linkup's date filtering and domain filtering
+    from_date = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
     
-    result = await search_web(
+    result = linkup_client.search(
         query=query,
         depth="deep",  # CRITICAL: Deep mode for complete regulatory coverage
-        outputType="structured"
+        output_type="searchResults",
+        from_date=from_date,  # Filter last 30 days
+        include_domains=config["domains"]  # Only search specified domains
     )
+```
     
     updates = []
-    for source in result.get("sources", []):
+    # Linkup returns 'results' for searchResults output_type
+    for source in result.get("results", []):
         # Parse publication date
         pub_date = extract_date_from_source(source)
         
@@ -331,7 +746,7 @@ async def deep_search_regulatory_updates(source_name: str, config: Dict) -> List
         if pub_date and pub_date > datetime.utcnow() - timedelta(days=30):
             updates.append({
                 "source_name": source_name,
-                "title": source["title"],
+                "title": source["name"],
                 "url": source["url"],
                 "publication_date": pub_date.isoformat(),
                 "snippet": source["snippet"],
@@ -339,6 +754,7 @@ async def deep_search_regulatory_updates(source_name: str, config: Dict) -> List
             })
     
     return updates
+```
 
 
 async def assess_impact(source: Dict) -> str:
