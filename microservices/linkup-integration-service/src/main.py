@@ -6,7 +6,7 @@ This service provides AI-powered capabilities using Linkup web search:
 2. Edit-Check Authoring Assistant - AI-assisted YAML rule generation
 3. Compliance/RBQM Watcher - Automated regulatory monitoring
 
-Port: 8007
+Port: 8008
 """
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -53,6 +53,17 @@ app = FastAPI(
 
 # CORS configuration
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
+# Security warning for production
+if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
+    import warnings
+    warnings.warn(
+        "⚠️  SECURITY WARNING: CORS wildcard (*) enabled in production! "
+        "Set ALLOWED_ORIGINS environment variable to specific domains.",
+        UserWarning
+    )
+    logger.warning("CORS wildcard enabled in production - security risk!")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -427,7 +438,7 @@ async def get_dashboard_summary():
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.getenv("PORT", 8007))
+    port = int(os.getenv("PORT", 8008))
     host = os.getenv("HOST", "0.0.0.0")
 
     logger.info(f"Starting Linkup Integration Service on {host}:{port}")

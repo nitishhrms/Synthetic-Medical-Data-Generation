@@ -38,11 +38,11 @@ echo ""
 
 # Check if service is running
 echo -e "${YELLOW}Checking if service is running...${NC}"
-if curl -s http://localhost:8007/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ Service is running on port 8007${NC}"
+if curl -s http://localhost:8008/health > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Service is running on port 8008${NC}"
 
     # Get health status
-    HEALTH=$(curl -s http://localhost:8007/health | jq -r '.status' 2>/dev/null || echo "unknown")
+    HEALTH=$(curl -s http://localhost:8008/health | jq -r '.status' 2>/dev/null || echo "unknown")
     echo -e "  Status: ${HEALTH}"
 else
     echo -e "${YELLOW}⚠ Service is not running${NC}"
@@ -55,7 +55,7 @@ echo ""
 
 # Test Evidence Pack endpoint with API key
 echo -e "${YELLOW}Testing Evidence Pack endpoint...${NC}"
-RESPONSE=$(curl -s -X POST http://localhost:8007/evidence/fetch-citations \
+RESPONSE=$(curl -s -X POST http://localhost:8008/evidence/fetch-citations \
   -H "Content-Type: application/json" \
   -d '{
     "metric_name": "Wasserstein distance",
@@ -96,7 +96,7 @@ echo ""
 
 # Test Edit Check Generator
 echo -e "${YELLOW}Testing Edit Check Generator...${NC}"
-RULE_RESPONSE=$(curl -s -X POST http://localhost:8007/edit-checks/generate-rule \
+RULE_RESPONSE=$(curl -s -X POST http://localhost:8008/edit-checks/generate-rule \
   -H "Content-Type: application/json" \
   -d '{
     "variable": "heart_rate",
@@ -122,7 +122,7 @@ echo ""
 
 # Test Compliance Scanner
 echo -e "${YELLOW}Testing Compliance Scanner...${NC}"
-SCAN_RESPONSE=$(curl -s -X POST http://localhost:8007/compliance/scan)
+SCAN_RESPONSE=$(curl -s -X POST http://localhost:8008/compliance/scan)
 
 TOTAL_UPDATES=$(echo "$SCAN_RESPONSE" | jq -r '.total_updates' 2>/dev/null || echo "0")
 if [ "$TOTAL_UPDATES" != "0" ] && [ "$TOTAL_UPDATES" != "null" ]; then
@@ -146,14 +146,14 @@ echo ""
 
 echo -e "${YELLOW}Summary:${NC}"
 echo -e "• API Key: ${GREEN}Configured${NC} (${LINKUP_API_KEY:0:8}...${LINKUP_API_KEY: -4})"
-echo -e "• Service: ${GREEN}Running${NC} on port 8007"
+echo -e "• Service: ${GREEN}Running${NC} on port 8008"
 echo -e "• Evidence Pack: ${GREEN}Working${NC}"
 echo -e "• Edit Check Generator: ${GREEN}Working${NC}"
 echo -e "• Compliance Scanner: ${GREEN}Working${NC}"
 echo ""
 
 echo -e "${YELLOW}Next steps:${NC}"
-echo "• View API docs: ${BLUE}http://localhost:8007/docs${NC}"
+echo "• View API docs: ${BLUE}http://localhost:8008/docs${NC}"
 echo "• Check logs: ${BLUE}docker-compose logs -f linkup-integration${NC}"
 echo "• Run tests: ${BLUE}pytest tests/ -v${NC}"
 echo ""

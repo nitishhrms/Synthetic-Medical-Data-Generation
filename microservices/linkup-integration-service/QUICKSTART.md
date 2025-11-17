@@ -21,13 +21,13 @@ nano .env  # or use your favorite editor
 docker-compose up -d
 
 # 5. Check service health
-curl http://localhost:8007/health
+curl http://localhost:8008/health
 
 # 6. View API documentation
-open http://localhost:8007/docs
+open http://localhost:8008/docs
 ```
 
-**That's it!** The service is now running on http://localhost:8007
+**That's it!** The service is now running on http://localhost:8008
 
 ---
 
@@ -53,10 +53,10 @@ psql -U postgres -d synthetic_db -f database_schema.sql
 
 # 6. Start the service
 cd src
-uvicorn main:app --host 0.0.0.0 --port 8007 --reload
+uvicorn main:app --host 0.0.0.0 --port 8008 --reload
 
 # 7. Service is running!
-# Visit: http://localhost:8007/docs
+# Visit: http://localhost:8008/docs
 ```
 
 ---
@@ -66,7 +66,7 @@ uvicorn main:app --host 0.0.0.0 --port 8007 --reload
 ### 1. Health Check
 
 ```bash
-curl http://localhost:8007/health
+curl http://localhost:8008/health
 ```
 
 **Expected Response:**
@@ -81,7 +81,7 @@ curl http://localhost:8007/health
 ### 2. Fetch Evidence Citations
 
 ```bash
-curl -X POST http://localhost:8007/evidence/fetch-citations \
+curl -X POST http://localhost:8008/evidence/fetch-citations \
   -H "Content-Type: application/json" \
   -d '{
     "metric_name": "Wasserstein distance",
@@ -109,7 +109,7 @@ curl -X POST http://localhost:8007/evidence/fetch-citations \
 ### 3. Generate Edit Check Rule
 
 ```bash
-curl -X POST http://localhost:8007/edit-checks/generate-rule \
+curl -X POST http://localhost:8008/edit-checks/generate-rule \
   -H "Content-Type: application/json" \
   -d '{
     "variable": "systolic_bp",
@@ -142,7 +142,7 @@ curl -X POST http://localhost:8007/edit-checks/generate-rule \
 ### 4. Run Compliance Scan
 
 ```bash
-curl -X POST http://localhost:8007/compliance/scan | jq
+curl -X POST http://localhost:8008/compliance/scan | jq
 ```
 
 **Expected Response:**
@@ -172,7 +172,7 @@ curl -X POST http://localhost:8002/generate/mvn \
   -d '{"n_per_arm": 50}' | jq > synthetic_data.json
 
 # Step 2: Get quality assessment with evidence
-curl -X POST http://localhost:8007/evidence/comprehensive-quality \
+curl -X POST http://localhost:8008/evidence/comprehensive-quality \
   -H "Content-Type: application/json" \
   -d '{
     "original_data": $(cat data/pilot_trial_cleaned.csv | jq -Rs .),
@@ -191,7 +191,7 @@ curl -X POST http://localhost:8007/evidence/comprehensive-quality \
 
 ```bash
 # Generate rules for all vitals
-curl -X POST http://localhost:8007/edit-checks/batch-generate \
+curl -X POST http://localhost:8008/edit-checks/batch-generate \
   -H "Content-Type: application/json" \
   -d '{
     "variables": [
@@ -220,13 +220,13 @@ cat edit_check_rules.yaml
 
 ```bash
 # Trigger manual compliance scan
-curl -X POST http://localhost:8007/compliance/scan | jq
+curl -X POST http://localhost:8008/compliance/scan | jq
 
 # View recent high-impact updates
-curl http://localhost:8007/compliance/recent-updates?impact_level=HIGH | jq
+curl http://localhost:8008/compliance/recent-updates?impact_level=HIGH | jq
 
 # Get dashboard summary
-curl http://localhost:8007/compliance/dashboard-summary | jq
+curl http://localhost:8008/compliance/dashboard-summary | jq
 ```
 
 **Result:** Stay ahead of regulatory changes without manual monitoring!
@@ -276,7 +276,7 @@ docker exec -it linkup-postgres psql -U postgres -d synthetic_db -c "\dt"
 ### Swagger UI (Interactive API Docs)
 
 ```bash
-open http://localhost:8007/docs
+open http://localhost:8008/docs
 ```
 
 Features:
@@ -319,8 +319,8 @@ View tables:
 docker-compose logs -f linkup-integration
 
 # Common fixes:
-# 1. Port 8007 already in use
-sudo lsof -i :8007
+# 1. Port 8008 already in use
+sudo lsof -i :8008
 # Kill the process or change PORT in .env
 
 # 2. Database not ready
@@ -358,7 +358,7 @@ docker-compose restart linkup-integration
 Now that the service is running:
 
 1. **Read the Full Docs**: `README.md`
-2. **Explore API**: http://localhost:8007/docs
+2. **Explore API**: http://localhost:8008/docs
 3. **Integrate with Frontend**: See `README.md` for frontend integration guide
 4. **Set Up CronJob**: For automated compliance monitoring (Kubernetes)
 5. **Configure Alerts**: Add Slack webhook or email in `.env`
@@ -368,7 +368,7 @@ Now that the service is running:
 ## 🆘 Need Help?
 
 - **Documentation**: See `README.md` in this directory
-- **API Docs**: http://localhost:8007/docs
+- **API Docs**: http://localhost:8008/docs
 - **Issues**: GitHub Issues
 - **Email**: support@yourorg.com
 
@@ -376,7 +376,7 @@ Now that the service is running:
 
 ## ✅ Checklist
 
-- [ ] Service running on http://localhost:8007
+- [ ] Service running on http://localhost:8008
 - [ ] Health check returns `{"status": "healthy"}`
 - [ ] Swagger UI accessible at /docs
 - [ ] Database schema applied successfully
