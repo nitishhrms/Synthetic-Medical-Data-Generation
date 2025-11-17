@@ -18,7 +18,7 @@ This service **complements** the existing backend without modifying it, providin
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│         Linkup Integration Service (Port 8007)          │
+│         Linkup Integration Service (Port 8008)          │
 │                                                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐    │
 │  │  Evidence   │  │ Edit Check  │  │ Compliance  │    │
@@ -66,7 +66,7 @@ Enhances quality assessment reports with authoritative regulatory citations.
 **Example Use Case:**
 ```bash
 # Quality assessment with regulatory evidence
-curl -X POST http://localhost:8007/evidence/comprehensive-quality \
+curl -X POST http://localhost:8008/evidence/comprehensive-quality \
   -H "Content-Type: application/json" \
   -d '{
     "original_data": [...],
@@ -110,7 +110,7 @@ AI-assisted generation of clinical data validation rules.
 **Example Use Case:**
 ```bash
 # Generate edit check rule for systolic BP
-curl -X POST http://localhost:8007/edit-checks/generate-rule \
+curl -X POST http://localhost:8008/edit-checks/generate-rule \
   -H "Content-Type: application/json" \
   -d '{
     "variable": "systolic_bp",
@@ -186,7 +186,7 @@ docker build -t synthetictrial/linkup-integration-service:latest .
 
 # Run container
 docker run -d \
-  -p 8007:8007 \
+  -p 8007:8008 \
   -e LINKUP_API_KEY=your_api_key_here \
   -e DATABASE_URL=postgresql://user:pass@localhost/db \
   --name linkup-integration \
@@ -277,9 +277,9 @@ Mock mode provides realistic sample data for all endpoints.
 
 Once the service is running, access:
 
-- **Swagger UI**: http://localhost:8007/docs
-- **ReDoc**: http://localhost:8007/redoc
-- **OpenAPI JSON**: http://localhost:8007/openapi.json
+- **Swagger UI**: http://localhost:8008/docs
+- **ReDoc**: http://localhost:8008/redoc
+- **OpenAPI JSON**: http://localhost:8008/openapi.json
 
 ### Quick API Reference
 
@@ -333,7 +333,7 @@ The Linkup Integration Service is designed to **complement**, not replace, exist
    - No changes to EDC service needed
 
 4. **API Gateway**
-   - Add route: `/linkup/*` → `linkup-integration-service:8007`
+   - Add route: `/linkup/*` → `linkup-integration-service:8008`
    - All Linkup endpoints accessible via gateway
    - Maintains existing authentication/authorization
 
@@ -343,7 +343,7 @@ The Linkup Integration Service is designed to **complement**, not replace, exist
 # In API Gateway routing
 routes:
   - path: /linkup/*
-    target: http://linkup-integration-service:8007
+    target: http://linkup-integration-service:8008
     strip_prefix: /linkup
     auth_required: true
 ```
@@ -375,7 +375,7 @@ pytest tests/integration/ -v --real-api
 
 ```bash
 # Test evidence pack
-curl -X POST http://localhost:8007/evidence/fetch-citations \
+curl -X POST http://localhost:8008/evidence/fetch-citations \
   -H "Content-Type: application/json" \
   -d '{
     "metric_name": "Wasserstein distance",
@@ -383,7 +383,7 @@ curl -X POST http://localhost:8007/evidence/fetch-citations \
   }' | jq
 
 # Test edit check generator
-curl -X POST http://localhost:8007/edit-checks/generate-rule \
+curl -X POST http://localhost:8008/edit-checks/generate-rule \
   -H "Content-Type: application/json" \
   -d '{
     "variable": "heart_rate",
@@ -391,7 +391,7 @@ curl -X POST http://localhost:8007/edit-checks/generate-rule \
   }' | jq
 
 # Test compliance scan
-curl -X POST http://localhost:8007/compliance/scan | jq
+curl -X POST http://localhost:8008/compliance/scan | jq
 ```
 
 ---
@@ -428,7 +428,7 @@ Key metrics to monitor:
 
 ```bash
 # Service health
-curl http://localhost:8007/health
+curl http://localhost:8008/health
 
 # Kubernetes health probes
 kubectl get pods -n clinical-trials -l app=linkup-integration-service
@@ -475,7 +475,7 @@ docker logs linkup-integration
 psql $DATABASE_URL -c "SELECT 1"
 
 # Check port availability
-lsof -i :8007
+lsof -i :8008
 ```
 
 #### 2. Citations not being found
