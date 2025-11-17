@@ -338,9 +338,6 @@ async def compare_methods(
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
         pilot_path = os.path.join(project_root, "data/pilot_trial_cleaned.csv")
-        # Use environment variable or fallback to relative path from project root
-        project_root = os.getenv("PROJECT_ROOT", "/home/user/Synthetic-Medical-Data-Generation")
-        pilot_path = os.path.join(project_root, "data", "pilot_trial_cleaned.csv")
         pilot_df = pd.read_csv(pilot_path)
 
         # Generate with MVN
@@ -442,9 +439,6 @@ async def get_pilot_data():
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
         pilot_path = os.path.join(project_root, "data/pilot_trial_cleaned.csv")
-        # Use environment variable or fallback to relative path from project root
-        project_root = os.getenv("PROJECT_ROOT", "/home/user/Synthetic-Medical-Data-Generation")
-        pilot_path = os.path.join(project_root, "data", "pilot_trial_cleaned.csv")
 
         # Check if file exists
         if not os.path.exists(pilot_path):

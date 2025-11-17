@@ -50,30 +50,58 @@ This project transforms the monolithic Streamlit application into a scalable mic
 
 ### Prerequisites
 
-- Docker & Docker Compose
-- Kubernetes (Minikube, Kind, or cloud provider)
-- kubectl CLI
-- Python 3.11+ (for local development)
+- Python 3.9+ (for backend services)
+- Node.js 18+ (for frontend)
+- npm or yarn
+- (Optional) Docker & Docker Compose for containerized deployment
 
-### Local Development with Docker Compose
+### Local Development (Current Setup)
+
+**Backend Services** (running directly):
+```bash
+# Data Generation Service (Port 8002)
+cd microservices/data-generation-service/src
+python3 -m uvicorn main:app --reload --port 8002
+
+# Analytics Service (Port 8003)
+cd microservices/analytics-service/src
+python3 -m uvicorn main:app --reload --port 8003
+
+# EDC Service (Port 8004)
+cd microservices/edc-service/src
+python3 -m uvicorn main:app --reload --port 8004
+
+# Security Service (Port 8005)
+cd microservices/security-service/src
+python3 -m uvicorn main:app --reload --port 8005
+
+# Quality Service (Port 8006)
+cd microservices/quality-service/src
+python3 -m uvicorn main:app --reload --port 8006
+```
+
+**Frontend Application**:
+```bash
+cd frontend
+npm install
+npm run dev
+# Access at: http://localhost:3000
+```
+
+### Access Services
+
+- **Frontend UI**: http://localhost:3000
+- **Data Generation**: http://localhost:8002
+- **Analytics**: http://localhost:8003
+- **EDC Service**: http://localhost:8004
+- **Security**: http://localhost:8005
+- **Quality**: http://localhost:8006
+
+### Docker Compose Deployment (Alternative)
 
 ```bash
-# Navigate to the project directory
-cd /Users/himanshu_jain/272/Synthetic-Medical-Data-Generation
-
-# Or if you're already in the parent directory:
-cd Synthetic-Medical-Data-Generation
-
-# Start all services
+# Start all services with Docker
 docker-compose up --build
-
-# Access services
-# API Gateway: http://localhost:8000
-# EDC Service: http://localhost:8001
-# Data Generation: http://localhost:8002
-# Analytics: http://localhost:8003
-# Quality: http://localhost:8004
-# Security: http://localhost:8005
 
 # PostgreSQL: localhost:5432
 # Redis: localhost:6379
@@ -261,28 +289,37 @@ kubectl get hpa -n clinical-trials --watch
 
 ## 🧪 Testing
 
-### Health Checks
+**For comprehensive testing procedures, see [COMPREHENSIVE_TESTING_GUIDE.md](COMPREHENSIVE_TESTING_GUIDE.md)**
+
+This guide includes:
+- ✅ Complete frontend + backend testing workflows
+- ✅ Analytics dashboard testing (what to look for, what to expect)
+- ✅ Quality metrics interpretation
+- ✅ Statistical analysis validation
+- ✅ Performance benchmarks
+- ✅ Troubleshooting common issues
+
+### Quick Health Checks
 
 ```bash
-# Check all services
-curl http://localhost:8000/health
+# Check all backend services
+for port in 8002 8003 8004 8005 8006; do
+  echo "Port $port: $(curl -s http://localhost:$port/health 2>/dev/null || echo 'NOT RUNNING')"
+done
 
-# Individual service health
-curl http://localhost:8001/health  # EDC
-curl http://localhost:8002/health  # Data Generation
-curl http://localhost:8003/health  # Analytics
-curl http://localhost:8004/health  # Quality
-curl http://localhost:8005/health  # Security
+# Check frontend
+curl -s http://localhost:3000 > /dev/null && echo "Frontend: RUNNING" || echo "Frontend: NOT RUNNING"
 ```
 
-### Load Testing
+### Quick Functionality Test
 
 ```bash
-# Install k6
-brew install k6
+# Generate test data
+curl -X POST http://localhost:8002/generate/mvn \
+  -H "Content-Type: application/json" \
+  -d '{"n_per_arm": 5, "target_effect": -5.0, "seed": 123}'
 
-# Run load test (create load-test.js first)
-k6 run load-test.js
+# Should return 40 VitalsRecords (5 × 2 × 4)
 ```
 
 ## 📁 Project Structure
