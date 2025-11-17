@@ -186,6 +186,112 @@ async def validate_with_edit_checks(request: EditChecksRequest):
             detail=f"Edit checks failed: {str(e)}"
         )
 
+@app.post("/checks/validate-and-save-queries")
+async def validate_and_save_queries(request: EditChecksRequest):
+    """
+    Run validation and automatically save violations as queries
+
+    This replaces the old /checks/validate endpoint for EDC integration.
+    It runs edit checks and creates query records for any violations found.
+    """
+    try:
+        # Convert to DataFrame
+        df = pd.DataFrame(request.data)
+
+        # Run existing validation
+        rules_yaml = request.rules_yaml or load_default_rules()
+        queries_df = run_edit_checks_yaml(df, rules_yaml)
+
+        # Count total checks
+        import yaml
+        spec = yaml.safe_load(rules_yaml)
+        if isinstance(spec, list):
+            total_checks = len(spec)
+        elif isinstance(spec, dict):
+            total_checks = len(spec.get("rules", []))
+        else:
+            total_checks = 0
+
+        # Format violations
+        violations = []
+        if not queries_df.empty:
+            for _, row in queries_df.iterrows():
+                violations.append({
+                    "subject_id": row.get("SubjectID", "UNKNOWN"),
+                    "check_id": row.get("CheckID", ""),
+                    "field": row.get("Field", ""),
+                    "severity": row.get("Severity", "warning").lower(),
+                    "message": row.get("Message", ""),
+                    "check_name": row.get("CheckName", "")
+                })
+
+        # Save violations as queries in database
+        queries_created = 0
+        if violations and db.pool:
+            for violation in violations:
+                # Generate query text
+                query_text = f"{violation.get('check_name', 'Check')}: {violation['message']}"
+
+                # Determine severity based on check
+                severity_map = {
+                    "error": "critical",
+                    "warning": "warning",
+                    "info": "info"
+                }
+                severity = severity_map.get(violation.get("severity", "warning"), "warning")
+
+                # Insert query into database
+                try:
+                    query_id = await db.fetchval("""
+                        INSERT INTO queries (
+                            subject_id, check_id, field_id, query_text,
+                            severity, query_type, status, opened_at
+                        )
+                        VALUES ($1, $2, $3, $4, $5, 'auto', 'open', NOW())
+                        RETURNING query_id
+                    """,
+                        violation.get("subject_id", "UNKNOWN"),
+                        violation.get("check_id", ""),
+                        violation.get("field", ""),
+                        query_text,
+                        severity
+                    )
+
+                    # Log to query_history
+                    await db.execute("""
+                        INSERT INTO query_history (query_id, action, action_at, notes)
+                        VALUES ($1, 'opened', NOW(), 'Auto-generated from edit check')
+                    """, query_id)
+
+                    queries_created += 1
+                except Exception as db_error:
+                    logger.warning(f"Failed to save query to database: {db_error}")
+
+        # Calculate quality score
+        num_violations = len(violations)
+        if total_checks > 0 and len(df) > 0:
+            quality_score = max(0.0, (len(df) * total_checks - num_violations) / (len(df) * total_checks))
+        else:
+            quality_score = 1.0
+
+        return {
+            "validation_result": {
+                "total_records": len(df),
+                "total_checks": total_checks,
+                "violations": violations,
+                "quality_score": round(quality_score, 2),
+                "passed": num_violations == 0
+            },
+            "queries_created": queries_created,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Validation and query creation failed: {str(e)}"
+        )
+
 @app.post("/quality/simulate-noise", response_model=NoiseResponse)
 async def add_entry_noise(request: NoiseRequest):
     """

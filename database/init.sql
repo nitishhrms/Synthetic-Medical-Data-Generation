@@ -141,6 +141,220 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_users ON users
     USING (tenant_id = current_setting('app.current_tenant', TRUE));
 
+-- 7. Studies (Clinical Trial Studies)
+CREATE TABLE IF NOT EXISTS studies (
+    study_id VARCHAR(50) PRIMARY KEY,
+    study_name VARCHAR(255) NOT NULL,
+    indication VARCHAR(100),
+    phase VARCHAR(50),
+    sponsor VARCHAR(255),
+    start_date DATE,
+    end_date DATE,
+    status VARCHAR(50) DEFAULT 'active',
+    tenant_id VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_studies_tenant ON studies(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_studies_status ON studies(status);
+
+-- 8. Subjects (Trial Participants)
+CREATE TABLE IF NOT EXISTS subjects (
+    subject_id VARCHAR(50) PRIMARY KEY,
+    study_id VARCHAR(50) REFERENCES studies(study_id),
+    site_id VARCHAR(50),
+    treatment_arm VARCHAR(50),
+    enrollment_date DATE,
+    status VARCHAR(50) DEFAULT 'enrolled',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_subjects_study ON subjects(study_id);
+CREATE INDEX IF NOT EXISTS idx_subjects_site ON subjects(site_id);
+
+-- 9. Visits (Study Visits)
+CREATE TABLE IF NOT EXISTS visits (
+    visit_id SERIAL PRIMARY KEY,
+    subject_id VARCHAR(50) REFERENCES subjects(subject_id),
+    visit_name VARCHAR(50) NOT NULL,
+    visit_date DATE,
+    status VARCHAR(50) DEFAULT 'scheduled',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_visits_subject ON visits(subject_id);
+
+-- 10. Vitals Observations
+CREATE TABLE IF NOT EXISTS vitals_observations (
+    observation_id SERIAL PRIMARY KEY,
+    visit_id INTEGER REFERENCES visits(visit_id),
+    subject_id VARCHAR(50) REFERENCES subjects(subject_id),
+    systolic_bp INTEGER,
+    diastolic_bp INTEGER,
+    heart_rate INTEGER,
+    temperature DECIMAL(4,2),
+    observation_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_vitals_obs_subject ON vitals_observations(subject_id);
+CREATE INDEX IF NOT EXISTS idx_vitals_obs_visit ON vitals_observations(visit_id);
+
+-- 11. Queries (Data Query Management)
+CREATE TABLE IF NOT EXISTS queries (
+    query_id SERIAL PRIMARY KEY,
+    subject_id VARCHAR(50) NOT NULL,
+    study_id VARCHAR(50),
+    form_id VARCHAR(50),
+    field_id VARCHAR(50),
+    check_id VARCHAR(50),
+
+    -- Query details
+    query_text TEXT NOT NULL,
+    severity VARCHAR(20) DEFAULT 'warning',  -- info, warning, error, critical
+    query_type VARCHAR(20) DEFAULT 'auto',   -- auto, manual
+
+    -- Status tracking
+    status VARCHAR(20) DEFAULT 'open',       -- open, answered, closed, cancelled
+
+    -- Timestamps and ownership
+    opened_at TIMESTAMP DEFAULT NOW(),
+    opened_by INTEGER,
+    assigned_to INTEGER,
+
+    -- Response
+    response_text TEXT,
+    responded_at TIMESTAMP,
+    responded_by INTEGER,
+
+    -- Resolution
+    resolved_at TIMESTAMP,
+    resolved_by INTEGER,
+    resolution_notes TEXT,
+
+    -- Audit
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_queries_subject ON queries(subject_id);
+CREATE INDEX IF NOT EXISTS idx_queries_status ON queries(status);
+CREATE INDEX IF NOT EXISTS idx_queries_opened_at ON queries(opened_at);
+
+-- 12. Query History (Audit trail for queries)
+CREATE TABLE IF NOT EXISTS query_history (
+    history_id SERIAL PRIMARY KEY,
+    query_id INTEGER NOT NULL REFERENCES queries(query_id),
+    action VARCHAR(50) NOT NULL,  -- opened, answered, closed, escalated, cancelled
+    action_by INTEGER,
+    action_at TIMESTAMP DEFAULT NOW(),
+    notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_query_history_query ON query_history(query_id);
+
+-- 13. Form Definitions (Dynamic form builder)
+CREATE TABLE IF NOT EXISTS form_definitions (
+    form_id VARCHAR(50) PRIMARY KEY,
+    form_name VARCHAR(255) NOT NULL,
+    form_version VARCHAR(20) DEFAULT '1.0',
+
+    -- Form structure (stored as JSON)
+    form_schema JSONB NOT NULL,
+
+    -- Edit checks (YAML format)
+    edit_checks_yaml TEXT,
+
+    -- Metadata
+    status VARCHAR(20) DEFAULT 'draft',  -- draft, active, archived
+    created_at TIMESTAMP DEFAULT NOW(),
+    created_by INTEGER,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_form_definitions_status ON form_definitions(status);
+
+-- 14. Form Data (Generic form data storage)
+CREATE TABLE IF NOT EXISTS form_data (
+    data_id SERIAL PRIMARY KEY,
+    form_id VARCHAR(50) NOT NULL REFERENCES form_definitions(form_id),
+    subject_id VARCHAR(50) NOT NULL,
+    visit_name VARCHAR(50),
+
+    -- Actual form data (JSON)
+    form_data JSONB NOT NULL,
+
+    -- Status
+    status VARCHAR(20) DEFAULT 'draft',  -- draft, submitted, locked
+
+    -- Timestamps
+    submitted_at TIMESTAMP,
+    submitted_by INTEGER,
+    locked_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_form_data_subject ON form_data(subject_id);
+CREATE INDEX IF NOT EXISTS idx_form_data_form ON form_data(form_id);
+
+-- 15. Demographics
+CREATE TABLE IF NOT EXISTS demographics (
+    demo_id SERIAL PRIMARY KEY,
+    subject_id VARCHAR(50) NOT NULL,
+
+    -- Demographics
+    age INTEGER CHECK (age BETWEEN 18 AND 85),
+    gender VARCHAR(20),  -- Male, Female, Other
+    race VARCHAR(50),    -- White, Black, Asian, Other
+    ethnicity VARCHAR(50), -- Hispanic/Latino, Not Hispanic/Latino
+
+    -- Physical measurements
+    height_cm DECIMAL(5,2) CHECK (height_cm BETWEEN 140 AND 220),
+    weight_kg DECIMAL(5,2) CHECK (weight_kg BETWEEN 40 AND 200),
+    bmi DECIMAL(5,2),    -- Calculated
+
+    -- Medical history
+    smoking_status VARCHAR(50), -- Never, Former, Current
+
+    -- Timestamps
+    recorded_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_demographics_subject ON demographics(subject_id);
+
+-- 16. Lab Results
+CREATE TABLE IF NOT EXISTS lab_results (
+    lab_id SERIAL PRIMARY KEY,
+    subject_id VARCHAR(50) NOT NULL,
+    visit_name VARCHAR(50) NOT NULL,
+    test_date DATE NOT NULL,
+
+    -- Hematology (Complete Blood Count)
+    hemoglobin DECIMAL(4,1),      -- 12-18 g/dL
+    hematocrit DECIMAL(4,1),      -- 36-50%
+    wbc DECIMAL(5,2),             -- 4-11 K/μL
+    platelets DECIMAL(5,1),       -- 150-400 K/μL
+
+    -- Chemistry (Metabolic Panel)
+    glucose DECIMAL(5,1),         -- 70-100 mg/dL
+    creatinine DECIMAL(4,2),      -- 0.7-1.3 mg/dL
+    bun DECIMAL(4,1),             -- 7-20 mg/dL
+    alt DECIMAL(5,1),             -- 7-56 U/L
+    ast DECIMAL(5,1),             -- 10-40 U/L
+    bilirubin DECIMAL(4,2),       -- 0.3-1.2 mg/dL
+
+    -- Lipids
+    total_cholesterol DECIMAL(5,1), -- mg/dL
+    ldl DECIMAL(5,1),              -- mg/dL
+    hdl DECIMAL(5,1),              -- mg/dL
+    triglycerides DECIMAL(5,1),    -- mg/dL
+
+    -- Timestamps
+    recorded_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lab_results_subject ON lab_results(subject_id);
+CREATE INDEX IF NOT EXISTS idx_lab_results_visit ON lab_results(visit_name);
+
 -- ============= FUNCTIONS & TRIGGERS =============
 
 -- Auto-update timestamp function
