@@ -30,11 +30,29 @@ interface VitalsRecord {
 }
 
 interface TreatmentEffectResult {
-  active_mean: number;
-  placebo_mean: number;
-  difference: number;
-  p_value: number;
-  significant: boolean;
+  endpoint: string;
+  visit: string;
+  active: {
+    n: number;
+    mean: number;
+    std: number;
+    se: number;
+  };
+  placebo: {
+    n: number;
+    mean: number;
+    std: number;
+    se: number;
+  };
+  treatment_effect: {
+    difference: number;
+    se_difference: number;
+    t_statistic: number;
+    p_value: number;
+    ci_95_lower: number;
+    ci_95_upper: number;
+    significant: boolean;
+  };
 }
 
 export function DaftAnalytics() {
@@ -64,10 +82,31 @@ export function DaftAnalytics() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ n_per_arm: 50, target_effect: -5.0 }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
-      setData(result.data);
-      setFilteredData(result.data);
-      setSuccess(`Loaded ${result.metadata.records} records`);
+
+      // Handle both response formats: direct array or wrapped in data property
+      let dataArray: VitalsRecord[];
+
+      if (Array.isArray(result)) {
+        // Direct array response
+        dataArray = result;
+      } else if (result.data && Array.isArray(result.data)) {
+        // Wrapped response with data property
+        dataArray = result.data;
+      } else {
+        console.error("Invalid result structure:", result);
+        throw new Error("Invalid response format: expected array or object with data property");
+      }
+
+      setData(dataArray);
+      setFilteredData(dataArray);
+      const recordCount = result.metadata?.records ?? dataArray.length;
+      setSuccess(`Loaded ${recordCount} records`);
     } catch (err: any) {
       setError(`Failed to load data: ${err.message}`);
     } finally {
@@ -89,9 +128,20 @@ export function DaftAnalytics() {
           condition: condition || undefined,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
+
+      if (!result.filtered_data || !Array.isArray(result.filtered_data)) {
+        throw new Error("Invalid response format: missing or invalid filtered_data array");
+      }
+
       setFilteredData(result.filtered_data);
-      setSuccess(`Filtered to ${result.row_count} records`);
+      const rowCount = result.row_count ?? result.filtered_data.length;
+      setSuccess(`Filtered to ${rowCount} records`);
     } catch (err: any) {
       setError(`Filter failed: ${err.message}`);
     } finally {
@@ -108,7 +158,17 @@ export function DaftAnalytics() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: filteredData }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
+
+      if (!result.aggregations) {
+        throw new Error("Invalid response format: missing aggregations");
+      }
+
       setAggregationResults(result.aggregations);
       setSuccess("Aggregation completed successfully");
     } catch (err: any) {
@@ -122,6 +182,11 @@ export function DaftAnalytics() {
     setLoading(true);
     setError(null);
     try {
+      console.log("Sending treatment effect request with data:", {
+        dataLength: filteredData?.length,
+        sampleRecord: filteredData?.[0]
+      });
+
       const response = await fetch("http://localhost:8007/daft/treatment-effect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,10 +196,26 @@ export function DaftAnalytics() {
           visit: "Week 12",
         }),
       });
+
+      console.log("Response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Error response:", errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      }
+
       const result = await response.json();
+      console.log("Treatment effect result:", result);
+
+      if (!result.treatment_effect) {
+        throw new Error("Invalid response format: missing treatment_effect");
+      }
+
       setTreatmentEffect(result.treatment_effect);
       setSuccess("Treatment effect analysis completed");
     } catch (err: any) {
+      console.error("Treatment effect error:", err);
       setError(`Analysis failed: ${err.message}`);
     } finally {
       setLoading(false);
@@ -150,7 +231,17 @@ export function DaftAnalytics() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: filteredData }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
+
+      if (!result.qc_summary || !result.data) {
+        throw new Error("Invalid response format: missing qc_summary or data");
+      }
+
       setQcResults(result.qc_summary);
       setFilteredData(result.data);
       setSuccess("Quality control flags applied");
@@ -173,7 +264,17 @@ export function DaftAnalytics() {
           filename: `daft_export_${Date.now()}.parquet`,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
+
+      if (!result.filepath) {
+        throw new Error("Invalid response format: missing filepath");
+      }
+
       setSuccess(`Exported to ${result.filepath}`);
     } catch (err: any) {
       setError(`Export failed: ${err.message}`);
@@ -265,10 +366,10 @@ export function DaftAnalytics() {
                 </p>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="font-medium">Current Records:</span> {data.length}
+                    <span className="font-medium">Current Records:</span> {data?.length ?? 0}
                   </div>
                   <div>
-                    <span className="font-medium">Filtered Records:</span> {filteredData.length}
+                    <span className="font-medium">Filtered Records:</span> {filteredData?.length ?? 0}
                   </div>
                 </div>
               </div>
@@ -287,7 +388,7 @@ export function DaftAnalytics() {
                 )}
               </Button>
 
-              {data.length > 0 && (
+              {(data?.length ?? 0) > 0 && (
                 <div className="mt-6">
                   <h3 className="font-medium mb-3">Data Preview (First 5 Records)</h3>
                   <div className="overflow-x-auto">
@@ -374,7 +475,7 @@ export function DaftAnalytics() {
                 </div>
               </div>
 
-              <Button onClick={applyFilters} disabled={loading || data.length === 0} className="w-full">
+              <Button onClick={applyFilters} disabled={loading || (data?.length ?? 0) === 0} className="w-full">
                 <Filter className="h-4 w-4 mr-2" />
                 Apply Filters
               </Button>
@@ -389,7 +490,7 @@ export function DaftAnalytics() {
             <div className="space-y-4">
               <Button
                 onClick={aggregateByTreatmentArm}
-                disabled={loading || filteredData.length === 0}
+                disabled={loading || (filteredData?.length ?? 0) === 0}
                 className="w-full"
               >
                 <Users className="h-4 w-4 mr-2" />
@@ -415,7 +516,7 @@ export function DaftAnalytics() {
             <div className="space-y-4">
               <Button
                 onClick={computeTreatmentEffect}
-                disabled={loading || filteredData.length === 0}
+                disabled={loading || (filteredData?.length ?? 0) === 0}
                 className="w-full"
               >
                 <TrendingUp className="h-4 w-4 mr-2" />
@@ -427,27 +528,33 @@ export function DaftAnalytics() {
                   <h3 className="font-medium">Treatment Effect Results</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <Card className="p-4">
-                      <div className="text-sm text-muted-foreground">Active Arm Mean</div>
-                      <div className="text-2xl font-bold">{treatmentEffect.active_mean.toFixed(1)} mmHg</div>
+                      <div className="text-sm text-muted-foreground">Active Arm Mean (n={treatmentEffect.active.n})</div>
+                      <div className="text-2xl font-bold">{treatmentEffect.active.mean.toFixed(1)} mmHg</div>
+                      <div className="text-xs text-muted-foreground mt-1">SD: {treatmentEffect.active.std.toFixed(1)}</div>
                     </Card>
                     <Card className="p-4">
-                      <div className="text-sm text-muted-foreground">Placebo Arm Mean</div>
-                      <div className="text-2xl font-bold">{treatmentEffect.placebo_mean.toFixed(1)} mmHg</div>
+                      <div className="text-sm text-muted-foreground">Placebo Arm Mean (n={treatmentEffect.placebo.n})</div>
+                      <div className="text-2xl font-bold">{treatmentEffect.placebo.mean.toFixed(1)} mmHg</div>
+                      <div className="text-xs text-muted-foreground mt-1">SD: {treatmentEffect.placebo.std.toFixed(1)}</div>
                     </Card>
                     <Card className="p-4">
                       <div className="text-sm text-muted-foreground">Difference</div>
                       <div className="text-2xl font-bold text-primary">
-                        {treatmentEffect.difference.toFixed(1)} mmHg
+                        {treatmentEffect.treatment_effect.difference.toFixed(1)} mmHg
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        95% CI: [{treatmentEffect.treatment_effect.ci_95_lower.toFixed(1)}, {treatmentEffect.treatment_effect.ci_95_upper.toFixed(1)}]
                       </div>
                     </Card>
                     <Card className="p-4">
                       <div className="text-sm text-muted-foreground">P-value</div>
                       <div className="text-2xl font-bold">
-                        {treatmentEffect.p_value.toFixed(4)}
-                        {treatmentEffect.significant && (
+                        {treatmentEffect.treatment_effect.p_value.toFixed(4)}
+                        {treatmentEffect.treatment_effect.significant && (
                           <Badge variant="default" className="ml-2">Significant</Badge>
                         )}
                       </div>
+                      <div className="text-xs text-muted-foreground mt-1">t = {treatmentEffect.treatment_effect.t_statistic.toFixed(2)}</div>
                     </Card>
                   </div>
                 </div>
@@ -463,7 +570,7 @@ export function DaftAnalytics() {
             <div className="space-y-4">
               <Button
                 onClick={applyQualityFlags}
-                disabled={loading || filteredData.length === 0}
+                disabled={loading || (filteredData?.length ?? 0) === 0}
                 className="w-full"
               >
                 <Activity className="h-4 w-4 mr-2" />
@@ -496,7 +603,7 @@ export function DaftAnalytics() {
 
               <div className="pt-4 border-t">
                 <h3 className="font-medium mb-3">Export Data</h3>
-                <Button onClick={exportToParquet} disabled={loading || filteredData.length === 0} className="w-full">
+                <Button onClick={exportToParquet} disabled={loading || (filteredData?.length ?? 0) === 0} className="w-full">
                   <Download className="h-4 w-4 mr-2" />
                   Export to Parquet
                 </Button>

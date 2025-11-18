@@ -1134,6 +1134,7 @@ export function Analytics() {
                           <p className="text-xs text-muted-foreground mt-1">Neighbor similarity</p>
                         </div>
                       </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
