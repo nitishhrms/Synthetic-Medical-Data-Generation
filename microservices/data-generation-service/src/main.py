@@ -336,10 +336,18 @@ async def compare_methods(
         import time
 
         # Load pilot data for bootstrap
-        # Use dynamic path resolution to work in any environment
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
-        pilot_path = os.path.join(project_root, "data/pilot_trial_cleaned.csv")
+        # Use Path for robust path resolution (works in both local and Docker)
+        from pathlib import Path
+        # In Docker: /app/src/main.py -> parents[1] = /app
+        # Locally: .../microservices/data-generation-service/src/main.py -> parents[3] = project root
+        current_file = Path(__file__).resolve()
+        if str(current_file).startswith("/app/"):
+            # Running in Docker
+            base_path = current_file.parents[1]  # /app
+        else:
+            # Running locally
+            base_path = current_file.parents[3]  # project root
+        pilot_path = base_path / "data" / "pilot_trial_cleaned.csv"
         pilot_df = pd.read_csv(pilot_path)
 
         # Generate with MVN
@@ -437,16 +445,24 @@ async def get_pilot_data():
     - Used by frontend for quality assessment and comparison
     """
     try:
-        # Use dynamic path resolution to work in any environment
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
-        pilot_path = os.path.join(project_root, "data/pilot_trial_cleaned.csv")
+        # Use Path for robust path resolution (works in both local and Docker)
+        from pathlib import Path
+        # In Docker: /app/src/main.py -> parents[1] = /app
+        # Locally: .../microservices/data-generation-service/src/main.py -> parents[3] = project root
+        current_file = Path(__file__).resolve()
+        if str(current_file).startswith("/app/"):
+            # Running in Docker
+            base_path = current_file.parents[1]  # /app
+        else:
+            # Running locally
+            base_path = current_file.parents[3]  # project root
+        pilot_path = base_path / "data" / "pilot_trial_cleaned.csv"
 
         # Check if file exists
-        if not os.path.exists(pilot_path):
+        if not pilot_path.exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Pilot data file not found at: {pilot_path}"
+                detail=f"UPDATED_CODE: Pilot data file not found at: {pilot_path}. Expected at: {base_path}/data/pilot_trial_cleaned.csv"
             )
 
         # Read and return pilot data
