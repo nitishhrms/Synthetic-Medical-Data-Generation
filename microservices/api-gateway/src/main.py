@@ -62,6 +62,8 @@ SERVICES = {
     "generation": os.getenv("GENERATION_SERVICE_URL", "http://data-generation-service:8002"),
     "analytics": os.getenv("ANALYTICS_SERVICE_URL", "http://analytics-service:8003"),
     "quality": os.getenv("QUALITY_SERVICE_URL", "http://quality-service:8004"),
+    "daft": os.getenv("DAFT_SERVICE_URL", "http://daft-analytics-service:8007"),
+    "linkup": os.getenv("LINKUP_SERVICE_URL", "http://linkup-integration-service:8008"),
 }
 
 # Public endpoints that don't require authentication
@@ -140,9 +142,15 @@ async def root():
             "generation": "/generation/*",
             "analytics": "/analytics/*",
             "quality": "/quality/*",
+            "daft": "/daft/* (Distributed Analytics - Port 8007)",
+            "linkup": "/linkup/* (Regulatory Intelligence - Port 8008)",
         },
         "authentication": "Bearer token required (except /security/auth/login)",
-        "docs": "/docs"
+        "docs": "/docs",
+        "new_services": {
+            "daft": "High-performance distributed analytics using Daft library",
+            "linkup": "AI-powered regulatory intelligence and evidence generation"
+        }
     }
 
 

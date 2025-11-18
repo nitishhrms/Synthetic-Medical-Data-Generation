@@ -183,7 +183,14 @@ def load_pilot_vitals(use_cleaned: bool = True) -> pd.DataFrame:
         To generate cleaned data, run: python data/validate_and_repair_real_data.py
     """
     # Locate the pilot data in the data directory
-    base_path = Path(__file__).resolve().parents[3]
+    # Use Path for robust path resolution (works in both local and Docker)
+    current_file = Path(__file__).resolve()
+    if str(current_file).startswith("/app/"):
+        # Running in Docker: /app/src/generators.py -> /app
+        base_path = current_file.parents[1]
+    else:
+        # Running locally: .../microservices/data-generation-service/src/generators.py -> project root
+        base_path = current_file.parents[3]
 
     if use_cleaned:
         # Use validated and cleaned data (recommended)
@@ -638,3 +645,173 @@ def generate_vitals_bootstrap(
     out = out.sort_values(["SubjectID", "_visit_order"]).drop(columns=["_visit_order"])
 
     return out.reset_index(drop=True)
+
+
+def generate_demographics(n_subjects=100, seed=42) -> pd.DataFrame:
+    """
+    Generate realistic demographics data
+
+    Args:
+        n_subjects: Number of subjects
+        seed: Random seed for reproducibility
+
+    Returns:
+        DataFrame with demographic data including age, gender, race, ethnicity,
+        physical measurements (height, weight, BMI), and smoking status
+    """
+    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
+
+    demographics = []
+
+    for i in range(n_subjects):
+        subject_id = f"RA001-{i+1:03d}"
+
+        # Age: Normal distribution around 55, range 18-85
+        age = int(np.clip(rng.normal(55, 12), 18, 85))
+
+        # Gender: 50/50 split
+        gender = rng.choice(["Male", "Female"])
+
+        # Race: US demographics approximate
+        race = rng.choice(
+            ["White", "Black", "Asian", "Other"],
+            p=[0.60, 0.13, 0.06, 0.21]
+        )
+
+        # Ethnicity: ~18% Hispanic
+        ethnicity = rng.choice(
+            ["Hispanic or Latino", "Not Hispanic or Latino"],
+            p=[0.18, 0.82]
+        )
+
+        # Height: gender-specific (in cm)
+        if gender == "Male":
+            height_cm = rng.normal(175, 7)  # ~5'9"
+        else:
+            height_cm = rng.normal(162, 6.5)  # ~5'4"
+        height_cm = np.clip(height_cm, 140, 220)
+
+        # Weight: correlated with age (older = slightly heavier)
+        base_weight = 75 if gender == "Male" else 65
+        weight_kg = base_weight + rng.normal(0, 12) + (age - 55) * 0.2
+        weight_kg = np.clip(weight_kg, 40, 200)
+
+        # BMI
+        bmi = weight_kg / ((height_cm / 100) ** 2)
+
+        # Smoking: age-correlated (older = more former smokers)
+        if age < 40:
+            smoking_status = rng.choice(
+                ["Never", "Current", "Former"],
+                p=[0.70, 0.25, 0.05]
+            )
+        else:
+            smoking_status = rng.choice(
+                ["Never", "Current", "Former"],
+                p=[0.50, 0.15, 0.35]
+            )
+
+        demographics.append({
+            "SubjectID": subject_id,
+            "Age": age,
+            "Gender": gender,
+            "Race": race,
+            "Ethnicity": ethnicity,
+            "Height_cm": round(height_cm, 1),
+            "Weight_kg": round(weight_kg, 1),
+            "BMI": round(bmi, 1),
+            "SmokingStatus": smoking_status
+        })
+
+    return pd.DataFrame(demographics)
+
+
+def generate_labs(n_subjects=100, seed=42) -> pd.DataFrame:
+    """
+    Generate realistic lab results data
+
+    Args:
+        n_subjects: Number of subjects
+        seed: Random seed for reproducibility
+
+    Returns:
+        DataFrame with lab results including hematology, chemistry, and lipids
+        for multiple visits per subject
+    """
+    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
+
+    visits = ["Screening", "Week 4", "Week 12"]
+    labs = []
+
+    for i in range(n_subjects):
+        subject_id = f"RA001-{i+1:03d}"
+
+        for visit in visits:
+            # Hematology (Complete Blood Count)
+            hemoglobin = rng.normal(14.5, 1.5)  # 12-18 g/dL
+            hemoglobin = np.clip(hemoglobin, 12, 18)
+
+            hematocrit = hemoglobin * 3  # Hct ≈ 3× Hgb
+            hematocrit = np.clip(hematocrit, 36, 50)
+
+            wbc = rng.normal(7.5, 1.5)  # 4-11 K/μL
+            wbc = np.clip(wbc, 4, 11)
+
+            platelets = rng.normal(250, 50)  # 150-400 K/μL
+            platelets = np.clip(platelets, 150, 400)
+
+            # Chemistry (Metabolic Panel)
+            glucose = rng.normal(90, 10)  # 70-100 mg/dL
+            glucose = np.clip(glucose, 70, 120)
+
+            creatinine = rng.normal(1.0, 0.15)  # 0.7-1.3 mg/dL
+            creatinine = np.clip(creatinine, 0.7, 1.3)
+
+            bun = rng.normal(15, 3)  # 7-20 mg/dL
+            bun = np.clip(bun, 7, 20)
+
+            alt = rng.normal(30, 10)  # 7-56 U/L
+            alt = np.clip(alt, 7, 56)
+
+            ast = rng.normal(25, 8)  # 10-40 U/L
+            ast = np.clip(ast, 10, 40)
+
+            bilirubin = rng.normal(0.7, 0.2)  # 0.3-1.2 mg/dL
+            bilirubin = np.clip(bilirubin, 0.3, 1.2)
+
+            # Lipids
+            total_chol = rng.normal(190, 30)
+            total_chol = np.clip(total_chol, 120, 300)
+
+            ldl = rng.normal(110, 25)
+            ldl = np.clip(ldl, 50, 200)
+
+            hdl = rng.normal(50, 10)
+            hdl = np.clip(hdl, 30, 80)
+
+            triglycerides = rng.normal(130, 40)
+            triglycerides = np.clip(triglycerides, 50, 250)
+
+            labs.append({
+                "SubjectID": subject_id,
+                "VisitName": visit,
+                "TestDate": "2025-01-15",  # Would be calculated in production
+                "Hemoglobin": round(hemoglobin, 1),
+                "Hematocrit": round(hematocrit, 1),
+                "WBC": round(wbc, 2),
+                "Platelets": round(platelets, 1),
+                "Glucose": round(glucose, 1),
+                "Creatinine": round(creatinine, 2),
+                "BUN": round(bun, 1),
+                "ALT": round(alt, 1),
+                "AST": round(ast, 1),
+                "Bilirubin": round(bilirubin, 2),
+                "TotalCholesterol": round(total_chol, 1),
+                "LDL": round(ldl, 1),
+                "HDL": round(hdl, 1),
+                "Triglycerides": round(triglycerides, 1)
+            })
+
+    return pd.DataFrame(labs)

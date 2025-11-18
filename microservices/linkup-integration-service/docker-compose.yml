@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  # Linkup Integration Service
+  linkup-integration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: linkup-integration-service
+    ports:
+      - "8008:8008"
+    environment:
+      # Service configuration
+      - PORT=8008
+      - HOST=0.0.0.0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Linkup API
+      - LINKUP_API_KEY=${LINKUP_API_KEY}
+      - LINKUP_SEARCH_DEPTH=${LINKUP_SEARCH_DEPTH:-deep}
+      - LINKUP_MAX_RESULTS=${LINKUP_MAX_RESULTS:-10}
+
+      # Database
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/synthetic_db}
+
+      # CORS
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+
+      # Feature flags
+      - ENABLE_EVIDENCE_PACK=${ENABLE_EVIDENCE_PACK:-true}
+      - ENABLE_EDIT_CHECK_GENERATOR=${ENABLE_EDIT_CHECK_GENERATOR:-true}
+      - ENABLE_COMPLIANCE_WATCHER=${ENABLE_COMPLIANCE_WATCHER:-true}
+
+      # Compliance configuration
+      - COMPLIANCE_LOOKBACK_DAYS=${COMPLIANCE_LOOKBACK_DAYS:-30}
+      - REGULATORY_SOURCES=${REGULATORY_SOURCES:-FDA,ICH,CDISC,TransCelerate,EMA}
+
+    volumes:
+      # Mount source code for development (hot reload)
+      - ./src:/app/src
+      # Mount logs directory
+      - ./logs:/app/logs
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - clinical-trials-network
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL Database (if not already running)
+  postgres:
+    image: postgres:14-alpine
+    container_name: linkup-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=synthetic_db
+    ports:
+      - "5434:5432"
+    volumes:
+      # Mount database schema
+      - ./database_schema.sql:/docker-entrypoint-initdb.d/01-linkup-schema.sql
+      # Persist data
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - clinical-trials-network
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Redis for caching (uncomment if needed)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: linkup-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - clinical-trials-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # Optional: PgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: linkup-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - clinical-trials-network
+    restart: unless-stopped
+
+networks:
+  clinical-trials-network:
+    name: clinical-trials-network
+    driver: bridge
+
+volumes:
+  postgres-data:
+    name: linkup-postgres-data
+  # redis-data:
+  #   name: linkup-redis-data

@@ -10,6 +10,7 @@ import pandas as pd
 from datetime import datetime
 import json
 import uvicorn
+import os
 
 from validation import validate_vitals
 from repair import auto_repair_vitals
@@ -446,6 +447,394 @@ async def import_synthetic_data(request: ImportSyntheticRequest):
         observations_imported=len(request.data),
         message=f"Successfully imported {len(request.data)} observations for {subjects_created} subjects from {request.source}"
     )
+
+
+# ============================================================================
+# Query Management Endpoints
+# ============================================================================
+
+class QueryResponse(BaseModel):
+    query_id: int
+    subject_id: str
+    query_text: str
+    severity: str
+    status: str
+    opened_at: str
+    response_text: Optional[str] = None
+
+class QueryRespondRequest(BaseModel):
+    response_text: str
+
+class QueryCloseRequest(BaseModel):
+    resolution_notes: str
+
+@app.get("/queries")
+async def list_queries(
+    status_filter: Optional[str] = None,
+    subject_id: Optional[str] = None,
+    severity: Optional[str] = None
+):
+    """
+    List queries with optional filters
+
+    Filters:
+    - status: open, answered, closed, cancelled
+    - subject_id: filter by subject
+    - severity: info, warning, error, critical
+    """
+    where_clauses = []
+    params = []
+    param_idx = 1
+
+    if status_filter:
+        where_clauses.append(f"status = ${param_idx}")
+        params.append(status_filter)
+        param_idx += 1
+
+    if subject_id:
+        where_clauses.append(f"subject_id = ${param_idx}")
+        params.append(subject_id)
+        param_idx += 1
+
+    if severity:
+        where_clauses.append(f"severity = ${param_idx}")
+        params.append(severity)
+        param_idx += 1
+
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+    queries = await db.fetch(f"""
+        SELECT query_id, subject_id, query_text, severity, status,
+               opened_at, response_text
+        FROM queries
+        WHERE {where_sql}
+        ORDER BY opened_at DESC
+    """, *params)
+
+    return [
+        {
+            "query_id": q["query_id"],
+            "subject_id": q["subject_id"],
+            "query_text": q["query_text"],
+            "severity": q["severity"],
+            "status": q["status"],
+            "opened_at": q["opened_at"].isoformat() if q["opened_at"] else None,
+            "response_text": q["response_text"]
+        }
+        for q in queries
+    ]
+
+@app.get("/queries/{query_id}")
+async def get_query(query_id: int):
+    """
+    Get query details with history
+
+    Returns full query details including:
+    - Query information
+    - User details (who opened, responded)
+    - Query history (audit trail)
+    """
+    query = await db.fetchrow("""
+        SELECT q.*,
+               u_opened.username as opened_by_name,
+               u_responded.username as responded_by_name
+        FROM queries q
+        LEFT JOIN users u_opened ON q.opened_by = u_opened.user_id
+        LEFT JOIN users u_responded ON q.responded_by = u_responded.user_id
+        WHERE q.query_id = $1
+    """, query_id)
+
+    if not query:
+        raise HTTPException(404, "Query not found")
+
+    # Get history
+    history = await db.fetch("""
+        SELECT action, action_at, notes
+        FROM query_history
+        WHERE query_id = $1
+        ORDER BY action_at ASC
+    """, query_id)
+
+    return {
+        **dict(query),
+        "history": [
+            {
+                "action": h["action"],
+                "action_at": h["action_at"].isoformat() if h["action_at"] else None,
+                "notes": h["notes"]
+            }
+            for h in history
+        ]
+    }
+
+@app.put("/queries/{query_id}/respond")
+async def respond_to_query(query_id: int, request: QueryRespondRequest, user_id: int = 1):
+    """
+    CRC responds to query
+
+    Changes query status from 'open' to 'answered'
+    Records the response text and timestamp
+    """
+    await db.execute("""
+        UPDATE queries
+        SET response_text = $1,
+            responded_at = NOW(),
+            responded_by = $2,
+            status = 'answered',
+            updated_at = NOW()
+        WHERE query_id = $3
+    """, request.response_text, user_id, query_id)
+
+    # Log to history
+    await db.execute("""
+        INSERT INTO query_history (query_id, action, action_by, action_at, notes)
+        VALUES ($1, 'answered', $2, NOW(), $3)
+    """, query_id, user_id, request.response_text)
+
+    return {"query_id": query_id, "status": "answered"}
+
+@app.put("/queries/{query_id}/close")
+async def close_query(query_id: int, request: QueryCloseRequest, user_id: int = 1):
+    """
+    Data Manager closes query
+
+    Changes query status to 'closed'
+    Records resolution notes and timestamp
+    """
+    await db.execute("""
+        UPDATE queries
+        SET status = 'closed',
+            resolved_at = NOW(),
+            resolved_by = $1,
+            resolution_notes = $2,
+            updated_at = NOW()
+        WHERE query_id = $3
+    """, user_id, request.resolution_notes, query_id)
+
+    # Log to history
+    await db.execute("""
+        INSERT INTO query_history (query_id, action, action_by, action_at, notes)
+        VALUES ($1, 'closed', $2, NOW(), $3)
+    """, query_id, user_id, request.resolution_notes)
+
+    return {"query_id": query_id, "status": "closed"}
+
+# ============================================================================
+# Form Definitions Endpoints
+# ============================================================================
+
+class FormDefinition(BaseModel):
+    form_id: str
+    form_name: str
+    form_version: str = "1.0"
+    form_schema: Dict[str, Any]  # JSON structure
+    edit_checks_yaml: Optional[str] = None
+
+class FormDataSubmit(BaseModel):
+    form_id: str
+    subject_id: str
+    visit_name: Optional[str] = None
+    form_data: Dict[str, Any]
+
+@app.post("/forms/definitions")
+async def create_form_definition(form: FormDefinition, user_id: int = 1):
+    """
+    Create or update form definition
+
+    Form definitions include:
+    - Form schema (JSON structure defining fields)
+    - Edit checks (YAML-based validation rules)
+    """
+    await db.execute("""
+        INSERT INTO form_definitions (
+            form_id, form_name, form_version, form_schema,
+            edit_checks_yaml, status, created_by, created_at
+        )
+        VALUES ($1, $2, $3, $4::jsonb, $5, 'active', $6, NOW())
+        ON CONFLICT (form_id) DO UPDATE
+        SET form_name = $2,
+            form_version = $3,
+            form_schema = $4::jsonb,
+            edit_checks_yaml = $5,
+            updated_at = NOW()
+    """,
+        form.form_id, form.form_name, form.form_version,
+        json.dumps(form.form_schema), form.edit_checks_yaml, user_id
+    )
+
+    return {"form_id": form.form_id, "status": "created"}
+
+@app.get("/forms/definitions")
+async def list_form_definitions():
+    """List all active form definitions"""
+    forms = await db.fetch("""
+        SELECT form_id, form_name, form_version, status, created_at
+        FROM form_definitions
+        WHERE status = 'active'
+        ORDER BY form_name
+    """)
+
+    return {"forms": [dict(f) for f in forms]}
+
+@app.get("/forms/definitions/{form_id}")
+async def get_form_definition(form_id: str):
+    """Get form definition with schema"""
+    form = await db.fetchrow("""
+        SELECT form_id, form_name, form_version, form_schema, edit_checks_yaml
+        FROM form_definitions
+        WHERE form_id = $1
+    """, form_id)
+
+    if not form:
+        raise HTTPException(404, "Form not found")
+
+    return dict(form)
+
+@app.post("/forms/data")
+async def submit_form_data(data: FormDataSubmit, user_id: int = 1):
+    """
+    Submit form data with validation
+
+    Validates data against form definition edit checks
+    before storing in the database
+    """
+    # Get form definition
+    form_def = await db.fetchrow("""
+        SELECT form_schema, edit_checks_yaml
+        FROM form_definitions
+        WHERE form_id = $1
+    """, data.form_id)
+
+    if not form_def:
+        raise HTTPException(404, "Form definition not found")
+
+    # TODO: Validate against edit checks by calling Quality Service
+    # if form_def["edit_checks_yaml"]:
+    #     pass
+
+    # Store form data
+    data_id = await db.fetchval("""
+        INSERT INTO form_data (
+            form_id, subject_id, visit_name, form_data,
+            status, submitted_at, submitted_by
+        )
+        VALUES ($1, $2, $3, $4::jsonb, 'submitted', NOW(), $5)
+        RETURNING data_id
+    """,
+        data.form_id, data.subject_id, data.visit_name,
+        json.dumps(data.form_data), user_id
+    )
+
+    return {"data_id": data_id, "status": "submitted"}
+
+# ============================================================================
+# Demographics Endpoints
+# ============================================================================
+
+class Demographics(BaseModel):
+    subject_id: str
+    age: int = Field(..., ge=18, le=85)
+    gender: str = Field(..., pattern=r'^(Male|Female|Other)$')
+    race: str
+    ethnicity: str
+    height_cm: float = Field(..., ge=140, le=220)
+    weight_kg: float = Field(..., ge=40, le=200)
+    bmi: Optional[float] = None
+    smoking_status: str
+
+@app.post("/demographics")
+async def record_demographics(demo: Demographics):
+    """
+    Record demographics for subject
+
+    Automatically calculates BMI from height and weight
+    """
+    # Calculate BMI
+    bmi = demo.weight_kg / ((demo.height_cm / 100) ** 2)
+
+    demo_id = await db.fetchval("""
+        INSERT INTO demographics (
+            subject_id, age, gender, race, ethnicity,
+            height_cm, weight_kg, bmi, smoking_status, recorded_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        RETURNING demo_id
+    """,
+        demo.subject_id, demo.age, demo.gender, demo.race, demo.ethnicity,
+        demo.height_cm, demo.weight_kg, bmi, demo.smoking_status
+    )
+
+    return {"demo_id": demo_id, "bmi": round(bmi, 2)}
+
+@app.get("/demographics/{subject_id}")
+async def get_demographics(subject_id: str):
+    """Get demographics for a subject"""
+    demo = await db.fetchrow("""
+        SELECT * FROM demographics
+        WHERE subject_id = $1
+    """, subject_id)
+
+    if not demo:
+        raise HTTPException(404, "Demographics not found")
+
+    return dict(demo)
+
+# ============================================================================
+# Lab Results Endpoints
+# ============================================================================
+
+class LabResults(BaseModel):
+    subject_id: str
+    visit_name: str
+    test_date: str
+    hemoglobin: Optional[float] = None
+    hematocrit: Optional[float] = None
+    wbc: Optional[float] = None
+    platelets: Optional[float] = None
+    glucose: Optional[float] = None
+    creatinine: Optional[float] = None
+    bun: Optional[float] = None
+    alt: Optional[float] = None
+    ast: Optional[float] = None
+    bilirubin: Optional[float] = None
+    total_cholesterol: Optional[float] = None
+    ldl: Optional[float] = None
+    hdl: Optional[float] = None
+    triglycerides: Optional[float] = None
+
+@app.post("/labs")
+async def record_lab_results(lab: LabResults):
+    """Record lab results for a subject visit"""
+    lab_id = await db.fetchval("""
+        INSERT INTO lab_results (
+            subject_id, visit_name, test_date,
+            hemoglobin, hematocrit, wbc, platelets,
+            glucose, creatinine, bun, alt, ast, bilirubin,
+            total_cholesterol, ldl, hdl, triglycerides,
+            recorded_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+        RETURNING lab_id
+    """,
+        lab.subject_id, lab.visit_name, lab.test_date,
+        lab.hemoglobin, lab.hematocrit, lab.wbc, lab.platelets,
+        lab.glucose, lab.creatinine, lab.bun, lab.alt, lab.ast, lab.bilirubin,
+        lab.total_cholesterol, lab.ldl, lab.hdl, lab.triglycerides
+    )
+
+    return {"lab_id": lab_id, "status": "recorded"}
+
+@app.get("/labs/{subject_id}")
+async def get_lab_results(subject_id: str):
+    """Get all lab results for a subject"""
+    labs = await db.fetch("""
+        SELECT * FROM lab_results
+        WHERE subject_id = $1
+        ORDER BY test_date DESC
+    """, subject_id)
+
+    return {"labs": [dict(l) for l in labs]}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)

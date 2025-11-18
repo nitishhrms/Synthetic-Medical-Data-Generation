@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { dataGenerationApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
 import type { GenerationMethod, VitalsRecord } from "@/types";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, AlertCircle, Info } from "lucide-react";
 
 export function DataGeneration() {
   const { setGeneratedData: setGlobalGeneratedData, setGenerationMethod } = useData();
@@ -24,19 +24,24 @@ export function DataGeneration() {
     {
       id: "mvn" as GenerationMethod,
       name: "MVN",
-      description: "Multivariate Normal - Fast, statistically realistic",
+      description: "Multivariate Normal Distribution",
+      details: "Generates data using statistical distributions with correlation structure",
       speed: "~29K records/sec",
+      rules: []
     },
     {
       id: "bootstrap" as GenerationMethod,
       name: "Bootstrap",
-      description: "Resampling from real data with jitter",
+      description: "Resampling from Real CDISC Pilot Data",
+      details: "Resamples from 945 real clinical records with Gaussian jitter (5%) to create variations",
       speed: "~140K records/sec",
+      rules: []
     },
     {
       id: "rules" as GenerationMethod,
       name: "Rules",
-      description: "Deterministic business-rule driven",
+      description: "Deterministic Business Rules Engine",
+      details: "Applies clinical trial design rules and constraints",
       speed: "~80K records/sec",
     },
     {
@@ -57,6 +62,7 @@ export function DataGeneration() {
     setIsGenerating(true);
     setError("");
     setGeneratedData(null);
+    setMetadata(null);
 
     try {
       let response;
@@ -65,6 +71,8 @@ export function DataGeneration() {
         target_effect: targetEffect,
         seed: Math.floor(Math.random() * 10000),
       };
+
+      console.log(`Generating with ${selectedMethod}...`, params);
 
       switch (selectedMethod) {
         case "mvn":
@@ -89,11 +97,23 @@ export function DataGeneration() {
 
       setGeneratedData(response.data);
       setMetadata(response.metadata);
+
       // Store in global context for Analytics/Quality screens
       setGlobalGeneratedData(response.data);
       setGenerationMethod(selectedMethod);
+
+      console.log(`✅ Generated ${response.data.length} records successfully`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
+      console.error("Generation error:", err);
+      const errorMessage = err instanceof Error ? err.message : "Generation failed";
+      setError(errorMessage);
+
+      // Show user-friendly error messages
+      if (errorMessage.includes("training_data")) {
+        setError("Bootstrap method requires pilot data. The backend couldn't load the training data. Try MVN or Rules method instead.");
+      } else if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
+        setError("Cannot connect to the data generation service. Please ensure it's running on port 8002.");
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -118,6 +138,8 @@ export function DataGeneration() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const selectedMethodDetails = methods.find(m => m.id === selectedMethod);
 
   return (
     <div className="p-8 space-y-6">
@@ -154,10 +176,32 @@ export function DataGeneration() {
                       {method.speed}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">{method.description}</p>
+                  <p className="text-sm text-muted-foreground mb-2">{method.description}</p>
+                  <p className="text-xs text-muted-foreground/80">{method.details}</p>
                 </button>
               ))}
             </div>
+
+            {selectedMethodDetails && selectedMethodDetails.rules.length > 0 && (
+              <Card className="bg-muted/50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Info className="h-4 w-4" />
+                    Business Rules Applied
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <ul className="text-xs space-y-1.5 text-muted-foreground">
+                    {selectedMethodDetails.rules.map((rule, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5">•</span>
+                        <span>{rule}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
           </CardContent>
         </Card>
 
@@ -199,8 +243,12 @@ export function DataGeneration() {
             </div>
 
             {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
+              <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
+                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">Generation Error</p>
+                  <p className="text-xs mt-1">{error}</p>
+                </div>
               </div>
             )}
 
@@ -220,12 +268,12 @@ export function DataGeneration() {
             </Button>
 
             {metadata && (
-              <div className="p-3 bg-muted rounded-lg space-y-1">
-                <p className="text-sm font-medium">Generation Complete</p>
-                <div className="text-xs text-muted-foreground space-y-0.5">
-                  <p>Records: {metadata.records}</p>
-                  <p>Subjects: {metadata.subjects}</p>
-                  <p>Time: {metadata.generation_time_ms}ms</p>
+              <div className="p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg space-y-1">
+                <p className="text-sm font-medium text-green-900 dark:text-green-100">✅ Generation Complete</p>
+                <div className="text-xs text-green-700 dark:text-green-300 space-y-0.5">
+                  <p>Records: {metadata.records || generatedData?.length || 0}</p>
+                  {metadata.subjects && <p>Subjects: {metadata.subjects}</p>}
+                  {metadata.generation_time_ms && <p>Time: {metadata.generation_time_ms}ms</p>}
                   <p>Method: {metadata.method}</p>
                 </div>
               </div>
@@ -234,7 +282,7 @@ export function DataGeneration() {
         </Card>
       </div>
 
-      {generatedData && (
+      {generatedData && generatedData.length > 0 && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">

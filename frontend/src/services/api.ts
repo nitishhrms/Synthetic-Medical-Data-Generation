@@ -20,9 +20,9 @@ import type {
 
 const DATA_GEN_SERVICE = import.meta.env.VITE_DATA_GEN_URL || "http://localhost:8002";
 const ANALYTICS_SERVICE = import.meta.env.VITE_ANALYTICS_URL || "http://localhost:8003";
-const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8004";
+const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8001";
 const SECURITY_SERVICE = import.meta.env.VITE_SECURITY_URL || "http://localhost:8005";
-const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8006";
+const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8004";
 
 // ============================================================================
 // Helper Functions
@@ -76,13 +76,6 @@ export const authApi = {
     return handleResponse(response);
   },
 
-  async verifyToken(): Promise<{ valid: boolean }> {
-    const response = await fetch(`${SECURITY_SERVICE}/auth/validate`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
-  },
-
   logout() {
     localStorage.removeItem("token");
   },
@@ -101,10 +94,12 @@ export const dataGenerationApi = {
     });
     const data = await handleResponse<VitalsRecord[]>(response);
     // Backend returns array directly, wrap it in expected format
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
     return {
       data,
       metadata: {
         records: data.length,
+        subjects: uniqueSubjects,
         method: "mvn",
       },
     };
@@ -123,10 +118,12 @@ export const dataGenerationApi = {
       }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
     return {
       data,
       metadata: {
         records: data.length,
+        subjects: uniqueSubjects,
         method: "bootstrap",
       },
     };
@@ -139,10 +136,12 @@ export const dataGenerationApi = {
       body: JSON.stringify(params),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
     return {
       data,
       metadata: {
         records: data.length,
+        subjects: uniqueSubjects,
         method: "rules",
       },
     };

@@ -6,7 +6,7 @@ services:
     image: postgres:15-alpine
     container_name: clinical_postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_DB=clinical_trials
       - POSTGRES_USER=clinical_user
@@ -146,6 +146,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    volumes:
+      - ./data:/app/data:ro  # Mount data directory as read-only
     depends_on:
       postgres:
         condition: service_healthy
@@ -202,6 +204,27 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Daft Analytics Service - Distributed Data Analysis
+  daft-analytics-service:
+    build:
+      context: ./microservices/daft-analytics-service
+      dockerfile: Dockerfile
+    container_name: daft-analytics-service
+    ports:
+      - "8007:8007"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    networks:
+      - clinical-trials-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
       interval: 30s
       timeout: 10s
       retries: 3

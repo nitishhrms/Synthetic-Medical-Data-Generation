@@ -9,6 +9,7 @@ from typing import List, Optional, Dict, Any
 import pandas as pd
 from datetime import datetime
 import uvicorn
+import os
 
 from stats import (
     calculate_week12_statistics,
@@ -592,6 +593,7 @@ async def comprehensive_quality_assessment(request: ComprehensiveQualityRequest)
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Quality assessment failed: {str(e)}"
         )
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8003)

@@ -9,13 +9,16 @@ from typing import List, Optional, Dict, Any
 import pandas as pd
 from datetime import datetime
 import uvicorn
+import os
 
 from generators import (
     generate_vitals_rules,
     generate_vitals_mvn,
     generate_vitals_llm_with_repair,
     generate_oncology_ae,
-    generate_vitals_bootstrap
+    generate_vitals_bootstrap,
+    generate_demographics,
+    generate_labs
 )
 from simple_diffusion import generate_with_simple_diffusion
 from db_utils import db, cache, startup_db, shutdown_db
@@ -422,7 +425,18 @@ async def compare_methods(
         import time
 
         # Load pilot data for bootstrap
-        pilot_path = "/Users/himanshu_jain/272/Synthetic-Medical-Data-Generation/data/pilot_trial_cleaned.csv"
+        # Use Path for robust path resolution (works in both local and Docker)
+        from pathlib import Path
+        # In Docker: /app/src/main.py -> parents[1] = /app
+        # Locally: .../microservices/data-generation-service/src/main.py -> parents[3] = project root
+        current_file = Path(__file__).resolve()
+        if str(current_file).startswith("/app/"):
+            # Running in Docker
+            base_path = current_file.parents[1]  # /app
+        else:
+            # Running locally
+            base_path = current_file.parents[3]  # project root
+        pilot_path = base_path / "data" / "pilot_trial_cleaned.csv"
         pilot_df = pd.read_csv(pilot_path)
 
         # Generate with MVN
@@ -520,13 +534,24 @@ async def get_pilot_data():
     - Used by frontend for quality assessment and comparison
     """
     try:
-        pilot_path = "/Users/himanshu_jain/272/Synthetic-Medical-Data-Generation/data/pilot_trial_cleaned.csv"
+        # Use Path for robust path resolution (works in both local and Docker)
+        from pathlib import Path
+        # In Docker: /app/src/main.py -> parents[1] = /app
+        # Locally: .../microservices/data-generation-service/src/main.py -> parents[3] = project root
+        current_file = Path(__file__).resolve()
+        if str(current_file).startswith("/app/"):
+            # Running in Docker
+            base_path = current_file.parents[1]  # /app
+        else:
+            # Running locally
+            base_path = current_file.parents[3]  # project root
+        pilot_path = base_path / "data" / "pilot_trial_cleaned.csv"
 
         # Check if file exists
-        if not os.path.exists(pilot_path):
+        if not pilot_path.exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Pilot data file not found"
+                detail=f"UPDATED_CODE: Pilot data file not found at: {pilot_path}. Expected at: {base_path}/data/pilot_trial_cleaned.csv"
             )
 
         # Read and return pilot data
@@ -540,6 +565,91 @@ async def get_pilot_data():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load pilot data: {str(e)}"
         )
+
+
+# ============================================================================
+# Demographics and Lab Results Generation
+# ============================================================================
+
+class GenerateDemographicsRequest(BaseModel):
+    n_subjects: int = Field(default=100, ge=1, le=1000, description="Number of subjects")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+
+class GenerateLabsRequest(BaseModel):
+    n_subjects: int = Field(default=100, ge=1, le=1000, description="Number of subjects")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+
+@app.post("/generate/demographics")
+async def generate_demographics_endpoint(request: GenerateDemographicsRequest):
+    """
+    Generate synthetic demographics data
+
+    Creates realistic demographic profiles including:
+    - Age (18-85, normally distributed around 55)
+    - Gender (Male/Female, 50/50 split)
+    - Race (White, Black, Asian, Other - US demographics)
+    - Ethnicity (Hispanic/Latino, Not Hispanic/Latino)
+    - Physical measurements (height, weight, BMI)
+    - Smoking status (age-correlated)
+
+    Returns:
+        List of demographic records with calculated BMI
+    """
+    try:
+        df = generate_demographics(n_subjects=request.n_subjects, seed=request.seed)
+
+        return {
+            "data": df.to_dict(orient="records"),
+            "metadata": {
+                "records": len(df),
+                "subjects": request.n_subjects,
+                "method": "statistical",
+                "columns": list(df.columns)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demographics generation failed: {str(e)}"
+        )
+
+@app.post("/generate/labs")
+async def generate_labs_endpoint(request: GenerateLabsRequest):
+    """
+    Generate synthetic lab results data
+
+    Creates realistic lab results for multiple visits including:
+    - Hematology: Hemoglobin, Hematocrit, WBC, Platelets
+    - Chemistry: Glucose, Creatinine, BUN, ALT, AST, Bilirubin
+    - Lipids: Total Cholesterol, LDL, HDL, Triglycerides
+
+    Each subject has lab results for multiple visits:
+    - Screening
+    - Week 4
+    - Week 12
+
+    Returns:
+        List of lab result records with all measurements
+    """
+    try:
+        df = generate_labs(n_subjects=request.n_subjects, seed=request.seed)
+
+        return {
+            "data": df.to_dict(orient="records"),
+            "metadata": {
+                "records": len(df),
+                "subjects": request.n_subjects,
+                "visits_per_subject": 3,
+                "method": "statistical",
+                "columns": list(df.columns)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lab results generation failed: {str(e)}"
+        )
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)

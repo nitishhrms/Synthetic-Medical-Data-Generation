@@ -1,5 +1,8 @@
 # CLAUDE.md - Comprehensive Platform Reference for AI Assistants
 
+
+## !!!Important Note: You are not allowed make any changes in the backend code while doing the frontend development!!!
+
 ## 📋 Document Purpose
 
 This document provides a comprehensive reference of the **entire Synthetic Medical Data Generation platform** - both backend microservices and frontend React application. Use this as your primary reference when working on any part of the system to understand the architecture, conventions, and integration patterns.

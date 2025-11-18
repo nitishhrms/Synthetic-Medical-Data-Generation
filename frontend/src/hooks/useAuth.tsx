@@ -48,12 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Fallback: create minimal user object from login response
       console.warn("Could not fetch full user details, using minimal user object");
       setUser({
-        id: response.user_id,
         user_id: response.user_id,
         username: credentials.username,
-        email: "", // Not available without /auth/me
+        email: undefined, // Not available without /auth/me
         role: (response.roles[0] as "admin" | "researcher" | "viewer") || "researcher",
         tenant_id: "default",
+        created_at: undefined,
       });
     }
   };
