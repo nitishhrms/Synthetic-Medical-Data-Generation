@@ -162,7 +162,7 @@ export function Quality() {
             </Card>
           </div>
 
-          {validationResults.violations.length > 0 ? (
+          {validationResults.violations && validationResults.violations.length > 0 ? (
             <Card>
               <CardHeader>
                 <CardTitle>Validation Violations</CardTitle>
