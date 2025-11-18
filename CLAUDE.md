@@ -1,15 +1,15 @@
-# CLAUDE.md - Backend Reference for Frontend Development
+# CLAUDE.md - Comprehensive Platform Reference for AI Assistants
 
 
 ## !!!Important Note: You are not allowed make any changes in the backend code while doing the frontend development!!!
 
 ## 📋 Document Purpose
 
-This document provides a comprehensive reference of the **backend implementation** for the Synthetic Medical Data Generation platform. Use this as your primary reference when developing the frontend to avoid re-discovering backend details.
+This document provides a comprehensive reference of the **entire Synthetic Medical Data Generation platform** - both backend microservices and frontend React application. Use this as your primary reference when working on any part of the system to understand the architecture, conventions, and integration patterns.
 
-**Last Updated**: 2025-11-12
+**Last Updated**: 2025-11-15
 **Backend Status**: ✅ Complete (pending million-scale optimizations)
-**Frontend Status**: 🚧 To be implemented
+**Frontend Status**: ✅ Complete and Integrated
 
 ---
 
@@ -985,51 +985,103 @@ CREATE TABLE audit_log (
 
 ## 📁 File Structure
 
-### Critical Backend Files
+### Full Project Structure
 
 ```
 Synthetic-Medical-Data-Generation/
+├── frontend/                              # ✅ React + TypeScript frontend
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── layout/
+│   │   │   │   ├── TopAppBar.tsx         # Header with user info
+│   │   │   │   └── NavigationRail.tsx    # Sidebar navigation
+│   │   │   ├── screens/
+│   │   │   │   ├── Dashboard.tsx         # Landing page
+│   │   │   │   ├── DataGeneration.tsx    # 4 generation methods
+│   │   │   │   ├── Analytics.tsx         # Statistical analysis
+│   │   │   │   ├── Quality.tsx           # Edit checks
+│   │   │   │   ├── Studies.tsx           # Study management
+│   │   │   │   ├── Settings.tsx          # User settings
+│   │   │   │   ├── SystemCheck.tsx       # Health checks
+│   │   │   │   └── Login.tsx             # Authentication
+│   │   │   └── ui/                       # shadcn/ui components
+│   │   ├── contexts/
+│   │   │   └── DataContext.tsx           # Global state management
+│   │   ├── hooks/
+│   │   │   └── useAuth.tsx               # Auth hook
+│   │   ├── services/
+│   │   │   └── api.ts                    # API integration layer
+│   │   ├── types/
+│   │   │   └── index.ts                  # TypeScript types
+│   │   ├── App.tsx                       # Main app component
+│   │   ├── main.tsx                      # Entry point
+│   │   └── index.css                     # Global styles
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tsconfig.json
+│
 ├── microservices/
-│   ├── data-generation-service/
-│   │   └── src/
-│   │       ├── main.py                    # FastAPI app, generation endpoints
-│   │       ├── generators.py              # Core generation logic (MVN, Bootstrap, Rules)
-│   │       └── llm_generator.py           # LLM-based generation
+│   ├── api-gateway/                      # Port 8000 - Central routing
+│   │   └── src/main.py
 │   │
-│   ├── analytics-service/
+│   ├── data-generation-service/          # Port 8002
 │   │   └── src/
-│   │       ├── main.py                    # Analytics endpoints
-│   │       ├── stats.py                   # Statistical analysis functions
-│   │       ├── rbqm.py                    # RBQM calculations
-│   │       ├── csr.py                     # CSR generation
-│   │       └── sdtm.py                    # SDTM export logic
+│   │       ├── main.py                   # FastAPI app, generation endpoints
+│   │       ├── generators.py             # Core generation logic (MVN, Bootstrap, Rules)
+│   │       └── llm_generator.py          # LLM-based generation
 │   │
-│   ├── edc-service/
+│   ├── analytics-service/                # Port 8003
 │   │   └── src/
-│   │       ├── main.py                    # EDC endpoints
-│   │       └── models.py                  # Database models
+│   │       ├── main.py                   # Analytics endpoints
+│   │       ├── stats.py                  # Statistical analysis functions
+│   │       ├── rbqm.py                   # RBQM calculations
+│   │       ├── csr.py                    # CSR generation
+│   │       └── sdtm.py                   # SDTM export logic
 │   │
-│   ├── security-service/
+│   ├── edc-service/                      # Port 8004
 │   │   └── src/
-│   │       ├── main.py                    # Auth endpoints
-│   │       ├── auth.py                    # JWT handling
-│   │       └── encryption.py              # Data encryption (Fernet)
+│   │       ├── main.py                   # EDC endpoints
+│   │       ├── models.py                 # Database models
+│   │       └── repair.py                 # Data repair logic
 │   │
-│   └── quality-service/
-│       └── src/
-│           ├── main.py                    # Validation endpoints
-│           └── validators.py              # Validation logic
+│   ├── security-service/                 # Port 8005
+│   │   └── src/
+│   │       ├── main.py                   # Auth endpoints
+│   │       ├── auth.py                   # JWT handling
+│   │       └── encryption.py             # Data encryption (Fernet)
+│   │
+│   ├── quality-service/                  # Port 8006
+│   │   └── src/
+│   │       ├── main.py                   # Validation endpoints
+│   │       └── validators.py             # Validation logic
+│   │
+│   └── shared/                           # Shared utilities
 │
 ├── database/
-│   ├── init.sql                           # Database schema
-│   └── database.py                        # SQLAlchemy connection
+│   ├── init.sql                          # PostgreSQL schema
+│   ├── database.py                       # SQLAlchemy connection
+│   └── cache.py                          # Redis cache layer
 │
-└── data/
-    ├── pilot_trial_cleaned.csv            # Real data (945 records)
-    ├── pilot_trial.csv                    # Original real data (2,079 records)
-    ├── validate_and_repair_real_data.py   # Data cleaning script
-    ├── knn_imputation_analysis.py         # K-NN imputation analysis
-    └── streamlit_dashboard.py             # Existing dashboard (reference)
+├── data/
+│   ├── pilot_trial_cleaned.csv           # Real data (945 records)
+│   ├── pilot_trial.csv                   # Original real data (2,079 records)
+│   ├── validate_and_repair_real_data.py  # Data cleaning script
+│   ├── knn_imputation_analysis.py        # K-NN imputation analysis
+│   └── streamlit_dashboard.py            # Legacy dashboard (reference)
+│
+├── kubernetes/                           # K8s deployment manifests
+│   ├── deployments/
+│   ├── services/
+│   ├── hpa/
+│   └── configmaps/
+│
+├── terraform/                            # Infrastructure as code
+├── scripts/                              # Deployment scripts
+├── docker-compose.yml                    # Local development
+├── CLAUDE.md                             # This file - AI assistant reference
+├── FRONTEND_BACKEND_INTEGRATION_COMPLETE.md
+├── QUICKSTART_GUIDE.md
+└── README.md
 ```
 
 ### Important Code Locations
@@ -1168,12 +1220,75 @@ uvicorn main:app --reload --port 8004
    - ✅ Vitals validation
    - ✅ Range checks
    - ✅ Completeness checks
+   - ✅ YAML-based edit checks
 
 6. **Data Analysis**
    - ✅ Distribution comparisons
    - ✅ Column-level analysis
    - ✅ Multi-panel visualizations
    - ✅ K-NN imputation with MAR pattern
+
+### ✅ Completed (Frontend)
+
+1. **Core Infrastructure**
+   - ✅ React 19 + TypeScript setup
+   - ✅ Vite build configuration
+   - ✅ Tailwind CSS + shadcn/ui
+   - ✅ React Context API for state management
+   - ✅ API service layer with typed responses
+   - ✅ Environment configuration
+
+2. **Authentication & Layout**
+   - ✅ Login screen with JWT authentication
+   - ✅ User registration workflow
+   - ✅ TopAppBar with user info and logout
+   - ✅ NavigationRail with Material Design 3 styling
+   - ✅ Protected routes
+
+3. **Data Generation Screen**
+   - ✅ MVN generation method
+   - ✅ Bootstrap generation method
+   - ✅ Rules-based generation method
+   - ✅ LLM generation method (with API key input)
+   - ✅ Parameter configuration forms
+   - ✅ Data preview table (first 10 records)
+   - ✅ CSV download functionality
+   - ✅ Global state integration
+
+4. **Analytics Screen**
+   - ✅ Week-12 statistical analysis display
+   - ✅ Treatment effect results (Active vs Placebo)
+   - ✅ Comprehensive quality metrics
+   - ✅ Quality score interpretation
+   - ✅ Dataset summary cards
+   - ✅ Integration with generated data from context
+
+5. **Quality Screen**
+   - ✅ YAML-based edit checks validation
+   - ✅ Violation display with severity levels
+   - ✅ Quality score calculation
+   - ✅ Pass/fail indicators
+   - ✅ Separate from Analytics (as intended)
+
+6. **Studies Management**
+   - ✅ List all studies (card layout)
+   - ✅ Create new study (dialog form)
+   - ✅ Study details view
+   - ✅ Import synthetic data workflow
+   - ✅ Real-time updates after creation
+
+7. **Additional Screens**
+   - ✅ Dashboard with quick actions
+   - ✅ SystemCheck for service health
+   - ✅ Settings (placeholder)
+
+8. **UI/UX Features**
+   - ✅ Loading states on all async operations
+   - ✅ Error handling with user-friendly messages
+   - ✅ Material Design 3 styling
+   - ✅ Responsive design
+   - ✅ Gradient animations and hover effects
+   - ✅ Empty state handling
 
 ### 🚧 Pending (Future Enhancements)
 
@@ -1194,6 +1309,544 @@ uvicorn main:app --reload --port 8004
    - ❌ Auto-scaling
 
 **See**: `SCALING_TO_MILLIONS_GUIDE.md` for full roadmap
+
+---
+
+## 🎨 Frontend Architecture & Implementation
+
+### Overview
+
+The frontend is a **React 19 + TypeScript + Vite** application using **Material Design 3** principles with **shadcn/ui** components and **Tailwind CSS** for styling.
+
+**Status**: ✅ Fully implemented and integrated with all backend services
+**Deployment**: http://localhost:3001 (development)
+**Last Integration Update**: 2025-11-13
+
+### Technology Stack
+
+- **Framework**: React 19.2.0
+- **Language**: TypeScript 5.9.3
+- **Build Tool**: Vite 7.2.2
+- **Styling**: Tailwind CSS 4.1.17
+- **UI Components**: shadcn/ui (Radix UI primitives)
+- **Charts**: Recharts 3.4.1
+- **Icons**: lucide-react 0.553.0
+- **Date Utilities**: date-fns 4.1.0
+- **State Management**: React Context API
+
+### Project Structure
+
+```
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── TopAppBar.tsx           # Header with user info, logout
+│   │   │   └── NavigationRail.tsx      # Sidebar navigation with gradients
+│   │   ├── screens/
+│   │   │   ├── Dashboard.tsx           # Landing page with quick actions
+│   │   │   ├── DataGeneration.tsx      # 4 generation methods (MVN, Bootstrap, Rules, LLM)
+│   │   │   ├── Analytics.tsx           # Week-12 stats + quality metrics
+│   │   │   ├── Quality.tsx             # Edit checks validation (separate from Analytics)
+│   │   │   ├── Studies.tsx             # Study management + data import
+│   │   │   ├── Settings.tsx            # User settings (placeholder)
+│   │   │   ├── SystemCheck.tsx         # Service health checks
+│   │   │   └── Login.tsx               # Authentication
+│   │   └── ui/                         # shadcn/ui components
+│   │       ├── button.tsx
+│   │       ├── card.tsx
+│   │       ├── dialog.tsx
+│   │       ├── input.tsx
+│   │       ├── label.tsx
+│   │       ├── table.tsx
+│   │       └── badge.tsx
+│   ├── contexts/
+│   │   └── DataContext.tsx             # Global state management
+│   ├── hooks/
+│   │   └── useAuth.tsx                 # Authentication hook
+│   ├── services/
+│   │   └── api.ts                      # All API integrations (5 services)
+│   ├── types/
+│   │   └── index.ts                    # TypeScript type definitions
+│   ├── App.tsx                         # Main app with routing
+│   ├── main.tsx                        # Entry point
+│   └── index.css                       # Global styles + Tailwind
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── tailwind.config.js
+```
+
+### State Management Architecture
+
+**Pattern**: React Context API with custom hooks
+**File**: `frontend/src/contexts/DataContext.tsx`
+
+**Why Context API?**
+- No external state management library needed
+- Sufficient for current complexity
+- Type-safe with TypeScript
+- Easy to understand and maintain
+- Data persists across screen navigation
+
+**DataContext Provider Structure**:
+```typescript
+interface DataContextType {
+  // Generated Data
+  generatedData: VitalsRecord[] | null
+  setGeneratedData: (data: VitalsRecord[] | null) => void
+  generationMethod: string | null
+  setGenerationMethod: (method: string | null) => void
+
+  // Pilot/Real Data
+  pilotData: VitalsRecord[] | null
+  setPilotData: (data: VitalsRecord[] | null) => void
+
+  // Analytics Results
+  week12Stats: Week12StatsResponse | null
+  setWeek12Stats: (stats: Week12StatsResponse | null) => void
+  qualityMetrics: QualityAssessmentResponse | null
+  setQualityMetrics: (metrics: QualityAssessmentResponse | null) => void
+  pcaComparison: PCAComparisonResponse | null
+  setPcaComparison: (pca: PCAComparisonResponse | null) => void
+
+  // Quality/Validation Results
+  validationResults: ValidationResponse | null
+  setValidationResults: (results: ValidationResponse | null) => void
+
+  // Utility
+  clearAllData: () => void
+}
+```
+
+**Usage Pattern**:
+```typescript
+// In any component
+import { useData } from "@/contexts/DataContext";
+
+function MyComponent() {
+  const { generatedData, setGeneratedData } = useData();
+
+  // Generate data
+  const response = await dataGenerationApi.generateMVN(params);
+  setGeneratedData(response.data); // Stored globally
+
+  // Use in another component later
+  if (generatedData) {
+    // Run analytics, quality checks, or import to study
+  }
+}
+```
+
+### API Service Layer
+
+**File**: `frontend/src/services/api.ts`
+**Pattern**: Organized by microservice with typed responses
+
+**Service Groups**:
+1. **authApi** - Security Service (Port 8005)
+2. **dataGenerationApi** - Data Generation Service (Port 8002)
+3. **analyticsApi** - Analytics Service (Port 8003)
+4. **edcApi** - EDC Service (Port 8004)
+5. **qualityApi** - Quality Service (Port 8006)
+
+**Key Features**:
+- Environment variable configuration (VITE_*_URL)
+- Automatic JWT token handling
+- Type-safe request/response handling
+- Centralized error handling
+- Response normalization
+
+**Example Implementation**:
+```typescript
+// API Configuration
+const DATA_GEN_SERVICE = import.meta.env.VITE_DATA_GEN_URL || "http://localhost:8002";
+
+// Helper for auth headers
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem("token");
+  return {
+    "Content-Type": "application/json",
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+}
+
+// Typed API call
+export const dataGenerationApi = {
+  async generateMVN(params: GenerationRequest): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mvn`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse<GenerationResponse>(response);
+  }
+};
+```
+
+### Component Architecture
+
+**Pattern**: Functional components with hooks
+**Styling**: Tailwind CSS utility classes + Material Design 3 tokens
+**UI Components**: shadcn/ui (Radix UI primitives)
+
+**Screen Components** (7 main screens):
+
+1. **Dashboard** (`Dashboard.tsx`)
+   - Entry point after login
+   - Quick action cards (Generate, Analyze, Create Study)
+   - Navigation to main features
+   - Statistics overview cards
+
+2. **DataGeneration** (`DataGeneration.tsx`)
+   - Method selection tabs (MVN, Bootstrap, Rules, LLM)
+   - Parameter configuration forms
+   - Real-time generation with loading states
+   - Data preview table (first 10 records)
+   - CSV download functionality
+   - **Stores data in global context**
+
+3. **Analytics** (`Analytics.tsx`)
+   - Uses generated data from context
+   - Week-12 statistical analysis (t-test, p-value, CI)
+   - Treatment effect calculation (Active vs Placebo)
+   - Comprehensive quality metrics:
+     - Wasserstein distances
+     - RMSE by column
+     - Correlation preservation
+     - K-NN imputation score
+     - Overall quality score
+   - Dataset summary with subject counts
+
+4. **Quality** (`Quality.tsx`) - **SEPARATE FROM ANALYTICS**
+   - YAML-based edit checks validation
+   - Range checks, differential checks
+   - Violation display with severity levels
+   - Quality score calculation
+   - Pass/fail indicators
+
+5. **Studies** (`Studies.tsx`)
+   - List all studies (card layout)
+   - Create new study (dialog form)
+   - View study details
+   - Import synthetic data workflow
+   - Real-time updates
+
+6. **Settings** (`Settings.tsx`)
+   - User preferences (placeholder)
+   - System configuration
+
+7. **SystemCheck** (`SystemCheck.tsx`)
+   - Service health checks
+   - Backend connectivity status
+
+**Layout Components**:
+
+- **TopAppBar**: Header with user info, logout button
+- **NavigationRail**: Left sidebar with gradient styling, Material Design 3
+
+### Key Development Conventions
+
+#### 1. TypeScript Usage
+- **Strict mode enabled** (`tsconfig.json`)
+- All API responses typed (`types/index.ts`)
+- No `any` types except in legacy code
+- Interface over type for object shapes
+
+#### 2. Component Patterns
+```typescript
+// ✅ Preferred pattern
+interface MyComponentProps {
+  data: VitalsRecord[];
+  onUpdate: (data: VitalsRecord[]) => void;
+}
+
+export function MyComponent({ data, onUpdate }: MyComponentProps) {
+  const [loading, setLoading] = useState(false);
+
+  // Component logic
+
+  return (
+    <div className="p-4">
+      {/* JSX */}
+    </div>
+  );
+}
+```
+
+#### 3. Error Handling
+```typescript
+// ✅ Standard error handling pattern
+try {
+  setLoading(true);
+  const response = await api.someCall();
+  setData(response.data);
+} catch (error) {
+  console.error("Error:", error);
+  alert(error instanceof Error ? error.message : "An error occurred");
+} finally {
+  setLoading(false);
+}
+```
+
+#### 4. Loading States
+- Always show loading indicators for async operations
+- Disable buttons during loading
+- Use `Loader2` icon with spin animation
+- Example: `<Loader2 className="h-4 w-4 animate-spin" />`
+
+#### 5. Styling Conventions
+- Use Tailwind utility classes
+- Material Design 3 color tokens: `--color-primary`, `--color-secondary`
+- Gradient backgrounds on cards: `bg-gradient-to-r from-purple-500 to-pink-500`
+- Hover effects: `hover:scale-105 transition-transform`
+- Responsive classes: `lg:grid-cols-3 md:grid-cols-2`
+
+#### 6. File Naming
+- **Components**: PascalCase (`DataGeneration.tsx`)
+- **Hooks**: camelCase with `use` prefix (`useAuth.tsx`)
+- **Utilities**: camelCase (`api.ts`)
+- **Types**: camelCase (`index.ts`)
+
+#### 7. Import Organization
+```typescript
+// External imports
+import { useState, useEffect } from "react";
+import { Loader2, CheckCircle2 } from "lucide-react";
+
+// Internal imports
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { useData } from "@/contexts/DataContext";
+import { dataGenerationApi } from "@/services/api";
+import type { VitalsRecord, GenerationResponse } from "@/types";
+```
+
+### User Workflows
+
+#### Complete End-to-End Workflow
+
+**1. Authentication**
+```
+Login screen → Enter credentials → Authenticate → Dashboard
+OR
+Register → Fill form → Auto-login → Dashboard
+```
+
+**2. Generate Synthetic Data**
+```
+Dashboard → "Generate Synthetic Data" → DataGeneration screen
+→ Select method (MVN/Bootstrap/Rules/LLM)
+→ Configure parameters (n_per_arm, target_effect, seed)
+→ Click "Generate with [Method]"
+→ View data preview table
+→ (Optional) Download CSV
+→ Data stored in context for other screens
+```
+
+**3. Run Analytics**
+```
+Navigate to Analytics screen
+→ See "Analyze X generated records" message
+→ Click "Run Statistical Analysis"
+→ Wait for computation (2-3 seconds)
+→ View Week-12 statistics:
+  • Active vs Placebo comparison
+  • Mean SBP, confidence intervals
+  • p-value and statistical significance
+  • Clinical interpretation
+→ View comprehensive quality metrics:
+  • Overall quality score (0-1 scale)
+  • Wasserstein distances by column
+  • RMSE values
+  • Correlation preservation
+  • K-NN imputation score
+  • Euclidean distance statistics
+```
+
+**4. Validate Data Quality**
+```
+Navigate to Quality screen
+→ Click "Run Quality Checks"
+→ Wait for YAML-based validation
+→ View results:
+  • Total checks run
+  • Quality score percentage
+  • Pass/Fail status
+→ Review violations (if any):
+  • Subject ID
+  • Rule violated
+  • Severity level (error/warning/info)
+  • Descriptive message
+```
+
+**5. Manage Studies**
+```
+Navigate to Studies screen
+→ Click "Create Study"
+→ Fill in study details:
+  • Study name
+  • Indication (e.g., Hypertension)
+  • Phase (dropdown: Phase 1-4)
+  • Sponsor organization
+  • Start date (date picker)
+→ Click "Create Study"
+→ Study appears in list with card
+→ Click "Import Data" on study card
+→ Generated data imported with subjects
+→ Success message with subject/observation counts
+```
+
+### Critical Integration Points
+
+#### 1. Authentication Flow
+```typescript
+// Login → Store token → Include in all requests
+const response = await authApi.login({ username, password });
+localStorage.setItem("token", response.access_token);
+
+// All subsequent API calls include token automatically
+headers: {
+  "Authorization": `Bearer ${localStorage.getItem("token")}`
+}
+```
+
+#### 2. Data Generation → Analytics Flow
+```typescript
+// Generate data (DataGeneration.tsx)
+const response = await dataGenerationApi.generateMVN(params);
+setGeneratedData(response.data); // Stored in context
+
+// Use in Analytics (Analytics.tsx)
+const { generatedData } = useData();
+if (generatedData) {
+  const stats = await analyticsApi.getWeek12Stats({ vitals_data: generatedData });
+  setWeek12Stats(stats);
+}
+```
+
+#### 3. Data Generation → Studies Flow
+```typescript
+// Generate data first
+const response = await dataGenerationApi.generateMVN(params);
+setGeneratedData(response.data);
+
+// Import to study (Studies.tsx)
+const { generatedData } = useData();
+await edcApi.importSyntheticData(studyId, generatedData, "mvn");
+```
+
+### Environment Configuration
+
+**File**: `frontend/.env` (create from `.env.example`)
+
+```bash
+# Backend Service URLs
+VITE_DATA_GEN_URL=http://localhost:8002
+VITE_ANALYTICS_URL=http://localhost:8003
+VITE_EDC_URL=http://localhost:8004
+VITE_SECURITY_URL=http://localhost:8005
+VITE_QUALITY_URL=http://localhost:8006
+
+# Optional: API Gateway
+VITE_API_GATEWAY_URL=http://localhost:8000
+```
+
+### Development Commands
+
+```bash
+# Install dependencies
+cd frontend
+npm install
+
+# Run development server (http://localhost:3001)
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Lint code
+npm run lint
+
+# Type check
+npx tsc --noEmit
+```
+
+### Testing Strategy
+
+**Current Status**: Manual testing
+**Coverage**: All major workflows tested
+
+**Manual Test Checklist**:
+- [x] User registration and login
+- [x] Generate data with all 4 methods
+- [x] Data preview and CSV download
+- [x] Run statistical analysis
+- [x] Run quality checks
+- [x] Create study
+- [x] Import data to study
+- [x] Navigation between screens
+- [x] Data persistence across screens
+- [x] Error handling and loading states
+- [x] Logout and token expiration
+
+**Future**: Add automated tests (Jest, React Testing Library, Playwright)
+
+### UI/UX Design Principles
+
+1. **Material Design 3**
+   - Gradient navigation rail
+   - Colored gradient bars on cards
+   - Icon backgrounds with brand colors
+   - Scale animations on hover
+   - Subtle background gradients
+
+2. **Loading States**
+   - Spinner icons during async operations
+   - Disabled buttons when loading
+   - Skeleton loaders (future enhancement)
+
+3. **Error Handling**
+   - User-friendly error messages
+   - No technical jargon in user-facing errors
+   - Red destructive styling for errors
+
+4. **Empty States**
+   - Helpful messages when no data available
+   - Clear calls-to-action
+   - Example: "Generate data first to see analytics"
+
+5. **Feedback**
+   - Success indicators (CheckCircle2 icon)
+   - Loading spinners (Loader2 icon)
+   - Alert dialogs for confirmations
+   - Toast notifications (future enhancement)
+
+### Known Frontend Limitations
+
+1. **No Charts/Visualizations Yet**
+   - Recharts installed but not implemented
+   - PCA scatter plots pending
+   - Distribution histograms pending
+
+2. **Limited Error Recovery**
+   - Token expiration requires manual re-login
+   - No automatic retry for failed requests
+
+3. **No Pagination**
+   - Tables show all records (can be slow for large datasets)
+   - Future: Add pagination for 1000+ records
+
+4. **Settings Page Placeholder**
+   - User preferences not implemented
+   - Theme switching not available
+
+5. **No Real-time Updates**
+   - Manual refresh required for study list
+   - No WebSocket integration
 
 ---
 
@@ -1439,8 +2092,85 @@ curl -X POST http://localhost:8005/auth/login \
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-11-12
-**Status**: Backend complete, Frontend pending
-**Next Steps**: Begin frontend implementation using this reference
+**Document Version**: 2.0
+**Last Updated**: 2025-11-15
+**Status**: ✅ Full-stack implementation complete
+**Backend**: All 5 microservices operational
+**Frontend**: React application fully integrated
+**Integration**: Complete end-to-end workflows tested
+
+---
+
+## 🎯 AI Assistant Guidelines
+
+When working with this codebase, follow these principles:
+
+### 1. **Understand Before Modifying**
+- Always read relevant sections of this document before making changes
+- Check both backend and frontend sections for integration points
+- Review existing code patterns before implementing new features
+
+### 2. **Maintain Consistency**
+- Follow established naming conventions
+- Use existing patterns for new components/endpoints
+- Match the current code style and structure
+
+### 3. **Type Safety First**
+- Maintain TypeScript strict mode compliance
+- Define interfaces for all API contracts
+- Update type definitions in `frontend/src/types/index.ts`
+
+### 4. **Test Integration Points**
+- Verify backend endpoints before frontend integration
+- Test state management changes across multiple screens
+- Ensure authentication flows remain functional
+
+### 5. **Document Changes**
+- Update this CLAUDE.md when adding major features
+- Add inline comments for complex logic
+- Update API documentation for endpoint changes
+
+### 6. **Respect Architecture**
+- Keep frontend state management in Context API
+- Don't bypass the API service layer
+- Maintain microservices separation on backend
+- No direct database access from frontend
+
+### 7. **Common Tasks Reference**
+
+**Adding a new backend endpoint**:
+1. Add endpoint to appropriate service (`microservices/*/src/main.py`)
+2. Update API documentation (Swagger auto-generated)
+3. Add corresponding API call to `frontend/src/services/api.ts`
+4. Define TypeScript types in `frontend/src/types/index.ts`
+5. Test the endpoint with curl or Postman first
+6. Integrate into frontend component
+
+**Adding a new frontend screen**:
+1. Create component in `frontend/src/components/screens/`
+2. Add route in `App.tsx`
+3. Add navigation item in `NavigationRail.tsx`
+4. Use `useData()` hook for global state access
+5. Follow existing error handling patterns
+6. Add loading states for async operations
+
+**Modifying data models**:
+1. Update backend Pydantic models
+2. Update database schema if needed (`database/init.sql`)
+3. Update TypeScript interfaces (`frontend/src/types/index.ts`)
+4. Update API service layer calls
+5. Update affected components
+
+### 8. **Quick Reference URLs**
+
+- **Frontend Dev**: http://localhost:3001
+- **Backend APIs**: http://localhost:8002-8006
+- **API Docs**: http://localhost:800X/docs (replace X with service port)
+- **Documentation**: See `FRONTEND_BACKEND_INTEGRATION_COMPLETE.md`
+- **Quickstart**: See `QUICKSTART_GUIDE.md`
+
+---
+
+**Ready for**: Production deployment, feature enhancement, performance optimization
+**Next Milestones**: Charts/visualizations, million-scale generation, automated testing
 

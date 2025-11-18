@@ -14,7 +14,7 @@ export interface VitalsRecord {
 }
 
 // Generation Methods
-export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm";
+export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "diffusion" | "llm";
 
 // Generation Request
 export interface GenerationRequest {

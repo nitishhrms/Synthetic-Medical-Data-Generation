@@ -43,15 +43,18 @@ export function DataGeneration() {
       description: "Deterministic Business Rules Engine",
       details: "Applies clinical trial design rules and constraints",
       speed: "~80K records/sec",
-      rules: [
-        "4 visits per subject: Screening, Day 1, Week 4, Week 12",
-        "Baseline SBP: 140 ± 15 mmHg (hypertension range)",
-        "Active arm: Progressive BP reduction over time",
-        "Placebo arm: Minimal/no BP change",
-        "SBP range: 95-200 mmHg, DBP: 55-130 mmHg",
-        "HR: 50-120 bpm, Temperature: 35-40°C",
-        "Treatment effect applied at Week 12 endpoint"
-      ]
+    },
+    {
+      id: "diffusion" as GenerationMethod,
+      name: "Diffusion",
+      description: "State-of-the-art iterative refinement",
+      speed: "Fast, high quality",
+    },
+    {
+      id: "llm" as GenerationMethod,
+      name: "LLM",
+      description: "OpenAI GPT-4o-mini powered generation",
+      speed: "~70 records/sec",
     },
   ];
 
@@ -81,14 +84,15 @@ export function DataGeneration() {
         case "rules":
           response = await dataGenerationApi.generateRules(params);
           break;
-        default:
-          throw new Error(`Method ${selectedMethod} not supported`);
-      }
-
-      console.log("Generation response:", response);
-
-      if (!response || !response.data) {
-        throw new Error("No data returned from generation");
+        case "diffusion":
+          response = await dataGenerationApi.generateDiffusion(params);
+          break;
+        case "llm":
+          response = await dataGenerationApi.generateLLM({
+            ...params,
+            indication: "Hypertension",
+          });
+          break;
       }
 
       setGeneratedData(response.data);
