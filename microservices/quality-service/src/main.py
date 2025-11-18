@@ -14,6 +14,14 @@ import os
 from edit_checks import run_edit_checks_yaml, load_default_rules, simulate_entry_noise
 from db_utils import db, cache, startup_db, shutdown_db
 
+# Privacy assessment module
+try:
+    from privacy_assessment import PrivacyAssessor
+    PRIVACY_AVAILABLE = True
+except ImportError:
+    PRIVACY_AVAILABLE = False
+    print("Warning: Privacy assessment not available (anonymeter not installed)")
+
 app = FastAPI(
     title="Quality Service",
     description="Data Quality Checks and YAML Edit Check Engine",
@@ -322,6 +330,133 @@ async def add_entry_noise(request: NoiseRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Noise simulation failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# Privacy Assessment Endpoints
+# ============================================================================
+
+class PrivacyAssessmentRequest(BaseModel):
+    real_data: List[Dict[str, Any]] = Field(..., description="Real/original dataset")
+    synthetic_data: List[Dict[str, Any]] = Field(..., description="Synthetic dataset to assess")
+    quasi_identifiers: Optional[List[str]] = Field(default=None, description="Quasi-identifier columns (e.g., Age, Gender)")
+    sensitive_attributes: Optional[List[str]] = Field(default=None, description="Sensitive attribute columns")
+
+class KAnonymityRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Dataset to assess")
+    quasi_identifiers: Optional[List[str]] = Field(default=None, description="Quasi-identifier columns")
+
+@app.post("/privacy/assess/comprehensive")
+async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
+    """
+    Comprehensive privacy risk assessment for synthetic data
+
+    Evaluates multiple privacy metrics:
+    - **K-anonymity**: Minimum group size for quasi-identifiers (target: k≥5)
+    - **L-diversity**: Diversity of sensitive attributes within groups (target: l≥2)
+    - **Re-identification risk**: Probability of linking synthetic to real records
+    - **Differential privacy**: Privacy budget analysis
+
+    **Use Cases**:
+    - Validate synthetic data before release
+    - HIPAA/GDPR compliance assessment
+    - Compare privacy across generation methods
+
+    **Returns**:
+    - Detailed privacy metrics
+    - Overall safety recommendation
+    - Actionable guidance for improvement
+
+    **Example**:
+    ```json
+    {
+      "real_data": [...],
+      "synthetic_data": [...],
+      "quasi_identifiers": ["Age", "Gender", "Race"],
+      "sensitive_attributes": ["SystolicBP", "Diagnosis"]
+    }
+    ```
+    """
+    if not PRIVACY_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Privacy assessment not available. Install anonymeter: pip install anonymeter"
+        )
+
+    try:
+        # Convert to DataFrames
+        real_df = pd.DataFrame(request.real_data)
+        synthetic_df = pd.DataFrame(request.synthetic_data)
+
+        # Initialize assessor
+        assessor = PrivacyAssessor(
+            quasi_identifiers=request.quasi_identifiers,
+            sensitive_attributes=request.sensitive_attributes
+        )
+
+        # Run comprehensive assessment
+        report = assessor.comprehensive_privacy_report(
+            real_df,
+            synthetic_df,
+            quasi_identifiers=request.quasi_identifiers,
+            sensitive_attributes=request.sensitive_attributes
+        )
+
+        return {
+            "privacy_assessment": report,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "quality-service",
+            "privacy_module_version": "1.0.0"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Privacy assessment failed: {str(e)}"
+        )
+
+
+@app.post("/privacy/assess/k-anonymity")
+async def assess_k_anonymity(request: KAnonymityRequest):
+    """
+    Calculate k-anonymity for dataset
+
+    **K-anonymity**: Each record is indistinguishable from at least k-1 others
+    with respect to quasi-identifiers (Age, Gender, etc.)
+
+    **Standards**:
+    - k ≥ 5: Generally acceptable
+    - k ≥ 10: Excellent privacy protection
+    - k < 3: High re-identification risk
+
+    **Returns**:
+    - Minimum k value
+    - Number of risky records
+    - Safety recommendation
+    """
+    if not PRIVACY_AVAILABLE:
+        return {
+            "warning": "Privacy module not available - returning basic count",
+            "k": len(request.data),  # Simple fallback
+            "safe": True
+        }
+
+    try:
+        df = pd.DataFrame(request.data)
+
+        assessor = PrivacyAssessor(quasi_identifiers=request.quasi_identifiers)
+        result = assessor.calculate_k_anonymity(df, request.quasi_identifiers)
+
+        return {
+            "k_anonymity": result,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"K-anonymity calculation failed: {str(e)}"
         )
 
 

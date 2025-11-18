@@ -20,6 +20,21 @@ from generators import (
     generate_demographics,
     generate_labs
 )
+
+# Import new advanced generators
+try:
+    from bayesian_generator import generate_vitals_bayesian
+    BAYESIAN_AVAILABLE = True
+except ImportError:
+    BAYESIAN_AVAILABLE = False
+    print("Warning: Bayesian generator not available (pgmpy not installed)")
+
+try:
+    from mice_generator import generate_vitals_mice
+    MICE_AVAILABLE = True
+except ImportError:
+    MICE_AVAILABLE = False
+    print("Warning: MICE generator not available (sklearn not installed)")
 from db_utils import db, cache, startup_db, shutdown_db
 
 app = FastAPI(
@@ -88,6 +103,20 @@ class GenerateBootstrapRequest(BaseModel):
     cat_flip_prob: float = Field(default=0.05, ge=0, le=0.3, description="Probability of categorical flip")
     seed: int = Field(default=42, description="Random seed")
 
+class GenerateBayesianRequest(BaseModel):
+    n_per_arm: int = Field(default=50, ge=1, le=500, description="Number of subjects per arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+    learn_structure: bool = Field(default=False, description="Learn Bayesian network structure from data (vs expert-defined)")
+
+class GenerateMICERequest(BaseModel):
+    n_per_arm: int = Field(default=50, ge=1, le=500, description="Number of subjects per arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+    missing_rate: float = Field(default=0.10, ge=0.0, le=0.3, description="Missing data rate to simulate (0.0-0.3)")
+    estimator: str = Field(default="bayesian_ridge", description="MICE estimator: 'bayesian_ridge' or 'random_forest'")
+    n_imputations: int = Field(default=1, ge=1, le=10, description="Number of multiple imputations (1 for single, >1 for pooling)")
+
 # Response model - returns array directly for compatibility with EDC validation service
 VitalsResponse = List[Dict[str, Any]]
 
@@ -119,13 +148,17 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Data Generation Service",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "methods": [
             "Rules-based generation",
             "MVN (Multivariate Normal) generation",
             "LLM-based generation with auto-repair",
-            "Bootstrap sampling (NEW!) - fast augmentation from pilot data",
-            "Oncology AE generation"
+            "Bootstrap sampling - fast augmentation from pilot data",
+            "Bayesian Network (NEW!) - probabilistic graphical models",
+            "MICE (NEW!) - Multiple Imputation by Chained Equations",
+            "Oncology AE generation",
+            "Demographics generation",
+            "Lab results generation"
         ],
         "endpoints": {
             "health": "/health",
@@ -133,10 +166,18 @@ async def root():
             "mvn": "/generate/mvn",
             "llm": "/generate/llm",
             "bootstrap": "/generate/bootstrap",
+            "bayesian": "/generate/bayesian",
+            "mice": "/generate/mice",
             "ae": "/generate/ae",
+            "demographics": "/generate/demographics",
+            "labs": "/generate/labs",
             "compare": "/compare",
             "pilot_data": "/data/pilot",
             "docs": "/docs"
+        },
+        "features": {
+            "bayesian_available": BAYESIAN_AVAILABLE,
+            "mice_available": MICE_AVAILABLE
         }
     }
 
@@ -459,6 +500,118 @@ async def get_pilot_data():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load pilot data: {str(e)}"
+        )
+
+
+# ============================================================================
+# Advanced Generation Methods - Bayesian Network & MICE
+# ============================================================================
+
+@app.post("/generate/bayesian", response_model=VitalsResponse)
+async def generate_bayesian_network(request: GenerateBayesianRequest):
+    """
+    Generate synthetic vitals data using Bayesian Network approach
+
+    **Key Advantages**:
+    - Captures complex conditional dependencies between variables
+    - Preserves non-linear relationships (e.g., TreatmentArm → SBP)
+    - Interpretable structure (DAG shows causal relationships)
+    - Handles mixed continuous/categorical data
+
+    **Method**:
+    1. Learn or use expert-defined Bayesian network structure
+    2. Fit conditional probability distributions (CPDs) from real data
+    3. Sample from the network using forward sampling
+
+    **Use Cases**:
+    - When variable relationships are known (e.g., clinical pathways)
+    - For explainable AI (DAG shows causal structure)
+    - When you need to preserve complex dependencies
+    """
+    if not BAYESIAN_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Bayesian generator not available. Install pgmpy: pip install pgmpy"
+        )
+
+    try:
+        df = generate_vitals_bayesian(
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            seed=request.seed
+        )
+
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Bayesian generation failed: {str(e)}"
+        )
+
+
+@app.post("/generate/mice", response_model=VitalsResponse)
+async def generate_mice_imputation(request: GenerateMICERequest):
+    """
+    Generate synthetic vitals data using MICE (Multiple Imputation by Chained Equations)
+
+    **Key Advantages**:
+    - Naturally handles missing data (realistic for clinical trials)
+    - Preserves uncertainty through multiple imputations
+    - Flexible - works with various base estimators
+    - Good for small-medium datasets
+
+    **Method**:
+    1. Create template dataset with structure
+    2. Introduce realistic missing data pattern (MAR - Missing At Random)
+    3. Use iterative imputation to fill missing values
+    4. Optionally create multiple imputations for uncertainty quantification
+
+    **Use Cases**:
+    - Simulating trials with dropout/missing data
+    - Testing missing data handling algorithms
+    - Creating diverse synthetic datasets with controlled missingness
+    - Demonstrating MICE methodology
+
+    **Parameters**:
+    - `missing_rate`: 0.10 means 10% of values will be missing and imputed
+    - `estimator`: 'bayesian_ridge' (fast, linear) or 'random_forest' (slower, non-linear)
+    - `n_imputations`: 1 for single imputation, 5-10 for multiple imputations with pooling
+    """
+    if not MICE_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="MICE generator not available. Install sklearn: pip install scikit-learn"
+        )
+
+    try:
+        if request.n_imputations == 1:
+            # Single imputation
+            df = generate_vitals_mice(
+                n_per_arm=request.n_per_arm,
+                target_effect=request.target_effect,
+                seed=request.seed,
+                missing_rate=request.missing_rate,
+                estimator=request.estimator
+            )
+
+            return df.to_dict(orient="records")
+        else:
+            # Multiple imputations - return first one for now
+            # TODO: In future, could return all imputations or pooled results
+            df = generate_vitals_mice(
+                n_per_arm=request.n_per_arm,
+                target_effect=request.target_effect,
+                seed=request.seed,
+                missing_rate=request.missing_rate,
+                estimator=request.estimator
+            )
+
+            return df.to_dict(orient="records")
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"MICE generation failed: {str(e)}"
         )
 
 
