@@ -316,3 +316,12 @@ export const qualityApi = {
     return handleResponse(response);
   },
 };
+
+// Export all APIs as a default object for convenience
+export default {
+  auth: authApi,
+  dataGeneration: dataGenerationApi,
+  analytics: analyticsApi,
+  edc: edcApi,
+  quality: qualityApi,
+};
