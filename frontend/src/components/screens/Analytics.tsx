@@ -259,12 +259,17 @@ export function Analytics() {
 
   // Box plot data (showing quartiles, median, outliers)
   const boxPlotData = useMemo(() => {
-    if (!generatedData) return [];
+    if (!generatedData || generatedData.length === 0) return [];
 
     const week12Data = generatedData.filter(r => r.VisitName === "Week 12");
+    if (week12Data.length === 0) return [];
+
     const vitals = ['SystolicBP', 'DiastolicBP', 'HeartRate', 'Temperature'] as const;
 
     const calculateBoxPlotStats = (values: number[]) => {
+      if (!values || values.length === 0) {
+        return { min: 0, q1: 0, median: 0, q3: 0, max: 0 };
+      }
       const sorted = [...values].sort((a, b) => a - b);
       const q1 = sorted[Math.floor(sorted.length * 0.25)];
       const median = sorted[Math.floor(sorted.length * 0.5)];
@@ -275,8 +280,8 @@ export function Analytics() {
     };
 
     return vitals.map(vital => {
-      const activeValues = week12Data.filter(r => r.TreatmentArm === "Active").map(r => r[vital]);
-      const placeboValues = week12Data.filter(r => r.TreatmentArm === "Placebo").map(r => r[vital]);
+      const activeValues = week12Data.filter(r => r.TreatmentArm === "Active").map(r => r[vital]).filter(v => v != null);
+      const placeboValues = week12Data.filter(r => r.TreatmentArm === "Placebo").map(r => r[vital]).filter(v => v != null);
 
       const activeStats = calculateBoxPlotStats(activeValues);
       const placeboStats = calculateBoxPlotStats(placeboValues);
@@ -295,7 +300,7 @@ export function Analytics() {
 
   // BP Scatter (SBP vs DBP)
   const bpScatterData = useMemo(() => {
-    if (!generatedData) return { active: [], placebo: [] };
+    if (!generatedData || generatedData.length === 0) return { active: [], placebo: [] };
     const week12Data = generatedData.filter(r => r.VisitName === "Week 12");
 
     return {
@@ -310,9 +315,11 @@ export function Analytics() {
 
   // Subject-level trajectories (sample 5 subjects)
   const subjectTrajectories = useMemo(() => {
-    if (!generatedData) return [];
+    if (!generatedData || generatedData.length === 0) return [];
 
     const subjects = [...new Set(generatedData.map(r => r.SubjectID))].slice(0, 5);
+    if (subjects.length === 0) return [];
+
     const visitOrder = ["Screening", "Day 1", "Week 4", "Week 12"];
 
     return visitOrder.map(visit => {
@@ -684,24 +691,32 @@ export function Analytics() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={boxPlotData} layout="horizontal">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="vital" type="category" width={100} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="activeMedian" fill="#3b82f6" name="Active (Median)" />
-                    <Bar dataKey="placeboMedian" fill="#ef4444" name="Placebo (Median)" />
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <p className="text-sm font-medium mb-2">Interpretation:</p>
-                  <p className="text-sm text-muted-foreground">
-                    Median values represent the central tendency of each vital sign. Lower median SBP in Active arm
-                    confirms treatment efficacy. Overlapping ranges in other vitals demonstrate selective BP-lowering effect.
-                  </p>
-                </div>
+                {boxPlotData.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={boxPlotData} layout="horizontal">
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" />
+                        <YAxis dataKey="vital" type="category" width={100} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="activeMedian" fill="#3b82f6" name="Active (Median)" />
+                        <Bar dataKey="placeboMedian" fill="#ef4444" name="Placebo (Median)" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div className="mt-4 p-4 bg-muted rounded-lg">
+                      <p className="text-sm font-medium mb-2">Interpretation:</p>
+                      <p className="text-sm text-muted-foreground">
+                        Median values represent the central tendency of each vital sign. Lower median SBP in Active arm
+                        confirms treatment efficacy. Overlapping ranges in other vitals demonstrate selective BP-lowering effect.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No Week 12 data available for box plot analysis.
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -851,7 +866,7 @@ export function Analytics() {
                     <div className="grid gap-4 md:grid-cols-2 mb-6">
                       <div className="p-4 border rounded-lg">
                         <p className="text-sm font-medium mb-3">Wasserstein Distances (Distribution Similarity)</p>
-                        {Object.entries(qualityMetrics.wasserstein_distances).map(([key, value]) => (
+                        {qualityMetrics.wasserstein_distances && Object.entries(qualityMetrics.wasserstein_distances).map(([key, value]) => (
                           <div key={key} className="flex items-center justify-between text-sm mb-2">
                             <span className="text-muted-foreground">{key}</span>
                             <div className="flex items-center gap-2">
@@ -872,7 +887,7 @@ export function Analytics() {
 
                       <div className="p-4 border rounded-lg">
                         <p className="text-sm font-medium mb-3">K-NN Imputation RMSE (Prediction Accuracy)</p>
-                        {Object.entries(qualityMetrics.rmse_by_column).map(([key, value]) => (
+                        {qualityMetrics.rmse_by_column && Object.entries(qualityMetrics.rmse_by_column).map(([key, value]) => (
                           <div key={key} className="flex items-center justify-between text-sm mb-2">
                             <span className="text-muted-foreground">{key}</span>
                             <div className="flex items-center gap-2">
@@ -950,28 +965,32 @@ export function Analytics() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="p-4 border rounded-lg">
                         <h4 className="font-medium mb-3">Distance Statistics</h4>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Minimum Distance:</span>
-                            <span className="font-mono">{qualityMetrics.euclidean_distances.min_distance.toFixed(3)}</span>
+                        {qualityMetrics.euclidean_distances ? (
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Minimum Distance:</span>
+                              <span className="font-mono">{qualityMetrics.euclidean_distances.min_distance.toFixed(3)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Mean Distance:</span>
+                              <span className="font-mono">{qualityMetrics.euclidean_distances.mean_distance.toFixed(3)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Median Distance:</span>
+                              <span className="font-mono">{qualityMetrics.euclidean_distances.median_distance.toFixed(3)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Maximum Distance:</span>
+                              <span className="font-mono">{qualityMetrics.euclidean_distances.max_distance.toFixed(3)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Std Deviation:</span>
+                              <span className="font-mono">{qualityMetrics.euclidean_distances.std_distance.toFixed(3)}</span>
+                            </div>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Mean Distance:</span>
-                            <span className="font-mono">{qualityMetrics.euclidean_distances.mean_distance.toFixed(3)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Median Distance:</span>
-                            <span className="font-mono">{qualityMetrics.euclidean_distances.median_distance.toFixed(3)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Maximum Distance:</span>
-                            <span className="font-mono">{qualityMetrics.euclidean_distances.max_distance.toFixed(3)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Std Deviation:</span>
-                            <span className="font-mono">{qualityMetrics.euclidean_distances.std_distance.toFixed(3)}</span>
-                          </div>
-                        </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Distance data not available</p>
+                        )}
                       </div>
 
                       <div className="p-4 border rounded-lg">
@@ -1016,92 +1035,97 @@ export function Analytics() {
                       </p>
 
                       {/* RMSE by Vital Sign */}
-                      <div className="mb-6">
-                        <h5 className="text-sm font-medium mb-3">K-NN Imputation RMSE by Vital Sign (K=5)</h5>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <BarChart
-                            data={Object.entries(qualityMetrics.rmse_by_column).map(([vital, rmse]) => ({
-                              vital: vital.replace(/([A-Z])/g, ' $1').trim(),
-                              RMSE: Number(rmse.toFixed(2)),
-                              threshold: 10, // Good threshold
-                            }))}
-                            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis
-                              dataKey="vital"
-                              angle={-45}
-                              textAnchor="end"
-                              height={80}
-                              tick={{ fontSize: 12 }}
-                            />
-                            <YAxis label={{ value: 'RMSE (Lower = Better)', angle: -90, position: 'insideLeft' }} />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="RMSE" name="Imputation Error (RMSE)">
-                              {Object.entries(qualityMetrics.rmse_by_column).map((entry, index) => {
-                                const rmse = entry[1];
-                                const color = rmse < 5 ? '#10b981' : rmse < 10 ? '#f59e0b' : '#ef4444';
-                                return <Cell key={`cell-${index}`} fill={color} />;
-                              })}
-                            </Bar>
-                            <ReferenceLine y={5} stroke="#10b981" strokeDasharray="3 3" label="Excellent" />
-                            <ReferenceLine y={10} stroke="#f59e0b" strokeDasharray="3 3" label="Good" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
+                      {qualityMetrics.rmse_by_column && (
+                        <div className="mb-6">
+                          <h5 className="text-sm font-medium mb-3">K-NN Imputation RMSE by Vital Sign (K=5)</h5>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart
+                              data={Object.entries(qualityMetrics.rmse_by_column).map(([vital, rmse]) => ({
+                                vital: vital.replace(/([A-Z])/g, ' $1').trim(),
+                                RMSE: Number(rmse.toFixed(2)),
+                                threshold: 10, // Good threshold
+                              }))}
+                              margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="vital"
+                                angle={-45}
+                                textAnchor="end"
+                                height={80}
+                                tick={{ fontSize: 12 }}
+                              />
+                              <YAxis label={{ value: 'RMSE (Lower = Better)', angle: -90, position: 'insideLeft' }} />
+                              <Tooltip />
+                              <Legend />
+                              <Bar dataKey="RMSE" name="Imputation Error (RMSE)">
+                                {Object.entries(qualityMetrics.rmse_by_column).map((entry, index) => {
+                                  const rmse = entry[1];
+                                  const color = rmse < 5 ? '#10b981' : rmse < 10 ? '#f59e0b' : '#ef4444';
+                                  return <Cell key={`cell-${index}`} fill={color} />;
+                                })}
+                              </Bar>
+                              <ReferenceLine y={5} stroke="#10b981" strokeDasharray="3 3" label="Excellent" />
+                              <ReferenceLine y={10} stroke="#f59e0b" strokeDasharray="3 3" label="Good" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
 
                       {/* Wasserstein Distance by Vital Sign */}
-                      <div className="mb-6">
-                        <h5 className="text-sm font-medium mb-3">Distribution Match Quality (Wasserstein Distance)</h5>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <BarChart
-                            data={Object.entries(qualityMetrics.wasserstein_distances).map(([vital, distance]) => ({
-                              vital: vital.replace(/([A-Z])/g, ' $1').trim(),
-                              Distance: Number(distance.toFixed(2)),
-                            }))}
-                            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis
-                              dataKey="vital"
-                              angle={-45}
-                              textAnchor="end"
-                              height={80}
-                              tick={{ fontSize: 12 }}
-                            />
-                            <YAxis label={{ value: 'Wasserstein Distance (Lower = Better)', angle: -90, position: 'insideLeft' }} />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="Distance" name="Distribution Distance">
-                              {Object.entries(qualityMetrics.wasserstein_distances).map((entry, index) => {
-                                const distance = entry[1];
-                                const color = distance < 5 ? '#10b981' : distance < 10 ? '#f59e0b' : '#ef4444';
-                                return <Cell key={`cell-${index}`} fill={color} />;
-                              })}
-                            </Bar>
-                            <ReferenceLine y={5} stroke="#10b981" strokeDasharray="3 3" label="Excellent" />
-                            <ReferenceLine y={10} stroke="#f59e0b" strokeDasharray="3 3" label="Good" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
+                      {qualityMetrics.wasserstein_distances && (
+                        <div className="mb-6">
+                          <h5 className="text-sm font-medium mb-3">Distribution Match Quality (Wasserstein Distance)</h5>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart
+                              data={Object.entries(qualityMetrics.wasserstein_distances).map(([vital, distance]) => ({
+                                vital: vital.replace(/([A-Z])/g, ' $1').trim(),
+                                Distance: Number(distance.toFixed(2)),
+                              }))}
+                              margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="vital"
+                                angle={-45}
+                                textAnchor="end"
+                                height={80}
+                                tick={{ fontSize: 12 }}
+                              />
+                              <YAxis label={{ value: 'Wasserstein Distance (Lower = Better)', angle: -90, position: 'insideLeft' }} />
+                              <Tooltip />
+                              <Legend />
+                              <Bar dataKey="Distance" name="Distribution Distance">
+                                {Object.entries(qualityMetrics.wasserstein_distances).map((entry, index) => {
+                                  const distance = entry[1];
+                                  const color = distance < 5 ? '#10b981' : distance < 10 ? '#f59e0b' : '#ef4444';
+                                  return <Cell key={`cell-${index}`} fill={color} />;
+                                })}
+                              </Bar>
+                              <ReferenceLine y={5} stroke="#10b981" strokeDasharray="3 3" label="Excellent" />
+                              <ReferenceLine y={10} stroke="#f59e0b" strokeDasharray="3 3" label="Good" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
 
                       {/* Quality Score Summary */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-lg text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Avg RMSE</p>
-                          <p className="text-2xl font-bold text-green-700 dark:text-green-400">
-                            {(Object.values(qualityMetrics.rmse_by_column).reduce((a, b) => a + b, 0) / Object.values(qualityMetrics.rmse_by_column).length).toFixed(2)}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">Imputation accuracy</p>
-                        </div>
-                        <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Avg Wasserstein</p>
-                          <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
-                            {(Object.values(qualityMetrics.wasserstein_distances).reduce((a, b) => a + b, 0) / Object.values(qualityMetrics.wasserstein_distances).length).toFixed(2)}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">Distribution match</p>
-                        </div>
+                      {qualityMetrics.rmse_by_column && qualityMetrics.wasserstein_distances && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-lg text-center">
+                            <p className="text-xs text-muted-foreground mb-1">Avg RMSE</p>
+                            <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                              {(Object.values(qualityMetrics.rmse_by_column).reduce((a, b) => a + b, 0) / Object.values(qualityMetrics.rmse_by_column).length).toFixed(2)}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">Imputation accuracy</p>
+                          </div>
+                          <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-center">
+                            <p className="text-xs text-muted-foreground mb-1">Avg Wasserstein</p>
+                            <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">
+                              {(Object.values(qualityMetrics.wasserstein_distances).reduce((a, b) => a + b, 0) / Object.values(qualityMetrics.wasserstein_distances).length).toFixed(2)}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">Distribution match</p>
+                          </div>
                         <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border border-purple-200 dark:border-purple-800 rounded-lg text-center">
                           <p className="text-xs text-muted-foreground mb-1">K-NN Score</p>
                           <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">
@@ -1194,26 +1218,32 @@ export function Analytics() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <LineChart data={subjectTrajectories}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="visit" />
-                    <YAxis label={{ value: 'Systolic BP (mmHg)', angle: -90, position: 'insideLeft' }} />
-                    <Tooltip />
-                    <Legend />
-                    {Object.keys(subjectTrajectories[0] || {}).filter(k => k !== 'visit').map((subjectId, idx) => (
-                      <Line
-                        key={subjectId}
-                        type="monotone"
-                        dataKey={subjectId}
-                        stroke={`hsl(${idx * 60}, 70%, 50%)`}
-                        strokeWidth={2}
-                        dot={{ r: 4 }}
-                        name={`Subject ${subjectId}`}
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
+                {subjectTrajectories.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={400}>
+                    <LineChart data={subjectTrajectories}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="visit" />
+                      <YAxis label={{ value: 'Systolic BP (mmHg)', angle: -90, position: 'insideLeft' }} />
+                      <Tooltip />
+                      <Legend />
+                      {Object.keys(subjectTrajectories[0] || {}).filter(k => k !== 'visit').map((subjectId, idx) => (
+                        <Line
+                          key={subjectId}
+                          type="monotone"
+                          dataKey={subjectId}
+                          stroke={`hsl(${idx * 60}, 70%, 50%)`}
+                          strokeWidth={2}
+                          dot={{ r: 4 }}
+                          name={`Subject ${subjectId}`}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No trajectory data available. Generate data with multiple visits first.
+                  </div>
+                )}
                 <div className="mt-4 p-4 bg-muted rounded-lg">
                   <p className="text-sm font-medium mb-2">Clinical Insights:</p>
                   <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
