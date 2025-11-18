@@ -157,6 +157,22 @@ export const dataGenerationApi = {
     return handleResponse(response);
   },
 
+  async generateDiffusion(params: GenerationRequest): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/diffusion`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "diffusion",
+      },
+    };
+  },
+
   async compareMethods(params: GenerationRequest): Promise<any> {
     const response = await fetch(`${DATA_GEN_SERVICE}/compare?${new URLSearchParams(params as any)}`, {
       headers: getAuthHeaders(),

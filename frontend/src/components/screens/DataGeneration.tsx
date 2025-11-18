@@ -40,6 +40,12 @@ export function DataGeneration() {
       speed: "~80K records/sec",
     },
     {
+      id: "diffusion" as GenerationMethod,
+      name: "Diffusion",
+      description: "State-of-the-art iterative refinement",
+      speed: "Fast, high quality",
+    },
+    {
       id: "llm" as GenerationMethod,
       name: "LLM",
       description: "OpenAI GPT-4o-mini powered generation",
@@ -69,6 +75,9 @@ export function DataGeneration() {
           break;
         case "rules":
           response = await dataGenerationApi.generateRules(params);
+          break;
+        case "diffusion":
+          response = await dataGenerationApi.generateDiffusion(params);
           break;
         case "llm":
           response = await dataGenerationApi.generateLLM({
