@@ -13,7 +13,6 @@ import daft
 from datetime import datetime
 import uvicorn
 import os
-import sentry_sdk
 import json
 import tempfile
 
@@ -21,15 +20,7 @@ from daft_processor import DaftMedicalDataProcessor
 from daft_aggregations import DaftAggregator
 from daft_udfs import MedicalUDFs, AdvancedMedicalUDFs
 
-# ==================== Sentry Initialization ====================
-
-sentry_sdk.init(
-    dsn="https://ad29eaef4a806c3f27f5f2181373aa36@o4510369986904064.ingest.us.sentry.io/4510369988018176",
-    traces_sample_rate=1.0,
-    profiles_sample_rate=1.0,
-    send_default_pii=True,
-    environment=os.getenv("ENVIRONMENT", "development"),
-)
+# ==================== FastAPI Application ====================
 
 app = FastAPI(
     title="Daft Analytics Service",
