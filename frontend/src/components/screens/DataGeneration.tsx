@@ -178,7 +178,7 @@ export function DataGeneration() {
               ))}
             </div>
 
-            {selectedMethodDetails && selectedMethodDetails.rules.length > 0 && (
+            {selectedMethodDetails && selectedMethodDetails.rules && selectedMethodDetails.rules.length > 0 && (
               <Card className="bg-muted/50">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
