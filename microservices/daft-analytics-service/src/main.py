@@ -16,9 +16,9 @@ import os
 import json
 import tempfile
 
-from daft_processor import DaftMedicalDataProcessor
-from daft_aggregations import DaftAggregator
-from daft_udfs import MedicalUDFs, AdvancedMedicalUDFs
+from .daft_processor import DaftMedicalDataProcessor
+from .daft_aggregations import DaftAggregator
+from .daft_udfs import MedicalUDFs, AdvancedMedicalUDFs
 
 # ==================== FastAPI Application ====================
 
