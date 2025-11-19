@@ -18,6 +18,7 @@ Usage:
 import os
 import sys
 import json
+import math
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -36,11 +37,15 @@ AACT_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def safe_float(val):
-    """Safely convert to float, return None if invalid"""
+    """Safely convert to float, return None if invalid (including NaN/inf)"""
     try:
         if val is None or val == '' or val == 'NA':
             return None
-        return float(val)
+        result = float(val)
+        # Check if result is NaN or infinite
+        if math.isnan(result) or math.isinf(result):
+            return None
+        return result
     except:
         return None
 
@@ -53,6 +58,31 @@ def safe_int(val):
         return int(val)
     except:
         return None
+
+
+def is_plausible_vital(vital_type: str, value: float) -> bool:
+    """
+    Validate that a vital sign value is physiologically plausible.
+    Filters out lab values, counts, or other measurements that matched keywords.
+
+    Ranges are intentionally wide to capture extreme but real clinical values.
+    """
+    if value is None:
+        return False
+
+    # Physiological ranges (wide to avoid false negatives)
+    plausible_ranges = {
+        'systolic': (70, 250),      # mmHg - captures hypertensive emergencies
+        'diastolic': (40, 150),     # mmHg - captures extreme cases
+        'heart_rate': (30, 200),    # bpm - captures bradycardia to severe tachycardia
+        'temperature': (32.0, 42.0) # °C - captures hypothermia to hyperthermia
+    }
+
+    if vital_type not in plausible_ranges:
+        return False
+
+    min_val, max_val = plausible_ranges[vital_type]
+    return min_val <= value <= max_val
 
 
 def process_comprehensive_aact():
@@ -160,8 +190,25 @@ def process_comprehensive_aact():
 
     print(f"   ✅ Mapped {len(nct_to_indication):,} trials to indications")
 
-    # Create mapping of NCT_ID → phase
-    nct_to_phase = dict(zip(studies_df['nct_id'], studies_df['phase']))
+    # Normalize phases in studies_df
+    phase_map = {
+        'PHASE1': 'Phase 1',
+        'PHASE2': 'Phase 2',
+        'PHASE3': 'Phase 3',
+        'PHASE4': 'Phase 4',
+        'Phase 1': 'Phase 1',
+        'Phase 2': 'Phase 2',
+        'Phase 3': 'Phase 3',
+        'Phase 4': 'Phase 4',
+        'N/A': None,
+        'NA': None
+    }
+    studies_df['normalized_phase'] = studies_df['phase'].map(phase_map)
+
+    # Create mapping of NCT_ID → normalized phase
+    nct_to_phase = dict(zip(studies_df['nct_id'], studies_df['normalized_phase']))
+
+    print(f"   ✅ Normalized phases for {studies_df['normalized_phase'].notna().sum():,} trials")
 
     # ==========================================================================
     # STEP 2: Process Baseline Measurements (⭐⭐⭐⭐⭐ CRITICAL)
@@ -193,6 +240,7 @@ def process_comprehensive_aact():
 
         # Process each baseline measurement
         processed_count = 0
+        rejected_count = 0
         for _, row in baseline_df.iterrows():
             nct_id = row.get('nct_id')
             title = str(row.get('title', '')).lower()
@@ -203,26 +251,24 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             # Match to vital type
             for vital_type, keywords in vital_keywords.items():
                 if any(kw in title or kw in category for kw in keywords):
+                    # Validate physiological plausibility
+                    if not is_plausible_vital(vital_type, param_value):
+                        rejected_count += 1
+                        continue
+
                     # Store value for each indication
                     for indication in indications:
-                        if phase:
+                        if phase:  # Only if phase is valid (Phase 1-4)
                             baseline_stats[indication][phase][vital_type].append(param_value)
                             processed_count += 1
 
         print(f"   ✅ Processed {processed_count:,} vital sign measurements")
+        print(f"   🚫 Rejected {rejected_count:,} implausible values (out of range)")
 
         # Calculate statistics
         for indication in statistics.get('indications', {}).keys():
@@ -274,7 +320,11 @@ def process_comprehensive_aact():
             dropouts_df = pd.read_csv(dropouts_path, delimiter="|", low_memory=False)
             print(f"   ✅ Loaded {len(dropouts_df):,} dropout records with pandas")
 
+        valid_dropout_count = 0
+        total_dropout_rows = 0
+
         for _, row in dropouts_df.iterrows():
+            total_dropout_rows += 1
             nct_id = row.get('nct_id')
             count = safe_int(row.get('count'))
             reason = str(row.get('reason', 'Unknown')).strip()
@@ -283,20 +333,16 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             if phase:
                 for indication in indications:
                     dropout_stats[indication][phase]['dropouts'] += count
                     dropout_stats[indication][phase]['reasons'][reason] += count
+                    valid_dropout_count += 1
+
+        print(f"   📊 Processed {total_dropout_rows:,} dropout rows")
+        print(f"      ✓ Valid dropouts collected: {valid_dropout_count:,}")
 
         # Also get total enrollment for dropout rate calculation
         joined = studies_df.merge(conditions_df, on='nct_id', how='inner')
@@ -305,10 +351,12 @@ def process_comprehensive_aact():
                 joined['downcase_name'].str.contains(indication, case=False, na=False)
             ]
             for phase in ['Phase 1', 'Phase 2', 'Phase 3', 'Phase 4']:
-                phase_data = indication_data[indication_data['phase'] == phase]
-                if len(phase_data) > 0:
+                # Use normalized_phase column
+                phase_data = indication_data[indication_data['normalized_phase'] == phase]
+                if len(phase_data) > 0 and 'enrollment' in phase_data.columns:
                     total_enrollment = phase_data['enrollment'].sum(skipna=True)
-                    dropout_stats[indication][phase]['total_subjects'] = int(total_enrollment)
+                    if total_enrollment > 0:
+                        dropout_stats[indication][phase]['total_subjects'] = int(total_enrollment)
 
         # Calculate dropout rates
         for indication in statistics.get('indications', {}).keys():
@@ -379,15 +427,7 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             if phase:
                 for indication in indications:
@@ -463,15 +503,7 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             if phase:
                 for indication in indications:
@@ -524,32 +556,42 @@ def process_comprehensive_aact():
             outcomes_df = pd.read_csv(outcomes_path, delimiter="|", low_memory=False)
             print(f"   ✅ Loaded {len(outcomes_df):,} outcome measurements with pandas")
 
+        valid_values_count = 0
+        total_rows = 0
+        skipped_no_value = 0
+        skipped_no_keywords = 0
+
         for _, row in outcomes_df.iterrows():
+            total_rows += 1
             nct_id = row.get('nct_id')
             param_value = safe_float(row.get('param_value_num'))
             title = str(row.get('title', '')).lower()
 
-            if nct_id not in nct_to_indication or param_value is None:
+            if nct_id not in nct_to_indication:
                 continue
 
-            # Look for treatment difference/change keywords
-            if not any(kw in title for kw in ['change', 'difference', 'reduction', 'improvement']):
+            if param_value is None:
+                skipped_no_value += 1
+                continue
+
+            # Look for treatment difference/change keywords (relaxed filtering)
+            if not any(kw in title for kw in ['change', 'difference', 'reduction', 'improvement',
+                                               'decrease', 'increase', 'effect', 'response']):
+                skipped_no_keywords += 1
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             if phase:
                 for indication in indications:
                     treatment_effects[indication][phase].append(param_value)
+                    valid_values_count += 1
+
+        print(f"   📊 Processed {total_rows:,} outcome rows")
+        print(f"      ✓ Valid values collected: {valid_values_count:,}")
+        print(f"      ⚠ Skipped (no numeric value): {skipped_no_value:,}")
+        print(f"      ⚠ Skipped (no keywords): {skipped_no_keywords:,}")
 
         # Calculate statistics
         for indication in statistics.get('indications', {}).keys():
