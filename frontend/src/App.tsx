@@ -6,6 +6,7 @@ import { Dashboard } from "@/components/screens/Dashboard";
 import { DataGeneration } from "@/components/screens/DataGeneration";
 import { Analytics } from "@/components/screens/Analytics";
 import { QualityDashboard } from "@/components/screens/QualityDashboard";
+import { TrialPlanning } from "@/components/screens/TrialPlanning";
 import { Studies } from "@/components/screens/Studies";
 import { Settings } from "@/components/screens/Settings";
 import { SystemCheck } from "@/components/screens/SystemCheck";
@@ -64,12 +65,7 @@ function AppContent() {
       case "quality":
         return <QualityDashboard />;
       case "trial-planning":
-        return (
-          <div className="p-8">
-            <h2 className="text-3xl font-bold">Trial Planning</h2>
-            <p className="text-muted-foreground">Coming soon: Virtual control arms and what-if scenarios</p>
-          </div>
-        );
+        return <TrialPlanning />;
       case "rbqm":
         return <RBQMDashboard />;
       case "queries":

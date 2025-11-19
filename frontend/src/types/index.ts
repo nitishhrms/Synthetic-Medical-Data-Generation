@@ -225,148 +225,115 @@ export interface QualityReportResponse {
 // ============================================================================
 
 export interface VirtualControlArmRequest {
-  n_subjects: number;
-  real_control_data?: VitalsRecord[];
+  historical_data: VitalsRecord[];
+  n_control: number;
+  target_effect: number;
+  baseline_mean_sbp: number;
+  baseline_std_sbp: number;
   seed?: number;
 }
 
 export interface VirtualControlArmResponse {
-  virtual_control_arm: VitalsRecord[];
-  metadata: {
-    n_subjects: number;
-    total_records: number;
-    visits: string[];
-    learned_from_real_data: boolean;
+  virtual_control_data: VitalsRecord[];
+  summary: {
+    virtual_control: {
+      mean_sbp: number;
+      std_sbp: number;
+    };
   };
-  timestamp: string;
+  quality_metrics: {
+    similarity_score: number;
+    wasserstein_distance: number;
+    correlation_preservation: number;
+  };
+  use_case: string;
+  timestamp?: string;
 }
 
 export interface AugmentControlArmRequest {
   real_control_data: VitalsRecord[];
-  target_n: number;
+  n_synthetic: number;
+  target_effect: number;
   seed?: number;
 }
 
 export interface AugmentControlArmResponse {
-  augmented_control_arm: VitalsRecord[];
-  augmentation_statistics: {
+  augmented_data: VitalsRecord[];
+  summary: {
     n_real: number;
-    n_virtual: number;
-    n_total: number;
-    augmentation_ratio: number;
-    augmentation_needed: boolean;
-    message: string;
+    n_synthetic: number;
+    n_combined: number;
+    real_only: {
+      mean_sbp: number;
+      std_sbp: number;
+    };
+    augmented: {
+      mean_sbp: number;
+      std_sbp: number;
+    };
   };
-  metadata: {
-    total_records: number;
-    visits: string[];
+  quality_metrics: {
+    similarity_score: number;
+    wasserstein_distance: number;
   };
-  timestamp: string;
+  timestamp?: string;
 }
 
 export interface WhatIfEnrollmentRequest {
-  baseline_data: VitalsRecord[];
-  enrollment_sizes?: number[];
+  historical_data: VitalsRecord[];
+  baseline_n: number;
+  scenarios: number[];
   target_effect: number;
-  n_simulations?: number;
   seed?: number;
 }
 
 export interface WhatIfEnrollmentResponse {
-  what_if_analysis: {
-    scenarios: {
-      [key: string]: {
-        n_per_arm: number;
-        total_n: number;
-        power: number;
-        required_for_80pct_power: boolean;
-        required_for_90pct_power: boolean;
-      };
-    };
-    recommendation: string;
-    parameters: {
-      target_effect: number;
-      baseline_mean: number;
-      baseline_std: number;
-      n_simulations: number;
-    };
-  };
-  timestamp: string;
+  scenarios: Array<{
+    n_per_arm: number;
+    power: number;
+    significant: boolean;
+    p_value: number;
+    effect: number;
+  }>;
+  recommendation: string;
+  timestamp?: string;
 }
 
 export interface WhatIfPatientMixRequest {
-  baseline_data: VitalsRecord[];
-  severity_shifts?: number[];
-  n_per_arm: number;
+  historical_data: VitalsRecord[];
+  n_per_scenario: number;
+  baseline_sbp_scenarios: number[];
   target_effect: number;
-  n_simulations?: number;
   seed?: number;
 }
 
 export interface WhatIfPatientMixResponse {
-  what_if_analysis: {
-    scenarios: {
-      [key: string]: {
-        baseline_sbp_shift: number;
-        adjusted_baseline_sbp: number;
-        severity: string;
-        power: number;
-        mean_effect_estimate: number;
-        effect_estimate_std: number;
-      };
-    };
-    interpretation: string;
-    parameters: {
-      n_per_arm: number;
-      target_effect: number;
-      baseline_mean: number;
-      n_simulations: number;
-    };
-  };
-  timestamp: string;
+  scenarios: Array<{
+    baseline_sbp: number;
+    population_type: string;
+    effect: number;
+    significant: boolean;
+    p_value: number;
+  }>;
+  recommendation: string;
+  timestamp?: string;
 }
 
 export interface FeasibilityAssessmentRequest {
-  baseline_data: VitalsRecord[];
   target_effect: number;
-  power?: number;
-  dropout_rate?: number;
+  expected_std: number;
   alpha?: number;
+  power?: number;
+  allocation_ratio?: number;
 }
 
 export interface FeasibilityAssessmentResponse {
-  feasibility_assessment: {
-    sample_size: {
-      n_per_arm: number;
-      n_per_arm_with_dropout: number;
-      total_n: number;
-      total_n_with_dropout: number;
-      effect_size_cohens_d: number;
-      dropout_rate: number;
-      power: number;
-      alpha: number;
-    };
-    timeline: {
-      enrollment_duration_months: number;
-      treatment_duration_months: number;
-      total_duration_months: number;
-      total_duration_years: number;
-      sites: number;
-      enrollment_rate_per_site_per_month: number;
-      total_enrollment_rate: number;
-    };
-    feasibility: {
-      feasible: boolean;
-      risk_level: string;
-      recommendation: string;
-    };
-    parameters: {
-      target_effect: number;
-      baseline_std: number;
-      power: number;
-      alpha: number;
-      dropout_rate: number;
-    };
-  };
-  timestamp: string;
+  required_n_per_arm: number;
+  total_n: number;
+  effect_size_cohens_d: number;
+  feasibility: string;
+  interpretation: string;
+  assumptions: string[];
+  recommendation: string;
+  timestamp?: string;
 }
