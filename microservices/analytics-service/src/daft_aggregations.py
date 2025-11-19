@@ -170,25 +170,25 @@ class DaftAggregator:
             'endpoint': endpoint,
             'visit': visit,
             'active': {
-                'n': len(active),
+                'n': int(len(active)),
                 'mean': float(active.mean()),
                 'std': float(active.std()),
-                'se': se_active
+                'se': float(se_active)
             },
             'placebo': {
-                'n': len(placebo),
+                'n': int(len(placebo)),
                 'mean': float(placebo.mean()),
                 'std': float(placebo.std()),
-                'se': se_placebo
+                'se': float(se_placebo)
             },
             'treatment_effect': {
-                'difference': mean_diff,
-                'se_difference': se_diff,
+                'difference': float(mean_diff),
+                'se_difference': float(se_diff),
                 't_statistic': float(t_stat),
                 'p_value': float(p_value),
-                'ci_95_lower': ci_95_lower,
-                'ci_95_upper': ci_95_upper,
-                'significant': p_value < 0.05
+                'ci_95_lower': float(ci_95_lower),
+                'ci_95_upper': float(ci_95_upper),
+                'significant': bool(p_value < 0.05)
             }
         }
 
