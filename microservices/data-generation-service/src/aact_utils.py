@@ -1,16 +1,40 @@
 """
-AACT Statistics Loader - Industry benchmarks from 400K+ ClinicalTrials.gov trials
+AACT Statistics Loader - Industry benchmarks from 557K+ ClinicalTrials.gov trials
 
 This module provides access to cached statistics extracted from the AACT database,
 which contains comprehensive data from ClinicalTrials.gov.
+
+Data extracted from 17 AACT files:
+- Baseline vitals (SBP, DBP, HR, Temperature)
+- Dropout patterns and reasons
+- Adverse event frequencies
+- Site count distributions
+- Treatment effect sizes
+- Demographics (age, gender, actual duration)
+- Treatment arm configurations (arm types, N ratios)
+- Geographic distribution (countries)
+- Baseline characteristics (disease severity, etc.)
+- Disease taxonomy (MeSH terms)
+- Study design types
+- Endpoint timing
+- Common drug names
 
 Usage:
     from aact_utils import get_aact_loader
 
     aact = get_aact_loader()
+
+    # Basic queries
     indications = aact.get_available_indications()
     stats = aact.get_enrollment_stats("hypertension", "Phase 3")
     defaults = aact.get_realistic_defaults("hypertension", "Phase 3")
+
+    # Real clinical data (NEW in v4.0)
+    demographics = aact.get_demographics("hypertension", "Phase 3")
+    arms = aact.get_treatment_arms("hypertension", "Phase 3")
+    geo = aact.get_geographic_distribution("hypertension", "Phase 3")
+    baseline = aact.get_baseline_characteristics("hypertension", "Phase 3")
+    taxonomy = aact.get_disease_taxonomy("hypertension")
 """
 
 import json
@@ -346,6 +370,295 @@ class AACTStatisticsLoader:
         else:  # Phase 4
             return {'mean': 25.0, 'median': 20.0, 'std': 15.0, 'q25': 10.0, 'q75': 35.0, 'min': 1, 'max': 100, 'n_trials': 0}
 
+    def get_demographics(self, indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+        """
+        Get pre-computed demographics from AACT calculated_values data
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+
+        Returns:
+            Dict with demographic statistics:
+            {
+                'age': {
+                    'median_years': float,
+                    'mean_years': float,
+                    'n_studies': int
+                },
+                'gender': {
+                    'all_percentage': float,
+                    'male_percentage': float,
+                    'female_percentage': float,
+                    'n_studies': int
+                },
+                'actual_duration': {
+                    'median_months': float,
+                    'mean_months': float,
+                    'n_studies': int
+                }
+            }
+        """
+        if not self.statistics or 'indications' not in self.statistics:
+            return self._get_default_demographics()
+
+        indication_data = self.statistics['indications'].get(indication.lower(), {})
+        demo_data = indication_data.get('demographics', {}).get(phase, {})
+
+        if not demo_data:
+            warnings.warn(
+                f"No demographics data for {indication} {phase}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_demographics()
+
+        return demo_data
+
+    def _get_default_demographics(self) -> Dict[str, Any]:
+        """Fallback demographics when AACT data unavailable"""
+        return {
+            'age': {
+                'median_years': 55.0,
+                'mean_years': 56.0,
+                'n_studies': 0
+            },
+            'gender': {
+                'all_percentage': 100.0,
+                'male_percentage': 50.0,
+                'female_percentage': 50.0,
+                'n_studies': 0
+            },
+            'actual_duration': {
+                'median_months': 12.0,
+                'mean_months': 14.0,
+                'n_studies': 0
+            }
+        }
+
+    def get_treatment_arms(self, indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+        """
+        Get treatment arm configurations from AACT design_groups data
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+
+        Returns:
+            Dict with treatment arm information:
+            {
+                'arm_type_distribution': {
+                    'EXPERIMENTAL': float (0-1),
+                    'PLACEBO_COMPARATOR': float (0-1),
+                    'ACTIVE_COMPARATOR': float (0-1),
+                    ...
+                },
+                'common_arm_names': [
+                    {'name': str, 'frequency': int},
+                    ...
+                ],
+                'typical_n_arms': int,
+                'n_studies': int
+            }
+        """
+        if not self.statistics or 'indications' not in self.statistics:
+            return self._get_default_treatment_arms()
+
+        indication_data = self.statistics['indications'].get(indication.lower(), {})
+        arms_data = indication_data.get('treatment_arms', {}).get(phase, {})
+
+        if not arms_data:
+            warnings.warn(
+                f"No treatment arms data for {indication} {phase}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_treatment_arms()
+
+        return arms_data
+
+    def _get_default_treatment_arms(self) -> Dict[str, Any]:
+        """Fallback treatment arms when AACT data unavailable"""
+        return {
+            'arm_type_distribution': {
+                'EXPERIMENTAL': 0.5,
+                'PLACEBO_COMPARATOR': 0.3,
+                'ACTIVE_COMPARATOR': 0.15,
+                'NO_INTERVENTION': 0.05
+            },
+            'common_arm_names': [
+                {'name': 'Experimental Drug', 'frequency': 100},
+                {'name': 'Placebo', 'frequency': 80},
+                {'name': 'Active Comparator', 'frequency': 50}
+            ],
+            'typical_n_arms': 2,
+            'n_studies': 0
+        }
+
+    def get_geographic_distribution(self, indication: str, phase: str = "Phase 3", top_n: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get geographic distribution of trial sites from AACT countries data
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+            top_n: Number of top countries to return (default: 20)
+
+        Returns:
+            List of country dicts:
+            [
+                {
+                    'country': str,
+                    'percentage': float (0-1)
+                },
+                ...
+            ]
+        """
+        if not self.statistics or 'indications' not in self.statistics:
+            return self._get_default_geographic_distribution()
+
+        indication_data = self.statistics['indications'].get(indication.lower(), {})
+        geo_data = indication_data.get('geographic_distribution', {}).get(phase, [])
+
+        if not geo_data:
+            warnings.warn(
+                f"No geographic distribution data for {indication} {phase}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_geographic_distribution()
+
+        return geo_data[:top_n]
+
+    def _get_default_geographic_distribution(self) -> List[Dict[str, Any]]:
+        """Fallback geographic distribution when AACT data unavailable"""
+        return [
+            {'country': 'United States', 'percentage': 0.45},
+            {'country': 'Canada', 'percentage': 0.10},
+            {'country': 'United Kingdom', 'percentage': 0.08},
+            {'country': 'Germany', 'percentage': 0.07},
+            {'country': 'France', 'percentage': 0.06},
+            {'country': 'Spain', 'percentage': 0.05},
+            {'country': 'Italy', 'percentage': 0.04},
+            {'country': 'China', 'percentage': 0.04},
+            {'country': 'Japan', 'percentage': 0.03},
+            {'country': 'Australia', 'percentage': 0.03}
+        ]
+
+    def get_baseline_characteristics(self, indication: str, phase: str = "Phase 3", top_n: int = 10) -> Dict[str, Dict[str, float]]:
+        """
+        Get baseline characteristic distributions from AACT baseline_counts data
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+            top_n: Number of top characteristics to return (default: 10)
+
+        Returns:
+            Dict mapping characteristic names to their distributions:
+            {
+                'Age': {
+                    '<65': 0.60,
+                    '>=65': 0.40
+                },
+                'Disease Severity': {
+                    'Mild': 0.30,
+                    'Moderate': 0.50,
+                    'Severe': 0.20
+                },
+                ...
+            }
+        """
+        if not self.statistics or 'indications' not in self.statistics:
+            return self._get_default_baseline_characteristics()
+
+        indication_data = self.statistics['indications'].get(indication.lower(), {})
+        baseline_data = indication_data.get('baseline_characteristics', {}).get(phase, {})
+
+        if not baseline_data:
+            warnings.warn(
+                f"No baseline characteristics data for {indication} {phase}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_baseline_characteristics()
+
+        # Return top N characteristics (sorted by key for consistency)
+        sorted_chars = sorted(baseline_data.items())
+        return dict(sorted_chars[:top_n])
+
+    def _get_default_baseline_characteristics(self) -> Dict[str, Dict[str, float]]:
+        """Fallback baseline characteristics when AACT data unavailable"""
+        return {
+            'Age': {
+                '<65': 0.60,
+                '>=65': 0.40
+            },
+            'Gender': {
+                'Male': 0.52,
+                'Female': 0.48
+            },
+            'Race': {
+                'White': 0.75,
+                'Black or African American': 0.13,
+                'Asian': 0.08,
+                'Other': 0.04
+            }
+        }
+
+    def get_disease_taxonomy(self, indication: str, max_terms: int = 50) -> Dict[str, Any]:
+        """
+        Get MeSH disease taxonomy from AACT browse_conditions data
+
+        NOTE: This data is stored at the root level (not per phase) since
+        MeSH terms describe the disease itself, not the trial phase.
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            max_terms: Maximum number of MeSH terms to return (default: 50)
+
+        Returns:
+            Dict with taxonomy information:
+            {
+                'mesh_terms': List[str],
+                'term_count': int,
+                'n_studies': int
+            }
+        """
+        if not self.statistics or 'disease_taxonomy' not in self.statistics:
+            return self._get_default_disease_taxonomy(indication)
+
+        taxonomy_data = self.statistics['disease_taxonomy'].get(indication.lower(), {})
+
+        if not taxonomy_data:
+            warnings.warn(
+                f"No disease taxonomy data for {indication}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_disease_taxonomy(indication)
+
+        # Limit to max_terms
+        mesh_terms = taxonomy_data.get('mesh_terms', [])[:max_terms]
+
+        return {
+            'mesh_terms': mesh_terms,
+            'term_count': len(mesh_terms),
+            'n_studies': taxonomy_data.get('n_studies', 0)
+        }
+
+    def _get_default_disease_taxonomy(self, indication: str) -> Dict[str, Any]:
+        """Fallback disease taxonomy when AACT data unavailable"""
+        # Provide generic MeSH terms by indication
+        default_terms = {
+            'hypertension': ['hypertension', 'blood pressure', 'essential hypertension', 'systolic pressure', 'diastolic pressure'],
+            'diabetes': ['diabetes mellitus', 'type 2 diabetes', 'hyperglycemia', 'insulin resistance', 'glucose metabolism'],
+            'cancer': ['neoplasms', 'carcinoma', 'tumor', 'malignancy', 'oncology']
+        }
+
+        terms = default_terms.get(indication.lower(), [indication.lower()])
+
+        return {
+            'mesh_terms': terms,
+            'term_count': len(terms),
+            'n_studies': 0
+        }
+
     def get_realistic_defaults(self, indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
         """
         Get realistic trial parameters informed by AACT statistics
@@ -482,3 +795,28 @@ def get_enrollment_stats(indication: str, phase: str = "Phase 3") -> Dict[str, A
 def get_realistic_defaults(indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
     """Convenience function to get realistic defaults"""
     return get_aact_loader().get_realistic_defaults(indication, phase)
+
+
+def get_demographics(indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+    """Convenience function to get demographics data"""
+    return get_aact_loader().get_demographics(indication, phase)
+
+
+def get_treatment_arms(indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+    """Convenience function to get treatment arm configurations"""
+    return get_aact_loader().get_treatment_arms(indication, phase)
+
+
+def get_geographic_distribution(indication: str, phase: str = "Phase 3", top_n: int = 20) -> List[Dict[str, Any]]:
+    """Convenience function to get geographic distribution"""
+    return get_aact_loader().get_geographic_distribution(indication, phase, top_n)
+
+
+def get_baseline_characteristics(indication: str, phase: str = "Phase 3", top_n: int = 10) -> Dict[str, Dict[str, float]]:
+    """Convenience function to get baseline characteristic distributions"""
+    return get_aact_loader().get_baseline_characteristics(indication, phase, top_n)
+
+
+def get_disease_taxonomy(indication: str, max_terms: int = 50) -> Dict[str, Any]:
+    """Convenience function to get disease taxonomy (MeSH terms)"""
+    return get_aact_loader().get_disease_taxonomy(indication, max_terms)
