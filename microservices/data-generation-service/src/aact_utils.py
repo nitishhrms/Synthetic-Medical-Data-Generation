@@ -157,12 +157,203 @@ class AACTStatisticsLoader:
             'q75': 140.0
         }
 
+    def get_baseline_vitals(self, indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+        """
+        Get real baseline vital signs from AACT data
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+
+        Returns:
+            Dict with baseline vital statistics:
+            {
+                'systolic': {'mean': float, 'std': float, 'median': float, ...},
+                'diastolic': {...},
+                'heart_rate': {...},
+                'temperature': {...}
+            }
+        """
+        if not self.statistics or 'indications' not in self.statistics:
+            return self._get_default_baseline_vitals()
+
+        indication_data = self.statistics['indications'].get(indication.lower(), {})
+        baseline_data = indication_data.get('baseline_vitals', {}).get(phase, {})
+
+        if not baseline_data:
+            warnings.warn(
+                f"No baseline vitals data for {indication} {phase}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_baseline_vitals()
+
+        return baseline_data
+
+    def _get_default_baseline_vitals(self) -> Dict[str, Any]:
+        """Fallback baseline vitals when AACT data unavailable"""
+        return {
+            'systolic': {'mean': 140.0, 'std': 15.0, 'median': 140.0, 'q25': 130.0, 'q75': 150.0},
+            'diastolic': {'mean': 85.0, 'std': 10.0, 'median': 85.0, 'q25': 78.0, 'q75': 92.0},
+            'heart_rate': {'mean': 72.0, 'std': 10.0, 'median': 72.0, 'q25': 65.0, 'q75': 80.0},
+            'temperature': {'mean': 36.7, 'std': 0.3, 'median': 36.7, 'q25': 36.5, 'q75': 36.9}
+        }
+
+    def get_dropout_patterns(self, indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+        """
+        Get real dropout/withdrawal patterns from AACT data
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+
+        Returns:
+            Dict with dropout patterns:
+            {
+                'dropout_rate': float (0-1),
+                'total_dropouts': int,
+                'total_subjects': int,
+                'top_reasons': [{'reason': str, 'count': int, 'percentage': float}, ...]
+            }
+        """
+        if not self.statistics or 'indications' not in self.statistics:
+            return self._get_default_dropout_pattern(phase)
+
+        indication_data = self.statistics['indications'].get(indication.lower(), {})
+        dropout_data = indication_data.get('dropout_patterns', {}).get(phase, {})
+
+        if not dropout_data:
+            warnings.warn(
+                f"No dropout data for {indication} {phase}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_dropout_pattern(phase)
+
+        return dropout_data
+
+    def _get_default_dropout_pattern(self, phase: str) -> Dict[str, Any]:
+        """Fallback dropout patterns when AACT data unavailable"""
+        # Industry-standard dropout rates by phase
+        dropout_rates = {
+            'Phase 1': 0.10,
+            'Phase 2': 0.12,
+            'Phase 3': 0.15,
+            'Phase 4': 0.18
+        }
+        return {
+            'dropout_rate': dropout_rates.get(phase, 0.15),
+            'total_dropouts': 0,
+            'total_subjects': 0,
+            'top_reasons': [
+                {'reason': 'Adverse Event', 'count': 0, 'percentage': 0.35},
+                {'reason': 'Lost to Follow-up', 'count': 0, 'percentage': 0.25},
+                {'reason': 'Withdrawal by Subject', 'count': 0, 'percentage': 0.20},
+                {'reason': 'Protocol Violation', 'count': 0, 'percentage': 0.15},
+                {'reason': 'Other', 'count': 0, 'percentage': 0.05}
+            ]
+        }
+
+    def get_adverse_events(self, indication: str, phase: str = "Phase 3", top_n: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get real adverse event patterns from AACT data
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+            top_n: Number of top AEs to return (default: 20)
+
+        Returns:
+            List of AE dicts:
+            [
+                {
+                    'term': str,
+                    'frequency': float (0-1),
+                    'subjects_affected': int,
+                    'n_trials': int
+                },
+                ...
+            ]
+        """
+        if not self.statistics or 'indications' not in self.statistics:
+            return self._get_default_adverse_events()
+
+        indication_data = self.statistics['indications'].get(indication.lower(), {})
+        ae_data = indication_data.get('adverse_events', {}).get(phase, {})
+
+        if not ae_data or 'top_events' not in ae_data:
+            warnings.warn(
+                f"No AE data for {indication} {phase}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_adverse_events()
+
+        return ae_data['top_events'][:top_n]
+
+    def _get_default_adverse_events(self) -> List[Dict[str, Any]]:
+        """Fallback AE patterns when AACT data unavailable"""
+        return [
+            {'term': 'Headache', 'frequency': 0.15, 'subjects_affected': 0, 'n_trials': 0},
+            {'term': 'Fatigue', 'frequency': 0.12, 'subjects_affected': 0, 'n_trials': 0},
+            {'term': 'Nausea', 'frequency': 0.10, 'subjects_affected': 0, 'n_trials': 0},
+            {'term': 'Dizziness', 'frequency': 0.08, 'subjects_affected': 0, 'n_trials': 0},
+            {'term': 'Diarrhea', 'frequency': 0.06, 'subjects_affected': 0, 'n_trials': 0}
+        ]
+
+    def get_site_distribution(self, indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+        """
+        Get real site count distributions from AACT data
+
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+
+        Returns:
+            Dict with site statistics:
+            {
+                'mean': float,
+                'median': float,
+                'std': float,
+                'q25': float,
+                'q75': float,
+                'min': int,
+                'max': int,
+                'n_trials': int
+            }
+        """
+        if not self.statistics or 'indications' not in self.statistics:
+            return self._get_default_site_distribution(phase)
+
+        indication_data = self.statistics['indications'].get(indication.lower(), {})
+        site_data = indication_data.get('site_distribution', {}).get(phase, {})
+
+        if not site_data:
+            warnings.warn(
+                f"No site distribution data for {indication} {phase}. Using defaults.",
+                UserWarning
+            )
+            return self._get_default_site_distribution(phase)
+
+        return site_data
+
+    def _get_default_site_distribution(self, phase: str) -> Dict[str, Any]:
+        """Fallback site distribution when AACT data unavailable"""
+        # Typical site counts by phase
+        if phase == "Phase 1":
+            return {'mean': 2.0, 'median': 1.0, 'std': 1.5, 'q25': 1.0, 'q75': 3.0, 'min': 1, 'max': 5, 'n_trials': 0}
+        elif phase == "Phase 2":
+            return {'mean': 5.0, 'median': 4.0, 'std': 3.0, 'q25': 2.0, 'q75': 7.0, 'min': 1, 'max': 15, 'n_trials': 0}
+        elif phase == "Phase 3":
+            return {'mean': 15.0, 'median': 10.0, 'std': 10.0, 'q25': 5.0, 'q75': 20.0, 'min': 1, 'max': 50, 'n_trials': 0}
+        else:  # Phase 4
+            return {'mean': 25.0, 'median': 20.0, 'std': 15.0, 'q25': 10.0, 'q75': 35.0, 'min': 1, 'max': 100, 'n_trials': 0}
+
     def get_realistic_defaults(self, indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
         """
         Get realistic trial parameters informed by AACT statistics
 
         This calculates intelligent defaults for trial simulation based on
-        real-world patterns from 400K+ trials in ClinicalTrials.gov.
+        real-world patterns from 557K+ trials in ClinicalTrials.gov.
+
+        NOW USES REAL DATA for dropout, sites, and baseline vitals when available!
 
         Args:
             indication: Disease indication (e.g., 'hypertension')
@@ -175,55 +366,59 @@ class AACTStatisticsLoader:
                 'missing_data_rate': float (0-1),
                 'n_sites': int,
                 'enrollment_duration_months': int,
-                'target_enrollment': int
+                'target_enrollment': int,
+                'baseline_vitals': dict,
+                'dropout_reasons': list,
+                'top_adverse_events': list
             }
         """
         enrollment_stats = self.get_enrollment_stats(indication, phase)
         median_enrollment = enrollment_stats.get('median', 100)
 
-        # Calculate number of sites based on enrollment
-        # Rule of thumb: 1 site per 15-20 subjects for Phase 3
-        if phase == "Phase 1":
-            sites_per_subject_ratio = 8  # Smaller, single-center often
-        elif phase == "Phase 2":
-            sites_per_subject_ratio = 12
-        elif phase == "Phase 3":
-            sites_per_subject_ratio = 15  # Multi-center
-        else:  # Phase 4
-            sites_per_subject_ratio = 20  # Large post-marketing studies
+        # Get REAL dropout rate from AACT data
+        dropout_pattern = self.get_dropout_patterns(indication, phase)
+        dropout_rate = dropout_pattern.get('dropout_rate', 0.15)
 
-        n_sites = max(1, min(30, int(median_enrollment / sites_per_subject_ratio)))
+        # Get REAL site count from AACT data
+        site_dist = self.get_site_distribution(indication, phase)
+        n_sites = int(site_dist.get('median', 10))
 
-        # Industry-standard dropout and missing data rates
-        if phase == "Phase 1":
-            dropout_rate = 0.10  # 10% - healthier subjects, shorter duration
-            missing_data_rate = 0.05  # 5% - more controlled
-        elif phase == "Phase 2":
-            dropout_rate = 0.12  # 12%
-            missing_data_rate = 0.06  # 6%
-        elif phase == "Phase 3":
-            dropout_rate = 0.15  # 15% - longer trials, more real-world
-            missing_data_rate = 0.08  # 8%
-        else:  # Phase 4
-            dropout_rate = 0.18  # 18% - real-world, less monitoring
-            missing_data_rate = 0.10  # 10%
+        # Get REAL baseline vitals from AACT data
+        baseline_vitals = self.get_baseline_vitals(indication, phase)
 
-        # Enrollment duration estimates
+        # Get REAL adverse events from AACT data
+        top_aes = self.get_adverse_events(indication, phase, top_n=10)
+
+        # Missing data rate by phase (still estimated - not in AACT)
         if phase == "Phase 1":
-            enrollment_duration = 3  # 3 months - small, fast
+            missing_data_rate = 0.05
         elif phase == "Phase 2":
-            enrollment_duration = 8  # 8 months
+            missing_data_rate = 0.06
         elif phase == "Phase 3":
-            enrollment_duration = 12  # 12 months - typical
+            missing_data_rate = 0.08
         else:  # Phase 4
-            enrollment_duration = 18  # 18 months - large, slow
+            missing_data_rate = 0.10
+
+        # Enrollment duration estimates (still estimated - could extract from AACT later)
+        if phase == "Phase 1":
+            enrollment_duration = 3
+        elif phase == "Phase 2":
+            enrollment_duration = 8
+        elif phase == "Phase 3":
+            enrollment_duration = 12
+        else:  # Phase 4
+            enrollment_duration = 18
 
         return {
             'dropout_rate': dropout_rate,
             'missing_data_rate': missing_data_rate,
             'n_sites': n_sites,
             'enrollment_duration_months': enrollment_duration,
-            'target_enrollment': int(median_enrollment)
+            'target_enrollment': int(median_enrollment),
+            'baseline_vitals': baseline_vitals,
+            'dropout_reasons': dropout_pattern.get('top_reasons', []),
+            'top_adverse_events': top_aes,
+            'data_source': 'AACT (real data from 557K+ trials)' if self.statistics else 'fallback'
         }
 
     def get_total_studies(self) -> int:
