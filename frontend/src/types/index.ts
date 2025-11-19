@@ -14,7 +14,7 @@ export interface VitalsRecord {
 }
 
 // Generation Methods
-export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm";
+export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm" | "bayesian" | "mice";
 
 // Generation Request
 export interface GenerationRequest {
@@ -25,6 +25,10 @@ export interface GenerationRequest {
   indication?: string; // for LLM
   api_key?: string; // for LLM
   model?: string; // for LLM
+  learn_structure?: boolean; // for bayesian
+  missing_rate?: number; // for MICE
+  estimator?: string; // for MICE - "bayesian_ridge" or "random_forest"
+  n_imputations?: number; // for MICE
 }
 
 // Generation Response
@@ -170,4 +174,199 @@ export interface PCAComparisonResponse {
   synthetic_pca: Array<{ pca1: number; pca2: number }>;
   explained_variance: number[];
   quality_score: number;
+}
+
+// ============================================================================
+// SYNDATA Quality Metrics Types
+// ============================================================================
+
+export interface SYNDATAMetricsResponse {
+  syndata_metrics: {
+    support_coverage: {
+      overall_score: number;
+      by_variable: { [key: string]: number };
+    };
+    cross_classification: {
+      utility_score: number;
+      joint_distribution_similarity: number;
+    };
+    ci_coverage: {
+      overall_coverage: number;
+      by_variable: { [key: string]: number };
+      meets_cart_standard: boolean; // 88-98%
+      interpretation: string;
+    };
+    membership_disclosure: {
+      disclosure_risk: number;
+      classifier_accuracy: number;
+      safe: boolean;
+    };
+    attribute_disclosure: {
+      disclosure_risk: number;
+      prediction_accuracy: number;
+      safe: boolean;
+    };
+    overall_syndata_score: number;
+    grade: "A" | "B" | "C" | "D" | "F";
+  };
+  timestamp: string;
+  service: string;
+}
+
+export interface QualityReportResponse {
+  report: string; // Markdown formatted report
+  method: GenerationMethod;
+  timestamp: string;
+  service: string;
+}
+
+// ============================================================================
+// Trial Planning Types
+// ============================================================================
+
+export interface VirtualControlArmRequest {
+  n_subjects: number;
+  real_control_data?: VitalsRecord[];
+  seed?: number;
+}
+
+export interface VirtualControlArmResponse {
+  virtual_control_arm: VitalsRecord[];
+  metadata: {
+    n_subjects: number;
+    total_records: number;
+    visits: string[];
+    learned_from_real_data: boolean;
+  };
+  timestamp: string;
+}
+
+export interface AugmentControlArmRequest {
+  real_control_data: VitalsRecord[];
+  target_n: number;
+  seed?: number;
+}
+
+export interface AugmentControlArmResponse {
+  augmented_control_arm: VitalsRecord[];
+  augmentation_statistics: {
+    n_real: number;
+    n_virtual: number;
+    n_total: number;
+    augmentation_ratio: number;
+    augmentation_needed: boolean;
+    message: string;
+  };
+  metadata: {
+    total_records: number;
+    visits: string[];
+  };
+  timestamp: string;
+}
+
+export interface WhatIfEnrollmentRequest {
+  baseline_data: VitalsRecord[];
+  enrollment_sizes?: number[];
+  target_effect: number;
+  n_simulations?: number;
+  seed?: number;
+}
+
+export interface WhatIfEnrollmentResponse {
+  what_if_analysis: {
+    scenarios: {
+      [key: string]: {
+        n_per_arm: number;
+        total_n: number;
+        power: number;
+        required_for_80pct_power: boolean;
+        required_for_90pct_power: boolean;
+      };
+    };
+    recommendation: string;
+    parameters: {
+      target_effect: number;
+      baseline_mean: number;
+      baseline_std: number;
+      n_simulations: number;
+    };
+  };
+  timestamp: string;
+}
+
+export interface WhatIfPatientMixRequest {
+  baseline_data: VitalsRecord[];
+  severity_shifts?: number[];
+  n_per_arm: number;
+  target_effect: number;
+  n_simulations?: number;
+  seed?: number;
+}
+
+export interface WhatIfPatientMixResponse {
+  what_if_analysis: {
+    scenarios: {
+      [key: string]: {
+        baseline_sbp_shift: number;
+        adjusted_baseline_sbp: number;
+        severity: string;
+        power: number;
+        mean_effect_estimate: number;
+        effect_estimate_std: number;
+      };
+    };
+    interpretation: string;
+    parameters: {
+      n_per_arm: number;
+      target_effect: number;
+      baseline_mean: number;
+      n_simulations: number;
+    };
+  };
+  timestamp: string;
+}
+
+export interface FeasibilityAssessmentRequest {
+  baseline_data: VitalsRecord[];
+  target_effect: number;
+  power?: number;
+  dropout_rate?: number;
+  alpha?: number;
+}
+
+export interface FeasibilityAssessmentResponse {
+  feasibility_assessment: {
+    sample_size: {
+      n_per_arm: number;
+      n_per_arm_with_dropout: number;
+      total_n: number;
+      total_n_with_dropout: number;
+      effect_size_cohens_d: number;
+      dropout_rate: number;
+      power: number;
+      alpha: number;
+    };
+    timeline: {
+      enrollment_duration_months: number;
+      treatment_duration_months: number;
+      total_duration_months: number;
+      total_duration_years: number;
+      sites: number;
+      enrollment_rate_per_site_per_month: number;
+      total_enrollment_rate: number;
+    };
+    feasibility: {
+      feasible: boolean;
+      risk_level: string;
+      recommendation: string;
+    };
+    parameters: {
+      target_effect: number;
+      baseline_std: number;
+      power: number;
+      alpha: number;
+      dropout_rate: number;
+    };
+  };
+  timestamp: string;
 }

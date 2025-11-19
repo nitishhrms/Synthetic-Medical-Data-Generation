@@ -12,6 +12,18 @@ import type {
   Week12StatsRequest,
   Week12StatsResponse,
   PCAComparisonResponse,
+  SYNDATAMetricsResponse,
+  QualityReportResponse,
+  VirtualControlArmRequest,
+  VirtualControlArmResponse,
+  AugmentControlArmRequest,
+  AugmentControlArmResponse,
+  WhatIfEnrollmentRequest,
+  WhatIfEnrollmentResponse,
+  WhatIfPatientMixRequest,
+  WhatIfPatientMixResponse,
+  FeasibilityAssessmentRequest,
+  FeasibilityAssessmentResponse,
 } from "@/types";
 
 // ============================================================================
@@ -156,6 +168,42 @@ export const dataGenerationApi = {
     return handleResponse(response);
   },
 
+  async generateBayesian(params: GenerationRequest): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bayesian`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "bayesian",
+      },
+    };
+  },
+
+  async generateMICE(params: GenerationRequest): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mice`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "mice",
+      },
+    };
+  },
+
   async compareMethods(params: GenerationRequest): Promise<any> {
     const response = await fetch(`${DATA_GEN_SERVICE}/compare?${new URLSearchParams(params as any)}`, {
       headers: getAuthHeaders(),
@@ -296,6 +344,92 @@ export const qualityApi = {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async assessSYNDATA(realData: VitalsRecord[], syntheticData: VitalsRecord[]): Promise<SYNDATAMetricsResponse> {
+    const response = await fetch(`${QUALITY_SERVICE}/syndata/assess`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        real_data: realData,
+        synthetic_data: syntheticData,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateQualityReport(
+    methodName: string,
+    realData: VitalsRecord[],
+    syntheticData: VitalsRecord[],
+    syndataMetrics?: any,
+    privacyMetrics?: any,
+    generationTimeMs?: number
+  ): Promise<QualityReportResponse> {
+    const response = await fetch(`${QUALITY_SERVICE}/quality/report`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        method_name: methodName,
+        real_data: realData,
+        synthetic_data: syntheticData,
+        syndata_metrics: syndataMetrics,
+        privacy_metrics: privacyMetrics,
+        generation_time_ms: generationTimeMs,
+      }),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Trial Planning API
+// ============================================================================
+
+export const trialPlanningApi = {
+  async createVirtualControlArm(request: VirtualControlArmRequest): Promise<VirtualControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/virtual-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async augmentControlArm(request: AugmentControlArmRequest): Promise<AugmentControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/augment-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfEnrollment(request: WhatIfEnrollmentRequest): Promise<WhatIfEnrollmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/enrollment`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfPatientMix(request: WhatIfPatientMixRequest): Promise<WhatIfPatientMixResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/patient-mix`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async assessFeasibility(request: FeasibilityAssessmentRequest): Promise<FeasibilityAssessmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/feasibility`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
     });
     return handleResponse(response);
   },

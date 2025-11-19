@@ -27,7 +27,8 @@ export function DataGeneration() {
       description: "Multivariate Normal Distribution",
       details: "Generates data using statistical distributions with correlation structure",
       speed: "~29K records/sec",
-      rules: []
+      rules: [],
+      recommended: "Fast, statistically realistic"
     },
     {
       id: "bootstrap" as GenerationMethod,
@@ -35,7 +36,8 @@ export function DataGeneration() {
       description: "Resampling from Real CDISC Pilot Data",
       details: "Resamples from 945 real clinical records with Gaussian jitter (5%) to create variations",
       speed: "~140K records/sec",
-      rules: []
+      rules: [],
+      recommended: "Preserves real data characteristics"
     },
     {
       id: "rules" as GenerationMethod,
@@ -43,6 +45,7 @@ export function DataGeneration() {
       description: "Deterministic Business Rules Engine",
       details: "Applies clinical trial design rules and constraints",
       speed: "~80K records/sec",
+      recommended: "Deterministic, reproducible",
       rules: [
         "4 visits per subject: Screening, Day 1, Week 4, Week 12",
         "Baseline SBP: 140 ± 15 mmHg (hypertension range)",
@@ -52,6 +55,24 @@ export function DataGeneration() {
         "HR: 50-120 bpm, Temperature: 35-40°C",
         "Treatment effect applied at Week 12 endpoint"
       ]
+    },
+    {
+      id: "bayesian" as GenerationMethod,
+      name: "Bayesian Network",
+      description: "Probabilistic Graphical Model (Advanced)",
+      details: "Uses Bayesian Networks to capture causal relationships and conditional dependencies between vitals",
+      speed: "~5K records/sec",
+      recommended: "Preserves causal structure",
+      rules: []
+    },
+    {
+      id: "mice" as GenerationMethod,
+      name: "MICE",
+      description: "Multiple Imputation by Chained Equations",
+      details: "Research-standard method for handling missing data patterns realistically (MAR assumption)",
+      speed: "~3K records/sec",
+      recommended: "Realistic missing data handling",
+      rules: []
     },
   ];
 
@@ -80,6 +101,12 @@ export function DataGeneration() {
           break;
         case "rules":
           response = await dataGenerationApi.generateRules(params);
+          break;
+        case "bayesian":
+          response = await dataGenerationApi.generateBayesian(params);
+          break;
+        case "mice":
+          response = await dataGenerationApi.generateMICE(params);
           break;
         default:
           throw new Error(`Method ${selectedMethod} not supported`);
@@ -174,6 +201,11 @@ export function DataGeneration() {
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">{method.description}</p>
                   <p className="text-xs text-muted-foreground/80">{method.details}</p>
+                  {method.recommended && (
+                    <p className="text-xs text-primary/70 mt-2 font-medium">
+                      💡 {method.recommended}
+                    </p>
+                  )}
                 </button>
               ))}
             </div>
