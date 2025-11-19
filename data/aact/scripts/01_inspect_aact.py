@@ -17,7 +17,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-AACT_RAW_DIR = project_root / "data" / "aact" / "raw"
+AACT_RAW_DIR = project_root / "data" / "aact" / "clinical_data"
 
 
 def inspect_aact_files():

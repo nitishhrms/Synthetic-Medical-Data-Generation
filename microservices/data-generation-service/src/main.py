@@ -1109,7 +1109,7 @@ async def generate_realistic_trial(request: RealisticTrialRequest):
         # Initialize the realistic trial generator
         generator = RealisticTrialGenerator(seed=request.seed)
 
-        # Generate the complete trial
+        # Generate the complete trial - NOW WITH AACT PARAMETERS
         trial_data = generator.generate_realistic_trial(
             n_per_arm=request.n_per_arm,
             target_effect=request.target_effect,
@@ -1566,6 +1566,96 @@ async def estimate_memory_usage(total_subjects: int = 100_000, chunk_size: int =
             "high_memory_32gb": 100_000
         }
     }
+
+
+# ============================================================================
+# AACT Integration Endpoints - Industry Benchmarking
+# ============================================================================
+
+@app.get("/aact/indications")
+async def get_available_indications():
+    """
+    Get list of disease indications with AACT data
+    
+    Returns available disease indications from ClinicalTrials.gov database
+    (400,000+ trials processed via Daft)
+    
+    Returns:
+        List of indication names with trial counts
+    """
+    from aact_utils import get_aact_loader
+    
+    try:
+        aact = get_aact_loader()
+        indications = aact.get_available_indications()
+        
+        # Get trial counts for each indication
+        indication_details = []
+        for indication in indications:
+            phase_dist = aact.get_phase_distribution(indication)
+            total = sum(phase_dist.values())
+            indication_details.append({
+                "name": indication,
+                "total_trials": total,
+                "by_phase": phase_dist
+            })
+        
+        return {
+            "indications": indication_details,
+            "total": len(indications),
+            "source": "AACT ClinicalTrials.gov",
+            "total_studies": aact.stats.get("total_studies", 0)
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load AACT data: {str(e)}"
+        )
+
+
+@app.get("/aact/stats/{indication}")
+async def get_indication_stats(indication: str, phase: str = "Phase 3"):
+    """
+    Get industry statistics for a specific indication from AACT
+    
+    Args:
+        indication: Disease indication (e.g., "hypertension", "diabetes")
+        phase: Trial phase (default: "Phase 3")
+        
+    Returns:
+        Enrollment statistics, recommended defaults, and phase distribution
+        from real ClinicalTrials.gov data
+        
+    Example:
+        GET /aact/stats/hypertension?phase=Phase%203
+    """
+    from aact_utils import get_aact_loader
+    
+    try:
+        aact = get_aact_loader()
+        
+        enrollment_stats = aact.get_enrollment_stats(indication, phase)
+        defaults = aact.get_realistic_defaults(indication, phase)
+        phase_dist = aact.get_phase_distribution(indication)
+        
+        return {
+            "indication": indication,
+            "phase": phase,
+            "enrollment_statistics": enrollment_stats,
+            "recommended_defaults": defaults,
+            "phase_distribution": phase_dist,
+            "source": "AACT ClinicalTrials.gov"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get stats for {indication}: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
