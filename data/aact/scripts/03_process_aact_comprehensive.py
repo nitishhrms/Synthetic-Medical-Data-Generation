@@ -165,8 +165,25 @@ def process_comprehensive_aact():
 
     print(f"   ✅ Mapped {len(nct_to_indication):,} trials to indications")
 
-    # Create mapping of NCT_ID → phase
-    nct_to_phase = dict(zip(studies_df['nct_id'], studies_df['phase']))
+    # Normalize phases in studies_df
+    phase_map = {
+        'PHASE1': 'Phase 1',
+        'PHASE2': 'Phase 2',
+        'PHASE3': 'Phase 3',
+        'PHASE4': 'Phase 4',
+        'Phase 1': 'Phase 1',
+        'Phase 2': 'Phase 2',
+        'Phase 3': 'Phase 3',
+        'Phase 4': 'Phase 4',
+        'N/A': None,
+        'NA': None
+    }
+    studies_df['normalized_phase'] = studies_df['phase'].map(phase_map)
+
+    # Create mapping of NCT_ID → normalized phase
+    nct_to_phase = dict(zip(studies_df['nct_id'], studies_df['normalized_phase']))
+
+    print(f"   ✅ Normalized phases for {studies_df['normalized_phase'].notna().sum():,} trials")
 
     # ==========================================================================
     # STEP 2: Process Baseline Measurements (⭐⭐⭐⭐⭐ CRITICAL)
@@ -208,22 +225,14 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             # Match to vital type
             for vital_type, keywords in vital_keywords.items():
                 if any(kw in title or kw in category for kw in keywords):
                     # Store value for each indication
                     for indication in indications:
-                        if phase:
+                        if phase:  # Only if phase is valid (Phase 1-4)
                             baseline_stats[indication][phase][vital_type].append(param_value)
                             processed_count += 1
 
@@ -279,7 +288,11 @@ def process_comprehensive_aact():
             dropouts_df = pd.read_csv(dropouts_path, delimiter="|", low_memory=False)
             print(f"   ✅ Loaded {len(dropouts_df):,} dropout records with pandas")
 
+        valid_dropout_count = 0
+        total_dropout_rows = 0
+
         for _, row in dropouts_df.iterrows():
+            total_dropout_rows += 1
             nct_id = row.get('nct_id')
             count = safe_int(row.get('count'))
             reason = str(row.get('reason', 'Unknown')).strip()
@@ -288,20 +301,16 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             if phase:
                 for indication in indications:
                     dropout_stats[indication][phase]['dropouts'] += count
                     dropout_stats[indication][phase]['reasons'][reason] += count
+                    valid_dropout_count += 1
+
+        print(f"   📊 Processed {total_dropout_rows:,} dropout rows")
+        print(f"      ✓ Valid dropouts collected: {valid_dropout_count:,}")
 
         # Also get total enrollment for dropout rate calculation
         joined = studies_df.merge(conditions_df, on='nct_id', how='inner')
@@ -310,10 +319,12 @@ def process_comprehensive_aact():
                 joined['downcase_name'].str.contains(indication, case=False, na=False)
             ]
             for phase in ['Phase 1', 'Phase 2', 'Phase 3', 'Phase 4']:
-                phase_data = indication_data[indication_data['phase'] == phase]
-                if len(phase_data) > 0:
+                # Use normalized_phase column
+                phase_data = indication_data[indication_data['normalized_phase'] == phase]
+                if len(phase_data) > 0 and 'enrollment' in phase_data.columns:
                     total_enrollment = phase_data['enrollment'].sum(skipna=True)
-                    dropout_stats[indication][phase]['total_subjects'] = int(total_enrollment)
+                    if total_enrollment > 0:
+                        dropout_stats[indication][phase]['total_subjects'] = int(total_enrollment)
 
         # Calculate dropout rates
         for indication in statistics.get('indications', {}).keys():
@@ -384,15 +395,7 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             if phase:
                 for indication in indications:
@@ -468,15 +471,7 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             if phase:
                 for indication in indications:
@@ -554,15 +549,7 @@ def process_comprehensive_aact():
                 continue
 
             indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id, 'Unknown')
-
-            # Normalize phase
-            if phase and 'PHASE' in str(phase).upper():
-                phase_num = str(phase).upper().replace('PHASE', '').replace('_', ' ').strip()
-                if phase_num in ['1', '2', '3', '4']:
-                    phase = f"Phase {phase_num}"
-                else:
-                    phase = None
+            phase = nct_to_phase.get(nct_id)  # Already normalized
 
             if phase:
                 for indication in indications:
