@@ -5,120 +5,62 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataGenerationApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
-import type { GenerationMethod, VitalsRecord } from "@/types";
-import { Download, Loader2, AlertCircle, Info, Users } from "lucide-react";
+import { Download, Loader2, AlertCircle, Activity, Users, Flask, AlertTriangle, Database } from "lucide-react";
 
 export function DataGeneration() {
-  const { setGeneratedData: setGlobalGeneratedData, setGenerationMethod } = useData();
-  const [selectedMethod, setSelectedMethod] = useState<GenerationMethod>("mvn");
+  const { setGeneratedData, setPilotData } = useData();
+
+  // Common state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("vitals");
+
+  // Vitals state
+  const [vitalsData, setVitalsData] = useState<any[]>([]);
+  const [vitalsMetadata, setVitalsMetadata] = useState<any>(null);
   const [nPerArm, setNPerArm] = useState(50);
   const [targetEffect, setTargetEffect] = useState(-5.0);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedData, setGeneratedData] = useState<VitalsRecord[] | null>(null);
-  const [metadata, setMetadata] = useState<any>(null);
-  const [error, setError] = useState("");
+  const [selectedMethod, setSelectedMethod] = useState<string>("mvn");
 
   // Demographics state
-  const [includeDemographics, setIncludeDemographics] = useState(false);
-  const [oversampleMinority, setOversampleMinority] = useState(false);
-  const [genderRatio, setGenderRatio] = useState(0.5); // 0.5 = 50/50 male/female
-  const [ageRange, setAgeRange] = useState<[number, number]>([18, 65]);
-  const [raceWhite, setRaceWhite] = useState(60);
-  const [raceBlack, setRaceBlack] = useState(13);
-  const [raceAsian, setRaceAsian] = useState(6);
-  const [raceOther, setRaceOther] = useState(21);
+  const [demographicsData, setDemographicsData] = useState<any[]>([]);
+  const [demographicsMetadata, setDemographicsMetadata] = useState<any>(null);
+  const [demographicsN, setDemographicsN] = useState(100);
+
+  // Labs state
+  const [labsData, setLabsData] = useState<any[]>([]);
+  const [labsMetadata, setLabsMetadata] = useState<any>(null);
+  const [labsN, setLabsN] = useState(100);
+
+  // AE state
+  const [aeData, setAeData] = useState<any[]>([]);
+  const [aeMetadata, setAeMetadata] = useState<any>(null);
+  const [aeN, setAeN] = useState(30);
+
+  // Real data state
+  const [realDataLoaded, setRealDataLoaded] = useState(false);
+  const [realVitalsCount, setRealVitalsCount] = useState(0);
+  const [realDemoCount, setRealDemoCount] = useState(0);
+  const [realAeCount, setRealAeCount] = useState(0);
 
   const methods = [
-    {
-      id: "mvn" as GenerationMethod,
-      name: "MVN",
-      description: "Multivariate Normal Distribution",
-      details: "Generates data using statistical distributions with correlation structure",
-      speed: "~29K records/sec",
-      rules: [],
-      recommended: "Fast, statistically realistic"
-    },
-    {
-      id: "bootstrap" as GenerationMethod,
-      name: "Bootstrap",
-      description: "Resampling from Real CDISC Pilot Data",
-      details: "Resamples from 945 real clinical records with Gaussian jitter (5%) to create variations",
-      speed: "~140K records/sec",
-      rules: [],
-      recommended: "Preserves real data characteristics"
-    },
-    {
-      id: "rules" as GenerationMethod,
-      name: "Rules",
-      description: "Deterministic Business Rules Engine",
-      details: "Applies clinical trial design rules and constraints",
-      speed: "~80K records/sec",
-      recommended: "Deterministic, reproducible",
-      rules: [
-        "4 visits per subject: Screening, Day 1, Week 4, Week 12",
-        "Baseline SBP: 140 ± 15 mmHg (hypertension range)",
-        "Active arm: Progressive BP reduction over time",
-        "Placebo arm: Minimal/no BP change",
-        "SBP range: 95-200 mmHg, DBP: 55-130 mmHg",
-        "HR: 50-120 bpm, Temperature: 35-40°C",
-        "Treatment effect applied at Week 12 endpoint"
-      ]
-    },
-    {
-      id: "bayesian" as GenerationMethod,
-      name: "Bayesian Network",
-      description: "Probabilistic Graphical Model (Advanced)",
-      details: "Uses Bayesian Networks to capture causal relationships and conditional dependencies between vitals",
-      speed: "~5K records/sec",
-      recommended: "Preserves causal structure",
-      rules: []
-    },
-    {
-      id: "mice" as GenerationMethod,
-      name: "MICE",
-      description: "Multiple Imputation by Chained Equations",
-      details: "Research-standard method for handling missing data patterns realistically (MAR assumption)",
-      speed: "~3K records/sec",
-      recommended: "Realistic missing data handling",
-      rules: []
-    },
+    { id: "mvn", name: "MVN", speed: "~29K records/sec" },
+    { id: "bootstrap", name: "Bootstrap", speed: "~140K records/sec" },
+    { id: "rules", name: "Rules", speed: "~80K records/sec" },
+    { id: "bayesian", name: "Bayesian", speed: "~5K records/sec" },
+    { id: "mice", name: "MICE", speed: "~3K records/sec" },
   ];
 
-  const handleGenerate = async () => {
+  const handleGenerateVitals = async () => {
     setIsGenerating(true);
     setError("");
-    setGeneratedData(null);
-    setMetadata(null);
 
     try {
       let response;
-      const params: any = {
-        n_per_arm: nPerArm,
-        target_effect: targetEffect,
-        seed: Math.floor(Math.random() * 10000),
-      };
-
-      // Add demographics parameters if enabled
-      if (includeDemographics) {
-        params.include_demographics = true;
-        params.demographic_stratification = {
-          oversample_minority: oversampleMinority,
-          target_gender_ratio: genderRatio,
-          target_age_range: ageRange,
-          target_race_distribution: {
-            White: raceWhite / 100,
-            Black: raceBlack / 100,
-            Asian: raceAsian / 100,
-            Other: raceOther / 100,
-          },
-        };
-      }
-
-      console.log(`Generating with ${selectedMethod}...`, params);
+      const params = { n_per_arm: nPerArm, target_effect: targetEffect, seed: 42 };
 
       switch (selectedMethod) {
         case "mvn":
@@ -137,584 +79,675 @@ export function DataGeneration() {
           response = await dataGenerationApi.generateMICE(params);
           break;
         default:
-          throw new Error(`Method ${selectedMethod} not supported`);
+          throw new Error("Unknown method");
       }
 
-      console.log("Generation response:", response);
-
-      if (!response || !response.data) {
-        throw new Error("No data returned from generation");
-      }
-
-      setGeneratedData(response.data);
-      setMetadata(response.metadata);
-
-      // Store in global context for Analytics/Quality screens
-      setGlobalGeneratedData(response.data);
-      setGenerationMethod(selectedMethod);
-
-      console.log(`✅ Generated ${response.data.length} records successfully`);
-    } catch (err) {
-      console.error("Generation error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Generation failed";
-      setError(errorMessage);
-
-      // Show user-friendly error messages
-      if (errorMessage.includes("training_data")) {
-        setError("Bootstrap method requires pilot data. The backend couldn't load the training data. Try MVN or Rules method instead.");
-      } else if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
-        setError("Cannot connect to the data generation service. Please ensure it's running on port 8002.");
-      }
+      setVitalsData(response?.data ?? []);
+      setVitalsMetadata(response?.metadata ?? {});
+      setGeneratedData(response?.data ?? []);
+    } catch (err: any) {
+      setError(err?.message ?? "Generation failed");
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const downloadCSV = () => {
-    if (!generatedData) return;
+  const handleGenerateDemographics = async () => {
+    setIsGenerating(true);
+    setError("");
 
-    const headers = ["SubjectID", "VisitName", "TreatmentArm", "SystolicBP", "DiastolicBP", "HeartRate", "Temperature"];
+    try {
+      const response = await dataGenerationApi.generateDemographics({
+        n_subjects: demographicsN,
+        seed: 42
+      });
+
+      setDemographicsData(response?.data ?? []);
+      setDemographicsMetadata(response?.metadata ?? {});
+    } catch (err: any) {
+      setError(err?.message ?? "Demographics generation failed");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateLabs = async () => {
+    setIsGenerating(true);
+    setError("");
+
+    try {
+      const response = await dataGenerationApi.generateLabs({
+        n_subjects: labsN,
+        seed: 42
+      });
+
+      setLabsData(response?.data ?? []);
+      setLabsMetadata(response?.metadata ?? {});
+    } catch (err: any) {
+      setError(err?.message ?? "Labs generation failed");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateAE = async () => {
+    setIsGenerating(true);
+    setError("");
+
+    try {
+      const response = await dataGenerationApi.generateAE({
+        n_subjects: aeN,
+        seed: 7
+      });
+
+      setAeData(response?.data ?? []);
+      setAeMetadata(response?.metadata ?? {});
+    } catch (err: any) {
+      setError(err?.message ?? "AE generation failed");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleLoadRealData = async () => {
+    setIsGenerating(true);
+    setError("");
+
+    try {
+      const [vitals, demographics, ae] = await Promise.all([
+        dataGenerationApi.getRealVitalSigns(),
+        dataGenerationApi.getRealDemographics(),
+        dataGenerationApi.getRealAdverseEvents()
+      ]);
+
+      setRealVitalsCount((vitals ?? []).length);
+      setRealDemoCount((demographics ?? []).length);
+      setRealAeCount((ae ?? []).length);
+      setRealDataLoaded(true);
+      setPilotData(vitals ?? []);
+
+      alert(`Real CDISC data loaded:\n\nVitals: ${(vitals ?? []).length} records\nDemographics: ${(demographics ?? []).length} subjects\nAdverse Events: ${(ae ?? []).length} events`);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load real data");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const downloadCSV = (data: any[], filename: string) => {
+    if (!data || (data ?? []).length === 0) {
+      alert("No data to download");
+      return;
+    }
+
+    const headers = Object.keys(data[0] ?? {});
     const csvContent = [
       headers.join(","),
-      ...generatedData.map((row) =>
-        headers.map((h) => row[h as keyof VitalsRecord]).join(",")
-      ),
+      ...(data ?? []).map(row => headers.map(h => row[h] ?? "").join(","))
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `synthetic_vitals_${selectedMethod}_${Date.now()}.csv`;
+    a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const selectedMethodDetails = methods.find(m => m.id === selectedMethod);
-
   return (
-    <div className="p-8 space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Generate Synthetic Data</h2>
-        <p className="text-muted-foreground">
-          Create realistic clinical trial vitals data using multiple generation methods
-        </p>
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Multi-Domain Data Generation</h1>
+          <p className="text-muted-foreground">
+            Generate comprehensive clinical trial data: Vitals, Demographics, Labs, and Adverse Events
+          </p>
+        </div>
+        <Button onClick={handleLoadRealData} variant="outline" disabled={isGenerating}>
+          {isGenerating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <Database className="h-4 w-4 mr-2" />
+              Load Real CDISC Data
+            </>
+          )}
+        </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Generation Method</CardTitle>
-            <CardDescription>
-              Select a method to generate synthetic vitals data
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3">
-              {methods.map((method) => (
-                <button
-                  key={method.id}
-                  onClick={() => setSelectedMethod(method.id)}
-                  className={`p-4 border rounded-lg text-left transition-all ${
-                    selectedMethod === method.id
-                      ? "border-primary bg-primary/5"
-                      : "hover:border-muted-foreground/50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold">{method.name}</span>
-                    <Badge variant={selectedMethod === method.id ? "default" : "outline"}>
-                      {method.speed}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-2">{method.description}</p>
-                  <p className="text-xs text-muted-foreground/80">{method.details}</p>
-                  {method.recommended && (
-                    <p className="text-xs text-primary/70 mt-2 font-medium">
-                      💡 {method.recommended}
-                    </p>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {selectedMethodDetails && selectedMethodDetails.rules && selectedMethodDetails.rules.length > 0 && (
-              <Card className="bg-muted/50">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Info className="h-4 w-4" />
-                    Business Rules Applied
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <ul className="text-xs space-y-1.5 text-muted-foreground">
-                    {selectedMethodDetails.rules.map((rule, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <span className="text-primary mt-0.5">•</span>
-                        <span>{rule}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Parameters</CardTitle>
-            <CardDescription>
-              Configure generation parameters
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="nPerArm">Subjects Per Arm</Label>
-              <Input
-                id="nPerArm"
-                type="number"
-                value={nPerArm}
-                onChange={(e) => setNPerArm(parseInt(e.target.value))}
-                min={1}
-                max={1000}
-              />
-              <p className="text-xs text-muted-foreground">
-                Number of subjects in each treatment arm (Active and Placebo)
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="targetEffect">Target Effect (mmHg)</Label>
-              <Input
-                id="targetEffect"
-                type="number"
-                value={targetEffect}
-                onChange={(e) => setTargetEffect(parseFloat(e.target.value))}
-                step={0.1}
-              />
-              <p className="text-xs text-muted-foreground">
-                Target systolic BP reduction in Active arm (negative for reduction)
-              </p>
-            </div>
-
-            {error && (
-              <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
-                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="font-medium">Generation Error</p>
-                  <p className="text-xs mt-1">{error}</p>
-                </div>
-              </div>
-            )}
-
-            <Button
-              onClick={handleGenerate}
-              className="w-full"
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                `Generate with ${methods.find(m => m.id === selectedMethod)?.name}`
-              )}
-            </Button>
-
-            {metadata && (
-              <div className="p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg space-y-1">
-                <p className="text-sm font-medium text-green-900 dark:text-green-100">✅ Generation Complete</p>
-                <div className="text-xs text-green-700 dark:text-green-300 space-y-0.5">
-                  <p>Records: {metadata.records || generatedData?.length || 0}</p>
-                  {metadata.subjects && <p>Subjects: {metadata.subjects}</p>}
-                  {metadata.generation_time_ms && <p>Time: {metadata.generation_time_ms}ms</p>}
-                  <p>Method: {metadata.method}</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Million-Scale Generation */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5" />
-            Million-Scale Data Generation (Daft-Powered)
-          </CardTitle>
-          <CardDescription>
-            Generate 100K to 10M+ records using chunked processing and Parquet export
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-              <div className="text-xs text-blue-700 dark:text-blue-300">
-                <p className="font-medium mb-1">Million-scale generation capabilities:</p>
-                <ul className="list-disc list-inside space-y-0.5 ml-2">
-                  <li>Memory-efficient chunked processing</li>
-                  <li>Streaming Parquet writes (recommended for large datasets)</li>
-                  <li>Performance: 10K subjects in ~2s, 1M subjects in ~3-5 min</li>
-                  <li>No memory limits - can generate 10M+ records</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="totalSubjects">Total Subjects</Label>
-              <Input
-                id="totalSubjects"
-                type="number"
-                placeholder="e.g., 100000"
-                min={1000}
-                max={10000000}
-                step={1000}
-              />
-              <p className="text-xs text-muted-foreground">
-                Range: 1,000 to 10,000,000 subjects (both arms combined)
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="chunkSize">Chunk Size</Label>
-              <Input
-                id="chunkSize"
-                type="number"
-                placeholder="e.g., 10000"
-                defaultValue={10000}
-                min={1000}
-                max={100000}
-                step={1000}
-              />
-              <p className="text-xs text-muted-foreground">
-                Subjects per chunk (controls memory usage)
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="outputFormat">Output Format</Label>
-            <Select defaultValue="parquet">
-              <SelectTrigger id="outputFormat">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="parquet">Parquet (Recommended for large datasets)</SelectItem>
-                <SelectItem value="csv">CSV (Slower for large datasets)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Button
-            className="w-full"
-            variant="secondary"
-            onClick={async () => {
-              const totalSubjectsInput = document.getElementById('totalSubjects') as HTMLInputElement;
-              const chunkSizeInput = document.getElementById('chunkSize') as HTMLInputElement;
-              const formatSelect = document.getElementById('outputFormat') as HTMLSelectElement;
-
-              const totalSubjects = parseInt(totalSubjectsInput?.value ?? '0');
-              const chunkSize = parseInt(chunkSizeInput?.value ?? '10000');
-              const format = formatSelect?.value ?? 'parquet';
-
-              if (!totalSubjects || totalSubjects < 1000) {
-                setError('Please enter a valid total subjects count (minimum 1,000)');
-                return;
-              }
-
-              setIsGenerating(true);
-              setError("");
-
-              try {
-                // First, estimate memory usage
-                const estimate = await dataGenerationApi.estimateMemory({
-                  total_subjects: totalSubjects,
-                  chunk_size: chunkSize
-                });
-
-                const proceed = confirm(
-                  `Memory Estimate:\n\n` +
-                  `Total Records: ${(estimate?.total_records ?? 0).toLocaleString()}\n` +
-                  `Total Size: ${(estimate?.total_size_mb ?? 0).toFixed(1)} MB\n` +
-                  `Chunks: ${estimate?.num_chunks ?? 0}\n` +
-                  `Chunk Size: ${(estimate?.chunk_size_mb ?? 0).toFixed(1)} MB each\n\n` +
-                  `${estimate?.recommendation ?? ''}\n\n` +
-                  `Proceed with generation?`
-                );
-
-                if (!proceed) {
-                  setIsGenerating(false);
-                  return;
-                }
-
-                const result = await dataGenerationApi.generateMillionScale({
-                  total_subjects: totalSubjects,
-                  chunk_size: chunkSize,
-                  target_effect: targetEffect,
-                  format: format
-                });
-
-                setMetadata(result ?? {});
-
-                const successMsg =
-                  `Successfully generated ${(result?.total_records ?? 0).toLocaleString()} records\n` +
-                  `Time: ${(result?.time_seconds ?? 0).toFixed(2)}s\n` +
-                  `Speed: ${(result?.records_per_second ?? 0).toLocaleString()} records/sec\n` +
-                  `Output: ${result?.output_path ?? 'N/A'}`;
-
-                alert(successMsg);
-              } catch (err: any) {
-                setError(err?.message ?? 'Million-scale generation failed');
-              } finally {
-                setIsGenerating(false);
-              }
-            }}
-            disabled={isGenerating}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating (this may take several minutes)...
-              </>
-            ) : (
-              'Generate Million-Scale Data'
-            )}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Demographics Configuration */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Demographics & Diversity
-              </CardTitle>
-              <CardDescription>
-                Optional: Include demographic data and control population diversity
-              </CardDescription>
-            </div>
-            <Switch
-              checked={includeDemographics}
-              onCheckedChange={setIncludeDemographics}
-            />
-          </div>
-        </CardHeader>
-        {includeDemographics && (
-          <CardContent className="space-y-6">
-            {/* Diversity Options */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Oversample Minority Groups</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Increase representation of underrepresented racial groups for diversity
-                  </p>
-                </div>
-                <Switch
-                  checked={oversampleMinority}
-                  onCheckedChange={setOversampleMinority}
-                />
-              </div>
-
-              {/* Gender Ratio */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Gender Ratio (Female %)</Label>
-                  <span className="text-sm font-medium">{(genderRatio * 100).toFixed(0)}%</span>
-                </div>
-                <Slider
-                  value={[genderRatio * 100]}
-                  onValueChange={(value: number[]) => setGenderRatio(value[0] / 100)}
-                  min={0}
-                  max={100}
-                  step={5}
-                  className="w-full"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Target percentage of female subjects (0.5 = 50/50 split)
-                </p>
-              </div>
-
-              {/* Age Range */}
-              <div className="space-y-2">
-                <Label>Age Range</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Min Age</Label>
-                    <Input
-                      type="number"
-                      value={ageRange[0]}
-                      onChange={(e) => setAgeRange([parseInt(e.target.value), ageRange[1]])}
-                      min={18}
-                      max={100}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Max Age</Label>
-                    <Input
-                      type="number"
-                      value={ageRange[1]}
-                      onChange={(e) => setAgeRange([ageRange[0], parseInt(e.target.value)])}
-                      min={18}
-                      max={100}
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Age range for generated subjects (default: 18-65 years)
-                </p>
-              </div>
-
-              {/* Race Distribution */}
-              <div className="space-y-3">
-                <Label>Race Distribution (%)</Label>
-                <div className="grid gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>White</span>
-                      <span className="font-medium">{raceWhite}%</span>
-                    </div>
-                    <Slider
-                      value={[raceWhite]}
-                      onValueChange={(value: number[]) => setRaceWhite(value[0])}
-                      min={0}
-                      max={100}
-                      step={1}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>Black/African American</span>
-                      <span className="font-medium">{raceBlack}%</span>
-                    </div>
-                    <Slider
-                      value={[raceBlack]}
-                      onValueChange={(value: number[]) => setRaceBlack(value[0])}
-                      min={0}
-                      max={100}
-                      step={1}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>Asian</span>
-                      <span className="font-medium">{raceAsian}%</span>
-                    </div>
-                    <Slider
-                      value={[raceAsian]}
-                      onValueChange={(value: number[]) => setRaceAsian(value[0])}
-                      min={0}
-                      max={100}
-                      step={1}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span>Other</span>
-                      <span className="font-medium">{raceOther}%</span>
-                    </div>
-                    <Slider
-                      value={[raceOther]}
-                      onValueChange={(value: number[]) => setRaceOther(value[0])}
-                      min={0}
-                      max={100}
-                      step={1}
-                    />
-                  </div>
-                </div>
-                <div className="p-2 bg-muted/50 rounded text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total:</span>
-                    <span className={`font-medium ${raceWhite + raceBlack + raceAsian + raceOther === 100 ? "text-green-600" : "text-yellow-600"}`}>
-                      {raceWhite + raceBlack + raceAsian + raceOther}%
-                      {raceWhite + raceBlack + raceAsian + raceOther !== 100 && " (should sum to 100%)"}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Default US demographics: White 60%, Black 13%, Asian 6%, Other 21%
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3 bg-muted/50 rounded-lg border border-muted">
-              <div className="flex items-start gap-2">
-                <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <div className="text-xs text-muted-foreground">
-                  <p className="font-medium text-foreground mb-1">Demographics Include:</p>
-                  <ul className="list-disc list-inside space-y-0.5 ml-2">
-                    <li>Age, Gender, Race, Ethnicity</li>
-                    <li>Height, Weight, BMI (auto-calculated)</li>
-                    <li>Smoking Status (Never/Former/Current)</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        )}
-      </Card>
-
-      {generatedData && generatedData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Generated Data Preview</CardTitle>
-                <CardDescription>
-                  Showing first 10 records of {generatedData.length} total
-                </CardDescription>
-              </div>
-              <Button onClick={downloadCSV} variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Download CSV
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Subject ID</TableHead>
-                    <TableHead>Visit</TableHead>
-                    <TableHead>Arm</TableHead>
-                    <TableHead>SBP</TableHead>
-                    <TableHead>DBP</TableHead>
-                    <TableHead>HR</TableHead>
-                    <TableHead>Temp</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {generatedData.slice(0, 10).map((row, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{row.SubjectID}</TableCell>
-                      <TableCell>{row.VisitName}</TableCell>
-                      <TableCell>
-                        <Badge variant={row.TreatmentArm === "Active" ? "default" : "secondary"}>
-                          {row.TreatmentArm}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{row.SystolicBP}</TableCell>
-                      <TableCell>{row.DiastolicBP}</TableCell>
-                      <TableCell>{row.HeartRate}</TableCell>
-                      <TableCell>{row.Temperature.toFixed(1)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+      {realDataLoaded && (
+        <Card className="border-green-500 bg-green-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-green-700">
+              <Activity className="h-5 w-5" />
+              <span className="font-medium">
+                Real data loaded: {realVitalsCount.toLocaleString()} vitals, {realDemoCount} demographics, {realAeCount} AEs
+              </span>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {error && (
+        <Card className="border-red-500 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              <span>{error}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="vitals">
+            <Activity className="h-4 w-4 mr-2" />
+            Vitals
+          </TabsTrigger>
+          <TabsTrigger value="demographics">
+            <Users className="h-4 w-4 mr-2" />
+            Demographics
+          </TabsTrigger>
+          <TabsTrigger value="labs">
+            <Flask className="h-4 w-4 mr-2" />
+            Labs
+          </TabsTrigger>
+          <TabsTrigger value="ae">
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            Adverse Events
+          </TabsTrigger>
+          <TabsTrigger value="complete">
+            <Database className="h-4 w-4 mr-2" />
+            Complete Study
+          </TabsTrigger>
+        </TabsList>
+
+        {/* VITALS TAB */}
+        <TabsContent value="vitals" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Vital Signs Generation</CardTitle>
+              <CardDescription>Generate SBP, DBP, Heart Rate, Temperature</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Generation Method</Label>
+                  <div className="grid gap-2 mt-2">
+                    {methods.map((method) => (
+                      <button
+                        key={method.id}
+                        onClick={() => setSelectedMethod(method.id)}
+                        className={`p-3 border rounded-lg text-left ${
+                          selectedMethod === method.id ? "border-primary bg-primary/5" : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{method.name}</span>
+                          <Badge variant="outline">{method.speed}</Badge>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Subjects Per Arm</Label>
+                    <Input
+                      type="number"
+                      value={nPerArm}
+                      onChange={(e) => setNPerArm(parseInt(e.target.value) || 0)}
+                      min={1}
+                      max={1000}
+                    />
+                  </div>
+                  <div>
+                    <Label>Target Effect (mmHg)</Label>
+                    <Input
+                      type="number"
+                      value={targetEffect}
+                      onChange={(e) => setTargetEffect(parseFloat(e.target.value) || 0)}
+                      step={0.1}
+                    />
+                  </div>
+                  <Button onClick={handleGenerateVitals} disabled={isGenerating} className="w-full">
+                    {isGenerating ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+                    ) : (
+                      `Generate with ${methods.find(m => m.id === selectedMethod)?.name ?? 'MVN'}`
+                    )}
+                  </Button>
+                  {vitalsMetadata && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                      <p className="font-medium text-green-900">✅ Generated</p>
+                      <p className="text-green-700">Records: {vitalsMetadata?.records ?? 0}</p>
+                      <p className="text-green-700">Subjects: {vitalsMetadata?.subjects ?? 0}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {(vitalsData ?? []).length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Data Preview</CardTitle>
+                    <CardDescription>Showing first 10 of {(vitalsData ?? []).length} records</CardDescription>
+                  </div>
+                  <Button onClick={() => downloadCSV(vitalsData, "vitals.csv")} variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Visit</TableHead>
+                      <TableHead>Arm</TableHead>
+                      <TableHead>SBP</TableHead>
+                      <TableHead>DBP</TableHead>
+                      <TableHead>HR</TableHead>
+                      <TableHead>Temp</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(vitalsData ?? []).slice(0, 10).map((row, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-mono text-sm">{row?.SubjectID ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.VisitName ?? 'N/A'}</TableCell>
+                        <TableCell>
+                          <Badge variant={(row?.TreatmentArm ?? "") === "Active" ? "default" : "secondary"}>
+                            {row?.TreatmentArm ?? 'N/A'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{row?.SystolicBP ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.DiastolicBP ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.HeartRate ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.Temperature?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* DEMOGRAPHICS TAB */}
+        <TabsContent value="demographics" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Demographics Generation</CardTitle>
+              <CardDescription>Generate Age, Gender, Race, Ethnicity, Height, Weight, BMI, Smoking Status</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-muted rounded-lg">
+                  <h3 className="font-medium mb-2">Generated Fields:</h3>
+                  <ul className="text-sm space-y-1 text-muted-foreground">
+                    <li>• Age (18-85, normally distributed)</li>
+                    <li>• Gender (Male/Female, 50/50)</li>
+                    <li>• Race (US demographics)</li>
+                    <li>• Ethnicity (Hispanic/Not Hispanic)</li>
+                    <li>• Height (gender-specific, cm)</li>
+                    <li>• Weight (age-correlated, kg)</li>
+                    <li>• BMI (auto-calculated)</li>
+                    <li>• Smoking Status</li>
+                  </ul>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Number of Subjects</Label>
+                    <Input
+                      type="number"
+                      value={demographicsN}
+                      onChange={(e) => setDemographicsN(parseInt(e.target.value) || 0)}
+                      min={1}
+                      max={1000}
+                    />
+                  </div>
+                  <Button onClick={handleGenerateDemographics} disabled={isGenerating} className="w-full">
+                    {isGenerating ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+                    ) : (
+                      'Generate Demographics'
+                    )}
+                  </Button>
+                  {demographicsMetadata && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                      <p className="font-medium text-green-900">✅ Generated</p>
+                      <p className="text-green-700">Subjects: {demographicsMetadata?.subjects ?? 0}</p>
+                      <p className="text-green-700">Records: {demographicsMetadata?.records ?? 0}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {(demographicsData ?? []).length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Demographics Preview</CardTitle>
+                    <CardDescription>Showing first 10 of {(demographicsData ?? []).length} subjects</CardDescription>
+                  </div>
+                  <Button onClick={() => downloadCSV(demographicsData, "demographics.csv")} variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>Age</TableHead>
+                      <TableHead>Gender</TableHead>
+                      <TableHead>Race</TableHead>
+                      <TableHead>Height (cm)</TableHead>
+                      <TableHead>Weight (kg)</TableHead>
+                      <TableHead>BMI</TableHead>
+                      <TableHead>Smoking</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(demographicsData ?? []).slice(0, 10).map((row, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-mono text-sm">{row?.SubjectID ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.Age ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.Gender ?? 'N/A'}</TableCell>
+                        <TableCell className="text-xs">{row?.Race ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.Height_cm?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.Weight_kg?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.BMI?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                        <TableCell className="text-xs">{row?.SmokingStatus ?? 'N/A'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* LABS TAB */}
+        <TabsContent value="labs" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Lab Results Generation</CardTitle>
+              <CardDescription>Generate Hematology, Chemistry, and Lipid panels for multiple visits</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-muted rounded-lg">
+                  <h3 className="font-medium mb-2">Generated Lab Tests:</h3>
+                  <div className="text-sm space-y-2 text-muted-foreground">
+                    <div>
+                      <strong>Hematology:</strong> Hemoglobin, Hematocrit, WBC, Platelets
+                    </div>
+                    <div>
+                      <strong>Chemistry:</strong> Glucose, Creatinine, BUN, ALT, AST, Bilirubin
+                    </div>
+                    <div>
+                      <strong>Lipids:</strong> Total Chol, LDL, HDL, Triglycerides
+                    </div>
+                    <div className="text-xs mt-2">
+                      For visits: Screening, Week 4, Week 12
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Number of Subjects</Label>
+                    <Input
+                      type="number"
+                      value={labsN}
+                      onChange={(e) => setLabsN(parseInt(e.target.value) || 0)}
+                      min={1}
+                      max={1000}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Each subject will have 3 visits = {(labsN * 3).toLocaleString()} lab records
+                    </p>
+                  </div>
+                  <Button onClick={handleGenerateLabs} disabled={isGenerating} className="w-full">
+                    {isGenerating ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+                    ) : (
+                      'Generate Lab Results'
+                    )}
+                  </Button>
+                  {labsMetadata && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                      <p className="font-medium text-green-900">✅ Generated</p>
+                      <p className="text-green-700">Subjects: {labsMetadata?.subjects ?? 0}</p>
+                      <p className="text-green-700">Records: {labsMetadata?.records ?? 0}</p>
+                      <p className="text-green-700">Visits: {labsMetadata?.visits_per_subject ?? 0} per subject</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {(labsData ?? []).length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Labs Preview</CardTitle>
+                    <CardDescription>Showing first 10 of {(labsData ?? []).length} lab records</CardDescription>
+                  </div>
+                  <Button onClick={() => downloadCSV(labsData, "labs.csv")} variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Visit</TableHead>
+                        <TableHead>Hgb</TableHead>
+                        <TableHead>WBC</TableHead>
+                        <TableHead>Glucose</TableHead>
+                        <TableHead>Creatinine</TableHead>
+                        <TableHead>ALT</TableHead>
+                        <TableHead>Chol</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(labsData ?? []).slice(0, 10).map((row, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-mono text-sm">{row?.SubjectID ?? 'N/A'}</TableCell>
+                          <TableCell className="text-xs">{row?.VisitName ?? 'N/A'}</TableCell>
+                          <TableCell>{row?.Hemoglobin?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                          <TableCell>{row?.WBC?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                          <TableCell>{row?.Glucose?.toFixed?.(0) ?? 'N/A'}</TableCell>
+                          <TableCell>{row?.Creatinine?.toFixed?.(2) ?? 'N/A'}</TableCell>
+                          <TableCell>{row?.ALT?.toFixed?.(0) ?? 'N/A'}</TableCell>
+                          <TableCell>{row?.TotalCholesterol?.toFixed?.(0) ?? 'N/A'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ADVERSE EVENTS TAB */}
+        <TabsContent value="ae" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Adverse Events Generation</CardTitle>
+              <CardDescription>Generate realistic AEs with MedDRA coding, severity, and causality</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-muted rounded-lg">
+                  <h3 className="font-medium mb-2">Generated AE Data:</h3>
+                  <ul className="text-sm space-y-1 text-muted-foreground">
+                    <li>• AE Terms (Neutropenia, Nausea, etc.)</li>
+                    <li>• Body System (SOC - MedDRA)</li>
+                    <li>• Seriousness (Y/N)</li>
+                    <li>• Causality/Relationship (Y/N)</li>
+                    <li>• Outcome (RESOLVED/ONGOING/FATAL)</li>
+                    <li>• Includes mandatory serious/related events</li>
+                  </ul>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Number of Subjects</Label>
+                    <Input
+                      type="number"
+                      value={aeN}
+                      onChange={(e) => setAeN(parseInt(e.target.value) || 0)}
+                      min={10}
+                      max={100}
+                    />
+                  </div>
+                  <Button onClick={handleGenerateAE} disabled={isGenerating} className="w-full">
+                    {isGenerating ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+                    ) : (
+                      'Generate Adverse Events'
+                    )}
+                  </Button>
+                  {aeMetadata && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                      <p className="font-medium text-green-900">✅ Generated</p>
+                      <p className="text-green-700">AE Records: {aeMetadata?.records ?? (aeData ?? []).length}</p>
+                      <p className="text-green-700">Subjects: {aeN}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {(aeData ?? []).length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>AE Preview</CardTitle>
+                    <CardDescription>Showing first 10 of {(aeData ?? []).length} adverse events</CardDescription>
+                  </div>
+                  <Button onClick={() => downloadCSV(aeData, "adverse_events.csv")} variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download CSV
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Subject</TableHead>
+                      <TableHead>AE Term</TableHead>
+                      <TableHead>Body System</TableHead>
+                      <TableHead>Serious</TableHead>
+                      <TableHead>Related</TableHead>
+                      <TableHead>Outcome</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(aeData ?? []).slice(0, 10).map((row, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-mono text-sm">{row?.SubjectID ?? 'N/A'}</TableCell>
+                        <TableCell>{row?.AETerm ?? 'N/A'}</TableCell>
+                        <TableCell className="text-xs">{row?.BodySystem ?? 'N/A'}</TableCell>
+                        <TableCell>
+                          <Badge variant={(row?.Serious ?? "") === "Y" ? "destructive" : "secondary"}>
+                            {row?.Serious ?? 'N/A'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={(row?.Related ?? "") === "Y" ? "default" : "secondary"}>
+                            {row?.Related ?? 'N/A'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">{row?.Outcome ?? 'N/A'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* COMPLETE STUDY TAB */}
+        <TabsContent value="complete" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Complete Study Generation</CardTitle>
+              <CardDescription>Generate all domains simultaneously for a complete clinical trial dataset</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Database className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-1">Complete Study will generate:</p>
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      <li>Demographics for all subjects</li>
+                      <li>Vitals for all visits (Screening, Day 1, Week 4, Week 12)</li>
+                      <li>Lab results for key visits (Screening, Week 4, Week 12)</li>
+                      <li>Adverse events throughout the study</li>
+                      <li>Multi-sheet Excel export or separate SDTM CSVs</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Total Subjects (both arms)</Label>
+                  <Input type="number" defaultValue={100} min={20} max={500} />
+                </div>
+                <div>
+                  <Label>Target Effect (mmHg)</Label>
+                  <Input type="number" defaultValue={-5.0} step={0.1} />
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={async () => {
+                  alert("Complete Study generation coming soon!\n\nThis will:\n- Generate all domains\n- Link data via SubjectID\n- Export as multi-sheet Excel or SDTM datasets");
+                }}
+              >
+                <Database className="h-5 w-5 mr-2" />
+                Generate Complete Study
+              </Button>
+
+              <p className="text-sm text-muted-foreground text-center">
+                Complete study generation will create a fully integrated dataset with all domains
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
