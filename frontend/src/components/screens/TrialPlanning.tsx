@@ -151,10 +151,10 @@ export function TrialPlanning() {
 
     try {
       const result = await trialPlanningApi.whatIfEnrollment({
-        historical_data: pilotData,
-        baseline_n: enrollmentParams.baseline_n,
-        scenarios: enrollmentParams.scenarios,
+        baseline_data: pilotData,
+        enrollment_sizes: enrollmentParams.scenarios,
         target_effect: enrollmentParams.target_effect,
+        n_simulations: 1000,
         seed: 42,
       });
       setEnrollmentResult(result);
@@ -177,9 +177,9 @@ export function TrialPlanning() {
 
     try {
       const result = await trialPlanningApi.whatIfPatientMix({
-        historical_data: pilotData,
-        n_per_scenario: patientMixParams.n_per_scenario,
-        baseline_sbp_scenarios: patientMixParams.baseline_sbp_scenarios,
+        baseline_data: pilotData,
+        severity_shifts: patientMixParams.baseline_sbp_scenarios,
+        n_per_arm: patientMixParams.n_per_scenario,
         target_effect: patientMixParams.target_effect,
         seed: 42,
       });
@@ -193,16 +193,21 @@ export function TrialPlanning() {
 
   // Feasibility Assessment
   const assessFeasibility = async () => {
+    if (!pilotData) {
+      setError("No pilot data available. Please wait for data to load.");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
     try {
       const result = await trialPlanningApi.assessFeasibility({
+        baseline_data: pilotData,
         target_effect: feasibilityParams.target_effect,
-        expected_std: feasibilityParams.expected_std,
-        alpha: feasibilityParams.alpha,
         power: feasibilityParams.power,
-        allocation_ratio: feasibilityParams.allocation_ratio,
+        dropout_rate: 0.10,
+        alpha: feasibilityParams.alpha,
       });
       setFeasibilityResult(result);
     } catch (err) {

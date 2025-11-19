@@ -450,3 +450,133 @@ export const qualityApi = {
     return handleResponse(response);
   },
 };
+
+// ============================================================================
+// Trial Planning API
+// ============================================================================
+
+export const trialPlanningApi = {
+  async createVirtualControlArm(
+    request: VirtualControlArmRequest
+  ): Promise<VirtualControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/virtual-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async augmentControlArm(
+    request: AugmentControlArmRequest
+  ): Promise<AugmentControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/augment-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfEnrollment(
+    request: WhatIfEnrollmentRequest
+  ): Promise<WhatIfEnrollmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/enrollment`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfPatientMix(
+    request: WhatIfPatientMixRequest
+  ): Promise<WhatIfPatientMixResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/patient-mix`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async assessFeasibility(
+    request: FeasibilityAssessmentRequest
+  ): Promise<FeasibilityAssessmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/feasibility`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Medical Imaging API
+// ============================================================================
+
+export const medicalImagingApi = {
+  async uploadImage(
+    file: File,
+    subjectId: string,
+    visitName?: string,
+    imageType?: string
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("subject_id", subjectId);
+    if (visitName) formData.append("visit_name", visitName);
+    if (imageType) formData.append("image_type", imageType);
+
+    const token = localStorage.getItem("token");
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${EDC_SERVICE}/imaging/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
+  async getSubjectImages(subjectId: string): Promise<any[]> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/subject/${subjectId}`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    const result = await handleResponse(response);
+    return result.images || [];
+  },
+
+  async getImageFile(imageId: number, thumbnail: boolean = false): Promise<Blob> {
+    const endpoint = thumbnail ? "thumbnail" : "file";
+    const response = await fetch(`${EDC_SERVICE}/imaging/${imageId}/${endpoint}`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
+    return response.blob();
+  },
+
+  async deleteImage(imageId: number): Promise<void> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/${imageId}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getStatus(): Promise<{ imaging_available: boolean; message?: string }> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/status`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};

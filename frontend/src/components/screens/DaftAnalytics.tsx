@@ -17,7 +17,6 @@ import {
   Users,
   Calendar,
 } from "lucide-react";
-import { api } from "@/services/api";
 
 interface VitalsRecord {
   SubjectID: string;

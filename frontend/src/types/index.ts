@@ -280,10 +280,10 @@ export interface AugmentControlArmResponse {
 }
 
 export interface WhatIfEnrollmentRequest {
-  historical_data: VitalsRecord[];
-  baseline_n: number;
-  scenarios: number[];
-  target_effect: number;
+  baseline_data: VitalsRecord[];
+  enrollment_sizes?: number[];
+  target_effect?: number;
+  n_simulations?: number;
   seed?: number;
 }
 
@@ -300,10 +300,10 @@ export interface WhatIfEnrollmentResponse {
 }
 
 export interface WhatIfPatientMixRequest {
-  historical_data: VitalsRecord[];
-  n_per_scenario: number;
-  baseline_sbp_scenarios: number[];
-  target_effect: number;
+  baseline_data: VitalsRecord[];
+  severity_shifts?: number[];
+  n_per_arm?: number;
+  target_effect?: number;
   seed?: number;
 }
 
@@ -320,11 +320,11 @@ export interface WhatIfPatientMixResponse {
 }
 
 export interface FeasibilityAssessmentRequest {
-  target_effect: number;
-  expected_std: number;
-  alpha?: number;
+  baseline_data: VitalsRecord[];
+  target_effect?: number;
   power?: number;
-  allocation_ratio?: number;
+  dropout_rate?: number;
+  alpha?: number;
 }
 
 export interface FeasibilityAssessmentResponse {
