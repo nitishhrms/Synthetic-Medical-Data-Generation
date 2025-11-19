@@ -22,6 +22,15 @@ from generators import (
 )
 from db_utils import db, cache, startup_db, shutdown_db
 
+# Daft imports for million-scale generation
+try:
+    from daft_generators import DaftDataGenerator, generate_vitals_million_scale
+    DAFT_AVAILABLE = True
+except ImportError:
+    DAFT_AVAILABLE = False
+    import warnings
+    warnings.warn("Daft not available. Million-scale generation disabled. Install: pip install getdaft==0.3.0")
+
 app = FastAPI(
     title="Data Generation Service",
     description="Synthetic Clinical Trial Data Generation (Rules/LLM/MVN)",
@@ -544,6 +553,139 @@ async def generate_labs_endpoint(request: GenerateLabsRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lab results generation failed: {str(e)}"
         )
+
+
+# ============================================================================
+# MILLION-SCALE GENERATION - Daft-Powered
+# ============================================================================
+
+class MillionScaleRequest(BaseModel):
+    total_subjects: int = Field(..., ge=1000, le=10_000_000, description="Total subjects (both arms)")
+    chunk_size: int = Field(default=10_000, ge=100, le=100_000, description="Subjects per chunk")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect")
+    output_path: Optional[str] = Field(None, description="Output file path (Parquet recommended)")
+    format: str = Field(default="parquet", pattern=r"^(parquet|csv)$", description="Output format")
+    seed: int = Field(default=42, description="Random seed")
+
+class MillionScaleResponse(BaseModel):
+    total_subjects: int
+    total_records: int
+    num_chunks: int
+    time_seconds: float
+    records_per_second: float
+    output_path: Optional[str]
+    format: str
+    memory_efficient: bool
+    message: str
+
+@app.get("/daft/status")
+async def daft_status():
+    """Check if Daft is available for million-scale generation"""
+    return {
+        "daft_available": DAFT_AVAILABLE,
+        "million_scale_enabled": DAFT_AVAILABLE,
+        "max_subjects": 10_000_000 if DAFT_AVAILABLE else 1000,
+        "recommended_chunk_size": 10_000,
+        "message": "Daft distributed generation ready" if DAFT_AVAILABLE else "Install getdaft==0.3.0 for million-scale generation"
+    }
+
+@app.post("/generate/million-scale", response_model=MillionScaleResponse)
+async def generate_million_scale(request: MillionScaleRequest):
+    """
+    Generate million-scale synthetic data using Daft's distributed processing
+
+    Features:
+    - Handles 1M+ subjects without memory issues
+    - Chunked processing (controlled memory usage)
+    - Streaming Parquet writes (efficient storage)
+    - Lazy evaluation (optimized performance)
+
+    Example:
+        Generate 1 million subjects (4 million records):
+        {
+            "total_subjects": 1000000,
+            "chunk_size": 10000,
+            "target_effect": -5.0,
+            "output_path": "/data/synthetic_1M.parquet",
+            "format": "parquet"
+        }
+
+    Performance:
+        - 10k subjects: ~2 seconds
+        - 100k subjects: ~20 seconds
+        - 1M subjects: ~3-5 minutes
+        - 10M subjects: ~30-50 minutes
+
+    Note: For datasets > 100k subjects, always use output_path with Parquet format
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Daft not available. Install: pip install getdaft==0.3.0"
+        )
+
+    try:
+        # Generate
+        metadata = generate_vitals_million_scale(
+            total_subjects=request.total_subjects,
+            chunk_size=request.chunk_size,
+            target_effect=request.target_effect,
+            output_path=request.output_path,
+            seed=request.seed
+        )
+
+        return MillionScaleResponse(
+            total_subjects=metadata["total_subjects"],
+            total_records=metadata["total_records"],
+            num_chunks=metadata["num_chunks"],
+            time_seconds=metadata["time_seconds"],
+            records_per_second=metadata["records_per_second"],
+            output_path=metadata["output_path"],
+            format=metadata["format"],
+            memory_efficient=metadata["memory_efficient"],
+            message=f"Successfully generated {metadata['total_records']:,} records in {metadata['time_seconds']:.2f}s"
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Million-scale generation failed: {str(e)}"
+        )
+
+@app.post("/generate/estimate-memory")
+async def estimate_memory_usage(total_subjects: int = 100_000, chunk_size: int = 10_000):
+    """
+    Estimate memory usage for million-scale generation
+
+    Helps you choose appropriate chunk_size for your available RAM.
+
+    Returns:
+        - Total dataset size
+        - Memory per chunk
+        - Number of chunks
+        - Recommendations
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    generator = DaftDataGenerator()
+    estimates = generator.estimate_memory_usage(total_subjects, chunk_size)
+
+    return {
+        "total_subjects": estimates["total_subjects"],
+        "total_records": estimates["total_records"],
+        "total_size_mb": round(estimates["total_size_mb"], 2),
+        "chunk_size": estimates["chunk_size"],
+        "records_per_chunk": estimates["records_per_chunk"],
+        "chunk_size_mb": round(estimates["chunk_size_mb"], 2),
+        "num_chunks": estimates["num_chunks"],
+        "recommendation": estimates["recommendation"],
+        "suggested_chunk_sizes": {
+            "low_memory_2gb": 5_000,
+            "medium_memory_8gb": 20_000,
+            "high_memory_32gb": 100_000
+        }
+    }
 
 
 if __name__ == "__main__":
