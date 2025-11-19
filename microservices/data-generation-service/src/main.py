@@ -20,6 +20,7 @@ from generators import (
     generate_demographics,
     generate_labs
 )
+from realistic_trial import RealisticTrialGenerator
 from db_utils import db, cache, startup_db, shutdown_db
 
 app = FastAPI(
@@ -140,6 +141,7 @@ async def root():
             "mvn": "/generate/mvn",
             "llm": "/generate/llm",
             "bootstrap": "/generate/bootstrap",
+            "realistic_trial": "/generate/realistic-trial (NEW!)",
             "ae": "/generate/ae",
             "compare": "/compare",
             "pilot_data": "/data/pilot",
@@ -622,6 +624,26 @@ class ComprehensiveStudyResponse(BaseModel):
     labs: Optional[List[Dict[str, Any]]] = Field(None, description="Lab results data")
     metadata: Dict[str, Any] = Field(..., description="Generation metadata and summary")
 
+class RealisticTrialRequest(BaseModel):
+    """Request model for realistic trial generation with imperfections"""
+    n_per_arm: int = Field(default=50, ge=10, le=200, description="Number of subjects per treatment arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
+    n_sites: int = Field(default=5, ge=1, le=20, description="Number of study sites")
+    site_heterogeneity: float = Field(default=0.3, ge=0.0, le=1.0, description="Site heterogeneity (0=uniform, 1=very skewed)")
+    missing_data_rate: float = Field(default=0.08, ge=0.0, le=0.3, description="Missing data rate (0-0.3)")
+    dropout_rate: float = Field(default=0.15, ge=0.0, le=0.5, description="Subject dropout rate (0-0.5)")
+    protocol_deviation_rate: float = Field(default=0.05, ge=0.0, le=0.3, description="Protocol deviation rate (0-0.3)")
+    enrollment_pattern: str = Field(default="exponential", description="Enrollment pattern: 'linear', 'exponential', 'seasonal'")
+    enrollment_duration_months: int = Field(default=12, ge=1, le=24, description="Enrollment duration in months")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+
+class RealisticTrialResponse(BaseModel):
+    """Response model for realistic trial data"""
+    vitals: List[Dict[str, Any]] = Field(..., description="Vitals data with realistic patterns")
+    adverse_events: List[Dict[str, Any]] = Field(..., description="Adverse events correlated with vitals")
+    protocol_deviations: List[Dict[str, Any]] = Field(..., description="Protocol deviations and compliance issues")
+    metadata: Dict[str, Any] = Field(..., description="Generation metadata including realism scores")
+
 @app.post("/generate/demographics")
 async def generate_demographics_endpoint(request: GenerateDemographicsRequest):
     """
@@ -691,6 +713,115 @@ async def generate_labs_endpoint(request: GenerateLabsRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lab results generation failed: {str(e)}"
+        )
+
+@app.post("/generate/realistic-trial", response_model=RealisticTrialResponse)
+async def generate_realistic_trial(request: RealisticTrialRequest):
+    """
+    Generate a REALISTIC clinical trial with imperfections and patterns found in real studies
+
+    **NEW in v2.0** - This is a game-changer for trial simulation!
+
+    **What Makes This Different:**
+    Unlike other methods that generate "perfect" synthetic data, this creates trials with
+    realistic imperfections, heterogeneity, and patterns observed in real clinical studies:
+
+    **Realistic Features:**
+    - 📅 **Variable Enrollment**: Exponential/seasonal patterns instead of instant enrollment
+    - 🏥 **Site Heterogeneity**: Uneven site distribution (some sites enroll 2x others)
+    - 📊 **Site Effects**: Each site has slightly different baselines and response rates
+    - 🚪 **Dropout**: Subjects drop out over time (configurable rate)
+    - ❌ **Missing Data**: MAR (Missing At Random) patterns - more common at later visits
+    - ⚠️ **Protocol Deviations**: Visit window violations, consent issues, non-compliance
+    - 💊 **Correlated AEs**: Adverse events triggered by vitals (high BP → headache)
+    - 🎯 **Individual Variability**: Each subject has unique response trajectory
+
+    **Use Cases:**
+    - 🔬 **Trial Planning**: Simulate realistic scenarios with dropout and missing data
+    - 🎓 **Training**: Show data managers what real-world messiness looks like
+    - 🧪 **RBQM Testing**: Generate site-level quality metrics for testing dashboards
+    - 📈 **Analytics Validation**: Test statistical methods on realistic imperfect data
+    - 🤖 **ML Training**: Train predictive models on realistic trial data
+
+    **Parameters:**
+    - `n_per_arm`: Subjects per treatment arm (default: 50)
+    - `target_effect`: Target SBP reduction at Week 12 in mmHg (default: -5.0)
+    - `n_sites`: Number of study sites (default: 5)
+    - `site_heterogeneity`: 0=all sites equal, 1=very uneven (default: 0.3)
+    - `missing_data_rate`: Fraction of data missing (default: 0.08 = 8%)
+    - `dropout_rate`: Fraction of subjects dropping out (default: 0.15 = 15%)
+    - `protocol_deviation_rate`: Rate of protocol violations (default: 0.05 = 5%)
+    - `enrollment_pattern`: "linear", "exponential", or "seasonal" (default: "exponential")
+    - `enrollment_duration_months`: Enrollment duration (default: 12 months)
+    - `seed`: Random seed for reproducibility
+
+    **Returns:**
+    - `vitals`: DataFrame with enrollment dates, site assignments, dropout flags
+    - `adverse_events`: AEs correlated with vitals patterns
+    - `protocol_deviations`: Visit window violations, consent issues, etc.
+    - `metadata`: Realism scores, site statistics, quality metrics
+
+    **Example Request:**
+    ```json
+    {
+      "n_per_arm": 50,
+      "target_effect": -5.0,
+      "n_sites": 8,
+      "site_heterogeneity": 0.4,
+      "missing_data_rate": 0.10,
+      "dropout_rate": 0.18,
+      "protocol_deviation_rate": 0.07,
+      "enrollment_pattern": "exponential",
+      "enrollment_duration_months": 14,
+      "seed": 42
+    }
+    ```
+
+    **Quality Score:**
+    The response includes a `realism_score` (0-100) that evaluates how realistic the
+    generated data is based on:
+    - Missing data patterns (MAR vs MCAR)
+    - Correlation structure preservation
+    - Dropout patterns over time
+    - AE rates and severity distribution
+    - Site heterogeneity metrics
+    """
+    try:
+        # Initialize the realistic trial generator
+        generator = RealisticTrialGenerator(seed=request.seed)
+
+        # Generate the complete trial
+        trial_data = generator.generate_realistic_trial(
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            n_sites=request.n_sites,
+            site_heterogeneity=request.site_heterogeneity,
+            missing_data_rate=request.missing_data_rate,
+            dropout_rate=request.dropout_rate,
+            protocol_deviation_rate=request.protocol_deviation_rate,
+            enrollment_pattern=request.enrollment_pattern,
+            enrollment_duration_months=request.enrollment_duration_months
+        )
+
+        # Convert vitals DataFrame to records, replacing NaN with None for JSON
+        vitals_df = trial_data['vitals'].copy()
+        # Replace NaN and Inf with None for JSON serialization
+        vitals_df = vitals_df.replace([float('inf'), float('-inf')], None)
+        vitals_df = vitals_df.where(pd.notnull(vitals_df), None)
+        vitals_records = vitals_df.to_dict(orient='records')
+
+        # Return the response
+        return RealisticTrialResponse(
+            vitals=vitals_records,
+            adverse_events=trial_data['adverse_events'],
+            protocol_deviations=trial_data['protocol_deviations'],
+            metadata=trial_data['metadata']
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Realistic trial generation failed: {str(e)}"
         )
 
 @app.post("/generate/comprehensive-study", response_model=ComprehensiveStudyResponse)
