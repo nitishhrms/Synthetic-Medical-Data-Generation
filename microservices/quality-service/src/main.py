@@ -22,6 +22,21 @@ except ImportError:
     PRIVACY_AVAILABLE = False
     print("Warning: Privacy assessment not available (anonymeter not installed)")
 
+# SYNDATA metrics and quality report modules
+try:
+    from syndata_metrics import SYNDATAMetrics, compute_syndata_metrics
+    SYNDATA_AVAILABLE = True
+except ImportError:
+    SYNDATA_AVAILABLE = False
+    print("Warning: SYNDATA metrics not available")
+
+try:
+    from quality_report_generator import QualityReportGenerator, generate_quality_report
+    QUALITY_REPORT_AVAILABLE = True
+except ImportError:
+    QUALITY_REPORT_AVAILABLE = False
+    print("Warning: Quality report generator not available")
+
 app = FastAPI(
     title="Quality Service",
     description="Data Quality Checks and YAML Edit Check Engine",
@@ -347,6 +362,18 @@ class KAnonymityRequest(BaseModel):
     data: List[Dict[str, Any]] = Field(..., description="Dataset to assess")
     quasi_identifiers: Optional[List[str]] = Field(default=None, description="Quasi-identifier columns")
 
+class SYNDATAAssessmentRequest(BaseModel):
+    real_data: List[Dict[str, Any]] = Field(..., description="Real/original dataset")
+    synthetic_data: List[Dict[str, Any]] = Field(..., description="Synthetic dataset to assess")
+
+class QualityReportRequest(BaseModel):
+    method_name: str = Field(..., description="Generation method name (mvn, bootstrap, etc.)")
+    real_data: List[Dict[str, Any]] = Field(..., description="Real/original dataset")
+    synthetic_data: List[Dict[str, Any]] = Field(..., description="Synthetic dataset")
+    syndata_metrics: Optional[Dict[str, Any]] = Field(default=None, description="Pre-computed SYNDATA metrics")
+    privacy_metrics: Optional[Dict[str, Any]] = Field(default=None, description="Pre-computed privacy metrics")
+    generation_time_ms: Optional[float] = Field(default=None, description="Time taken to generate (ms)")
+
 @app.post("/privacy/assess/comprehensive")
 async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
     """
@@ -457,6 +484,160 @@ async def assess_k_anonymity(request: KAnonymityRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"K-anonymity calculation failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# SYNDATA Quality Metrics Endpoints
+# ============================================================================
+
+@app.post("/syndata/assess")
+async def assess_syndata_metrics(request: SYNDATAAssessmentRequest):
+    """
+    Assess SYNDATA-style quality metrics for synthetic data
+
+    Implements metrics from the NIH SYNDATA project:
+    - **Support Coverage**: How well synthetic data covers real data value ranges
+    - **Cross-Classification**: Joint distribution matching (utility metric)
+    - **CI Coverage**: Percentage of synthetic values within real data 95% confidence intervals
+      - **Target**: 88-98% (CART study standard)
+      - This is the key metric professors look for!
+    - **Membership Disclosure**: Can a classifier distinguish real from synthetic?
+    - **Attribute Disclosure**: Can sensitive attributes be predicted?
+
+    **Use Cases**:
+    - Validate synthetic data quality before using in research
+    - Compare quality across different generation methods
+    - Generate academic-quality metrics for publications
+    - Meet regulatory requirements for synthetic data use
+
+    **Returns**:
+    - Comprehensive SYNDATA metrics
+    - Overall quality score (0-1)
+    - Interpretation and recommendations
+
+    **Example**:
+    ```json
+    {
+      "real_data": [...],
+      "synthetic_data": [...]
+    }
+    ```
+
+    **Response includes**:
+    - CI coverage statistics (most important for validation)
+    - Support coverage scores
+    - Cross-classification utility
+    - Privacy disclosure risks
+    - Overall SYNDATA score
+    """
+    if not SYNDATA_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="SYNDATA metrics not available. Ensure syndata_metrics.py is installed."
+        )
+
+    try:
+        # Convert to DataFrames
+        real_df = pd.DataFrame(request.real_data)
+        synthetic_df = pd.DataFrame(request.synthetic_data)
+
+        # Compute SYNDATA metrics
+        metrics = compute_syndata_metrics(real_df, synthetic_df)
+
+        return {
+            "syndata_metrics": metrics,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "quality-service",
+            "syndata_version": "1.0.0"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SYNDATA assessment failed: {str(e)}"
+        )
+
+
+@app.post("/quality/report")
+async def generate_comprehensive_quality_report(request: QualityReportRequest):
+    """
+    Generate comprehensive human-readable quality report for synthetic dataset
+
+    Creates an automated markdown report addressing professor feedback:
+    - **Summary statistics**: Means and variances compared to expected values
+    - **CI coverage**: Percentage within real data confidence intervals (CART: 88-98%)
+    - **SYNDATA metrics**: Support coverage, cross-classification, disclosure risks
+    - **Privacy assessment**: K-anonymity, re-identification risks (if provided)
+    - **Overall grade**: A/B/C/D rating based on quality
+    - **Recommendations**: Actionable suggestions for improvement
+
+    **Use Cases**:
+    - Generate quality reports for each synthetic dataset
+    - Compare methods systematically
+    - Document data quality for regulatory submission
+    - Academic publication supplement
+
+    **Parameters**:
+    - method_name: "mvn", "bootstrap", "rules", "bayesian", "mice", "llm"
+    - real_data: Original dataset
+    - synthetic_data: Generated dataset
+    - syndata_metrics: Optional pre-computed metrics (auto-computed if not provided)
+    - privacy_metrics: Optional privacy assessment results
+    - generation_time_ms: Time taken to generate (for performance comparison)
+
+    **Returns**:
+    - Markdown-formatted quality report
+    - Ready to save as .md file or display in UI
+
+    **Example**:
+    ```json
+    {
+      "method_name": "mvn",
+      "real_data": [...],
+      "synthetic_data": [...],
+      "generation_time_ms": 28.5
+    }
+    ```
+    """
+    if not QUALITY_REPORT_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Quality report generator not available. Ensure quality_report_generator.py is installed."
+        )
+
+    try:
+        # Convert to DataFrames
+        real_df = pd.DataFrame(request.real_data)
+        synthetic_df = pd.DataFrame(request.synthetic_data)
+
+        # Compute SYNDATA metrics if not provided
+        syndata_metrics = request.syndata_metrics
+        if syndata_metrics is None and SYNDATA_AVAILABLE:
+            syndata_metrics = compute_syndata_metrics(real_df, synthetic_df)
+
+        # Generate report
+        report_markdown = generate_quality_report(
+            method_name=request.method_name,
+            real_data=real_df,
+            synthetic_data=synthetic_df,
+            syndata_metrics=syndata_metrics,
+            privacy_metrics=request.privacy_metrics,
+            generation_time_ms=request.generation_time_ms
+        )
+
+        return {
+            "report": report_markdown,
+            "method": request.method_name,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "quality-service",
+            "report_version": "1.0.0"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Quality report generation failed: {str(e)}"
         )
 
 
