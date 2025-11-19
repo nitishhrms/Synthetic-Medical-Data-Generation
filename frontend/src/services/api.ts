@@ -237,6 +237,63 @@ export const dataGenerationApi = {
     return handleResponse(response);
   },
 
+  async generateDemographics(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/demographics`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 42
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateLabs(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/labs`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 42
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateAE(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/ae`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 7
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealVitalSigns(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-vitals`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealDemographics(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-demographics`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealAdverseEvents(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-ae`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
   async compareMethods(params: GenerationRequest): Promise<any> {
     const response = await fetch(`${DATA_GEN_SERVICE}/compare?${new URLSearchParams(params as any)}`, {
       headers: getAuthHeaders(),

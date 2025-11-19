@@ -613,6 +613,76 @@ async def get_pilot_data():
             detail=f"Failed to load pilot data: {str(e)}"
         )
 
+@app.get("/data/real-vitals")
+async def get_real_vital_signs():
+    """
+    Get full CDISC SDTM Vital Signs dataset
+
+    Returns 29,644 vital signs records from the CDISC Pilot Study.
+    Full SDTM VS domain with multiple measurements per visit.
+    """
+    try:
+        from pathlib import Path
+        current_file = Path(__file__).resolve()
+        base_path = current_file.parents[1] if str(current_file).startswith("/app/") else current_file.parents[3]
+        vitals_path = base_path / "data" / "vital_signs.csv"
+
+        if not vitals_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {vitals_path}")
+
+        df = pd.read_csv(vitals_path)
+        return df.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load vital signs: {str(e)}")
+
+@app.get("/data/real-demographics")
+async def get_real_demographics():
+    """
+    Get full CDISC SDTM Demographics dataset
+
+    Returns 307 subject demographics from the CDISC Pilot Study.
+    """
+    try:
+        from pathlib import Path
+        current_file = Path(__file__).resolve()
+        base_path = current_file.parents[1] if str(current_file).startswith("/app/") else current_file.parents[3]
+        demo_path = base_path / "data" / "demographics.csv"
+
+        if not demo_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {demo_path}")
+
+        df = pd.read_csv(demo_path)
+        return df.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load demographics: {str(e)}")
+
+@app.get("/data/real-ae")
+async def get_real_adverse_events():
+    """
+    Get full CDISC SDTM Adverse Events dataset
+
+    Returns 1,192 adverse events from the CDISC Pilot Study.
+    """
+    try:
+        from pathlib import Path
+        current_file = Path(__file__).resolve()
+        base_path = current_file.parents[1] if str(current_file).startswith("/app/") else current_file.parents[3]
+        ae_path = base_path / "data" / "adverse_events.csv"
+
+        if not ae_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {ae_path}")
+
+        df = pd.read_csv(ae_path)
+        return df.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load adverse events: {str(e)}")
+
 
 # ============================================================================
 # Advanced Generation Methods - Bayesian Network & MICE
