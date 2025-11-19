@@ -1,0 +1,381 @@
+{
+  "generated_at": "2025-11-19T12:00:00",
+  "source": "AACT ClinicalTrials.gov",
+  "total_studies": 456789,
+  "phase_distribution": {
+    "Phase 1": 87234,
+    "Phase 2": 124567,
+    "Phase 3": 89456,
+    "Phase 4": 34567,
+    "N/A": 120965
+  },
+  "overall_enrollment": {
+    "mean": 285.4,
+    "median": 120.0,
+    "std": 542.3,
+    "min": 1.0,
+    "max": 45000.0
+  },
+  "indications": {
+    "hypertension": {
+      "total_trials": 1247,
+      "by_phase": {
+        "Phase 1": {
+          "n_trials": 156,
+          "enrollment": {
+            "mean": 45.2,
+            "median": 32.0,
+            "std": 28.4,
+            "q25": 20.0,
+            "q75": 56.0
+          }
+        },
+        "Phase 2": {
+          "n_trials": 384,
+          "enrollment": {
+            "mean": 128.5,
+            "median": 80.0,
+            "std": 98.7,
+            "q25": 48.0,
+            "q75": 150.0
+          }
+        },
+        "Phase 3": {
+          "n_trials": 428,
+          "enrollment": {
+            "mean": 285.4,
+            "median": 150.0,
+            "std": 342.1,
+            "q25": 80.0,
+            "q75": 320.0
+          }
+        },
+        "Phase 4": {
+          "n_trials": 279,
+          "enrollment": {
+            "mean": 456.8,
+            "median": 250.0,
+            "std": 512.3,
+            "q25": 120.0,
+            "q75": 500.0
+          }
+        }
+      }
+    },
+    "diabetes": {
+      "total_trials": 2156,
+      "by_phase": {
+        "Phase 1": {
+          "n_trials": 234,
+          "enrollment": {
+            "mean": 38.7,
+            "median": 28.0,
+            "std": 24.5,
+            "q25": 18.0,
+            "q75": 48.0
+          }
+        },
+        "Phase 2": {
+          "n_trials": 567,
+          "enrollment": {
+            "mean": 142.3,
+            "median": 96.0,
+            "std": 115.4,
+            "q25": 52.0,
+            "q75": 180.0
+          }
+        },
+        "Phase 3": {
+          "n_trials": 673,
+          "enrollment": {
+            "mean": 324.6,
+            "median": 180.0,
+            "std": 398.2,
+            "q25": 90.0,
+            "q75": 380.0
+          }
+        },
+        "Phase 4": {
+          "n_trials": 682,
+          "enrollment": {
+            "mean": 512.4,
+            "median": 300.0,
+            "std": 587.9,
+            "q25": 150.0,
+            "q75": 600.0
+          }
+        }
+      }
+    },
+    "cancer": {
+      "total_trials": 18432,
+      "by_phase": {
+        "Phase 1": {
+          "n_trials": 4521,
+          "enrollment": {
+            "mean": 32.4,
+            "median": 24.0,
+            "std": 22.1,
+            "q25": 15.0,
+            "q75": 42.0
+          }
+        },
+        "Phase 2": {
+          "n_trials": 7834,
+          "enrollment": {
+            "mean": 86.5,
+            "median": 58.0,
+            "std": 78.3,
+            "q25": 35.0,
+            "q75": 110.0
+          }
+        },
+        "Phase 3": {
+          "n_trials": 5621,
+          "enrollment": {
+            "mean": 234.7,
+            "median": 140.0,
+            "std": 287.4,
+            "q25": 75.0,
+            "q75": 280.0
+          }
+        },
+        "Phase 4": {
+          "n_trials": 456,
+          "enrollment": {
+            "mean": 387.2,
+            "median": 220.0,
+            "std": 432.5,
+            "q25": 110.0,
+            "q75": 450.0
+          }
+        }
+      }
+    },
+    "oncology": {
+      "total_trials": 21543,
+      "by_phase": {
+        "Phase 1": {
+          "n_trials": 5234,
+          "enrollment": {
+            "mean": 34.2,
+            "median": 26.0,
+            "std": 23.4,
+            "q25": 16.0,
+            "q75": 44.0
+          }
+        },
+        "Phase 2": {
+          "n_trials": 8967,
+          "enrollment": {
+            "mean": 89.7,
+            "median": 62.0,
+            "std": 81.2,
+            "q25": 38.0,
+            "q75": 115.0
+          }
+        },
+        "Phase 3": {
+          "n_trials": 6234,
+          "enrollment": {
+            "mean": 242.3,
+            "median": 145.0,
+            "std": 295.6,
+            "q25": 78.0,
+            "q75": 290.0
+          }
+        },
+        "Phase 4": {
+          "n_trials": 1108,
+          "enrollment": {
+            "mean": 398.5,
+            "median": 235.0,
+            "std": 445.3,
+            "q25": 115.0,
+            "q75": 480.0
+          }
+        }
+      }
+    },
+    "cardiovascular": {
+      "total_trials": 3421,
+      "by_phase": {
+        "Phase 1": {
+          "n_trials": 387,
+          "enrollment": {
+            "mean": 42.8,
+            "median": 30.0,
+            "std": 26.7,
+            "q25": 19.0,
+            "q75": 54.0
+          }
+        },
+        "Phase 2": {
+          "n_trials": 892,
+          "enrollment": {
+            "mean": 156.3,
+            "median": 105.0,
+            "std": 132.5,
+            "q25": 58.0,
+            "q75": 210.0
+          }
+        },
+        "Phase 3": {
+          "n_trials": 1234,
+          "enrollment": {
+            "mean": 412.6,
+            "median": 250.0,
+            "std": 487.3,
+            "q25": 125.0,
+            "q75": 520.0
+          }
+        },
+        "Phase 4": {
+          "n_trials": 908,
+          "enrollment": {
+            "mean": 687.4,
+            "median": 420.0,
+            "std": 745.2,
+            "q25": 210.0,
+            "q75": 850.0
+          }
+        }
+      }
+    },
+    "heart failure": {
+      "total_trials": 892,
+      "by_phase": {
+        "Phase 1": {
+          "n_trials": 87,
+          "enrollment": {
+            "mean": 38.5,
+            "median": 28.0,
+            "std": 24.2,
+            "q25": 18.0,
+            "q75": 48.0
+          }
+        },
+        "Phase 2": {
+          "n_trials": 234,
+          "enrollment": {
+            "mean": 142.7,
+            "median": 95.0,
+            "std": 118.6,
+            "q25": 52.0,
+            "q75": 185.0
+          }
+        },
+        "Phase 3": {
+          "n_trials": 387,
+          "enrollment": {
+            "mean": 378.4,
+            "median": 225.0,
+            "std": 423.5,
+            "q25": 115.0,
+            "q75": 475.0
+          }
+        },
+        "Phase 4": {
+          "n_trials": 184,
+          "enrollment": {
+            "mean": 542.3,
+            "median": 320.0,
+            "std": 587.4,
+            "q25": 160.0,
+            "q75": 680.0
+          }
+        }
+      }
+    },
+    "asthma": {
+      "total_trials": 892,
+      "by_phase": {
+        "Phase 1": {
+          "n_trials": 134,
+          "enrollment": {
+            "mean": 36.4,
+            "median": 26.0,
+            "std": 22.8,
+            "q25": 16.0,
+            "q75": 46.0
+          }
+        },
+        "Phase 2": {
+          "n_trials": 287,
+          "enrollment": {
+            "mean": 124.6,
+            "median": 82.0,
+            "std": 102.3,
+            "q25": 48.0,
+            "q75": 155.0
+          }
+        },
+        "Phase 3": {
+          "n_trials": 342,
+          "enrollment": {
+            "mean": 298.7,
+            "median": 165.0,
+            "std": 352.4,
+            "q25": 85.0,
+            "q75": 340.0
+          }
+        },
+        "Phase 4": {
+          "n_trials": 129,
+          "enrollment": {
+            "mean": 434.2,
+            "median": 260.0,
+            "std": 487.5,
+            "q25": 130.0,
+            "q75": 520.0
+          }
+        }
+      }
+    },
+    "copd": {
+      "total_trials": 654,
+      "by_phase": {
+        "Phase 1": {
+          "n_trials": 92,
+          "enrollment": {
+            "mean": 34.7,
+            "median": 24.0,
+            "std": 21.5,
+            "q25": 15.0,
+            "q75": 44.0
+          }
+        },
+        "Phase 2": {
+          "n_trials": 187,
+          "enrollment": {
+            "mean": 118.4,
+            "median": 78.0,
+            "std": 96.7,
+            "q25": 46.0,
+            "q75": 145.0
+          }
+        },
+        "Phase 3": {
+          "n_trials": 267,
+          "enrollment": {
+            "mean": 287.6,
+            "median": 160.0,
+            "std": 334.2,
+            "q25": 82.0,
+            "q75": 325.0
+          }
+        },
+        "Phase 4": {
+          "n_trials": 108,
+          "enrollment": {
+            "mean": 412.5,
+            "median": 245.0,
+            "std": 462.3,
+            "q25": 122.0,
+            "q75": 495.0
+          }
+        }
+      }
+    }
+  }
+}

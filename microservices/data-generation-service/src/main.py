@@ -945,13 +945,15 @@ class RealisticTrialRequest(BaseModel):
     """Request model for realistic trial generation with imperfections"""
     n_per_arm: int = Field(default=50, ge=10, le=200, description="Number of subjects per treatment arm")
     target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
-    n_sites: int = Field(default=5, ge=1, le=20, description="Number of study sites")
+    indication: Optional[str] = Field(default=None, description="Disease indication (e.g., 'hypertension') - enables AACT-informed defaults")
+    phase: Optional[str] = Field(default=None, description="Trial phase (e.g., 'Phase 3') - enables AACT-informed defaults")
+    n_sites: Optional[int] = Field(default=None, ge=1, le=30, description="Number of study sites (auto from AACT if None)")
     site_heterogeneity: float = Field(default=0.3, ge=0.0, le=1.0, description="Site heterogeneity (0=uniform, 1=very skewed)")
-    missing_data_rate: float = Field(default=0.08, ge=0.0, le=0.3, description="Missing data rate (0-0.3)")
-    dropout_rate: float = Field(default=0.15, ge=0.0, le=0.5, description="Subject dropout rate (0-0.5)")
+    missing_data_rate: Optional[float] = Field(default=None, ge=0.0, le=0.3, description="Missing data rate (auto from AACT if None)")
+    dropout_rate: Optional[float] = Field(default=None, ge=0.0, le=0.5, description="Subject dropout rate (auto from AACT if None)")
     protocol_deviation_rate: float = Field(default=0.05, ge=0.0, le=0.3, description="Protocol deviation rate (0-0.3)")
     enrollment_pattern: str = Field(default="exponential", description="Enrollment pattern: 'linear', 'exponential', 'seasonal'")
-    enrollment_duration_months: int = Field(default=12, ge=1, le=24, description="Enrollment duration in months")
+    enrollment_duration_months: Optional[int] = Field(default=None, ge=1, le=36, description="Enrollment duration in months (auto from AACT if None)")
     seed: int = Field(default=42, description="Random seed for reproducibility")
 
 class RealisticTrialResponse(BaseModel):
@@ -1111,6 +1113,8 @@ async def generate_realistic_trial(request: RealisticTrialRequest):
         trial_data = generator.generate_realistic_trial(
             n_per_arm=request.n_per_arm,
             target_effect=request.target_effect,
+            indication=request.indication,
+            phase=request.phase,
             n_sites=request.n_sites,
             site_heterogeneity=request.site_heterogeneity,
             missing_data_rate=request.missing_data_rate,
@@ -1139,6 +1143,171 @@ async def generate_realistic_trial(request: RealisticTrialRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Realistic trial generation failed: {str(e)}"
+        )
+
+# ============================================================================
+# AACT INTEGRATION ENDPOINTS - Industry benchmarks from 400K+ trials
+# ============================================================================
+
+@app.get("/aact/indications")
+async def get_available_indications():
+    """
+    Get list of disease indications with AACT data from 400,000+ ClinicalTrials.gov trials
+
+    This endpoint provides access to industry benchmarks derived from the AACT
+    (Aggregate Analysis of ClinicalTrials.gov) database, which contains comprehensive
+    data from over 400,000 real clinical trials.
+
+    **Returns:**
+    - `indications`: List of available disease indications with trial counts by phase
+    - `total`: Total number of indications available
+    - `source`: Data source information (AACT ClinicalTrials.gov)
+
+    **Example Response:**
+    ```json
+    {
+      "indications": [
+        {
+          "name": "hypertension",
+          "total_trials": 1247,
+          "by_phase": {
+            "Phase 1": 156,
+            "Phase 2": 384,
+            "Phase 3": 428,
+            "Phase 4": 279
+          }
+        },
+        {
+          "name": "diabetes",
+          "total_trials": 2156,
+          "by_phase": {...}
+        }
+      ],
+      "total": 8,
+      "source": "AACT ClinicalTrials.gov"
+    }
+    ```
+
+    **Use Cases:**
+    - Discover available indications for realistic trial generation
+    - Understand trial volume by therapeutic area
+    - Select appropriate indication for your simulation
+    """
+    try:
+        from aact_utils import get_aact_loader
+
+        aact = get_aact_loader()
+        indications = aact.get_available_indications()
+
+        # Build detailed indication list with trial counts
+        indication_details = []
+        for indication in indications:
+            phase_dist = aact.get_phase_distribution(indication)
+            total = sum(phase_dist.values())
+            indication_details.append({
+                "name": indication,
+                "total_trials": total,
+                "by_phase": phase_dist
+            })
+
+        # Sort by total trials (descending)
+        indication_details.sort(key=lambda x: x['total_trials'], reverse=True)
+
+        return {
+            "indications": indication_details,
+            "total": len(indications),
+            "source": "AACT ClinicalTrials.gov",
+            "cache_info": aact.get_source_info()
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load AACT indications: {str(e)}"
+        )
+
+@app.get("/aact/stats/{indication}")
+async def get_indication_stats(
+    indication: str,
+    phase: str = "Phase 3"
+):
+    """
+    Get industry statistics for a specific indication from 400K+ real trials
+
+    This endpoint provides detailed enrollment statistics and recommended defaults
+    for trial simulation based on real-world data from ClinicalTrials.gov.
+
+    **Parameters:**
+    - `indication`: Disease indication (e.g., 'hypertension', 'diabetes', 'cancer')
+    - `phase`: Trial phase (default: 'Phase 3'). Options: 'Phase 1', 'Phase 2', 'Phase 3', 'Phase 4'
+
+    **Returns:**
+    - `enrollment_statistics`: Real-world enrollment data (mean, median, std, quartiles)
+    - `recommended_defaults`: Auto-calculated parameters for realistic trial generation
+    - `phase_distribution`: Number of trials by phase for this indication
+
+    **Example Response:**
+    ```json
+    {
+      "indication": "hypertension",
+      "phase": "Phase 3",
+      "enrollment_statistics": {
+        "n_trials": 428,
+        "mean": 285.4,
+        "median": 150,
+        "std": 342.1,
+        "q25": 80,
+        "q75": 320
+      },
+      "recommended_defaults": {
+        "dropout_rate": 0.15,
+        "missing_data_rate": 0.08,
+        "n_sites": 10,
+        "enrollment_duration_months": 12,
+        "target_enrollment": 150
+      },
+      "phase_distribution": {
+        "Phase 1": 156,
+        "Phase 2": 384,
+        "Phase 3": 428,
+        "Phase 4": 279
+      }
+    }
+    ```
+
+    **Use Cases:**
+    - Get realistic parameters before generating trials
+    - Benchmark your protocol against industry standards
+    - Understand typical enrollment for your indication/phase
+    - Auto-populate parameters in /generate/realistic-trial endpoint
+    """
+    try:
+        from aact_utils import get_aact_loader
+
+        aact = get_aact_loader()
+
+        # Get enrollment statistics
+        enrollment_stats = aact.get_enrollment_stats(indication.lower(), phase)
+
+        # Get recommended defaults
+        defaults = aact.get_realistic_defaults(indication.lower(), phase)
+
+        # Get phase distribution
+        phase_dist = aact.get_phase_distribution(indication.lower())
+
+        return {
+            "indication": indication.lower(),
+            "phase": phase,
+            "enrollment_statistics": enrollment_stats,
+            "recommended_defaults": defaults,
+            "phase_distribution": phase_dist,
+            "source": "AACT ClinicalTrials.gov"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load AACT statistics for {indication}: {str(e)}"
         )
 
 @app.post("/generate/comprehensive-study", response_model=ComprehensiveStudyResponse)

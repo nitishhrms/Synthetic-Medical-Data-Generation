@@ -429,12 +429,24 @@ class RealisticTrialGenerator:
             scores['ae_realism'] = 0.0
 
         # Overall score (convert to 0-100 scale)
-        valid_scores = [v for v in scores.values() if not np.isnan(v)]
+        valid_scores = [v for v in scores.values() if not np.isnan(v) and not np.isinf(v)]
         overall = np.mean(valid_scores) * 100 if valid_scores else 0.0
+
+        # Ensure overall score is finite
+        if np.isnan(overall) or np.isinf(overall):
+            overall = 0.0
+
+        # Clean up component scores - replace NaN/Inf with 0.0
+        component_scores = {}
+        for k, v in scores.items():
+            if np.isnan(v) or np.isinf(v):
+                component_scores[k] = 0.0
+            else:
+                component_scores[k] = float(round(v * 100, 1))
 
         return {
             'overall_score': float(round(overall, 1)),
-            'component_scores': {k: float(round(v * 100, 1)) for k, v in scores.items()},
+            'component_scores': component_scores,
             'interpretation': 'Excellent' if overall >= 85 else 'Good' if overall >= 70 else 'Fair'
         }
 
@@ -442,18 +454,38 @@ class RealisticTrialGenerator:
         self,
         n_per_arm: int = 50,
         target_effect: float = -5.0,
-        n_sites: int = 5,
+        indication: str = None,
+        phase: str = None,
+        n_sites: int = None,
         site_heterogeneity: float = 0.3,
-        missing_data_rate: float = 0.08,
-        dropout_rate: float = 0.15,
+        missing_data_rate: float = None,
+        dropout_rate: float = None,
         protocol_deviation_rate: float = 0.05,
         enrollment_pattern: str = "exponential",
-        enrollment_duration_months: int = 12
+        enrollment_duration_months: int = None
     ) -> Dict[str, Any]:
         """
         Generate a complete realistic clinical trial
 
-        This is the main entry point for realistic trial generation
+        This is the main entry point for realistic trial generation.
+
+        NEW: Now supports AACT-informed defaults from 400K+ real trials!
+        If indication and phase are provided, parameters like dropout_rate,
+        missing_data_rate, n_sites, and enrollment_duration will be automatically
+        calculated from industry benchmarks if not explicitly provided.
+
+        Args:
+            n_per_arm: Subjects per treatment arm (default: 50)
+            target_effect: Target SBP reduction in mmHg (default: -5.0)
+            indication: Disease indication (e.g., 'hypertension') - enables AACT defaults
+            phase: Trial phase (e.g., 'Phase 3') - enables AACT defaults
+            n_sites: Number of sites (auto-calculated from AACT if None and indication provided)
+            site_heterogeneity: Site distribution skew, 0-1 (default: 0.3)
+            missing_data_rate: Missing data rate (auto from AACT if None and indication provided)
+            dropout_rate: Dropout rate (auto from AACT if None and indication provided)
+            protocol_deviation_rate: Protocol deviation rate (default: 0.05)
+            enrollment_pattern: 'linear', 'exponential', or 'seasonal' (default: 'exponential')
+            enrollment_duration_months: Enrollment duration (auto from AACT if None and indication provided)
 
         Returns:
             {
@@ -463,10 +495,47 @@ class RealisticTrialGenerator:
                 'metadata': {
                     'sites': site metadata,
                     'enrollment': enrollment metadata,
-                    'realism_score': quality metrics
+                    'realism_score': quality metrics,
+                    'aact_informed': whether AACT defaults were used
                 }
             }
         """
+        # Get AACT-informed defaults if indication and phase provided
+        aact_informed = False
+        if indication and phase:
+            try:
+                from aact_utils import get_aact_loader
+                aact = get_aact_loader()
+                defaults = aact.get_realistic_defaults(indication, phase)
+
+                # Use AACT defaults only for parameters not explicitly provided
+                if n_sites is None:
+                    n_sites = defaults.get('n_sites', 5)
+                    aact_informed = True
+                if missing_data_rate is None:
+                    missing_data_rate = defaults.get('missing_data_rate', 0.08)
+                    aact_informed = True
+                if dropout_rate is None:
+                    dropout_rate = defaults.get('dropout_rate', 0.15)
+                    aact_informed = True
+                if enrollment_duration_months is None:
+                    enrollment_duration_months = defaults.get('enrollment_duration_months', 12)
+                    aact_informed = True
+            except Exception as e:
+                # Fallback to defaults if AACT loading fails
+                import warnings
+                warnings.warn(f"Could not load AACT defaults: {e}. Using standard defaults.", UserWarning)
+
+        # Apply standard defaults if still None
+        if n_sites is None:
+            n_sites = 5
+        if missing_data_rate is None:
+            missing_data_rate = 0.08
+        if dropout_rate is None:
+            dropout_rate = 0.15
+        if enrollment_duration_months is None:
+            enrollment_duration_months = 12
+
         n_subjects = n_per_arm * 2
 
         # 1. Generate enrollment schedule
@@ -541,7 +610,10 @@ class RealisticTrialGenerator:
             'generation_timestamp': datetime.now().isoformat(),
             'total_vitals_records': int(len(vitals_df)),
             'total_adverse_events': int(len(adverse_events)),
-            'total_deviations': int(len(deviations))
+            'total_deviations': int(len(deviations)),
+            'aact_informed': aact_informed,
+            'indication': indication if indication else None,
+            'phase': phase if phase else None
         }
 
         # 10. Clean up DataFrame for JSON serialization
