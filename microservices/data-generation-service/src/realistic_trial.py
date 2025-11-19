@@ -442,31 +442,60 @@ class RealisticTrialGenerator:
         self,
         n_per_arm: int = 50,
         target_effect: float = -5.0,
-        n_sites: int = 5,
+        indication: str = "hypertension",  # NEW PARAMETER
+        phase: str = "Phase 3",  # NEW PARAMETER
+        n_sites: int = None,  # Now optional
         site_heterogeneity: float = 0.3,
-        missing_data_rate: float = 0.08,
-        dropout_rate: float = 0.15,
+        missing_data_rate: float = None,  # Now optional
+        dropout_rate: float = None,  # Now optional
         protocol_deviation_rate: float = 0.05,
         enrollment_pattern: str = "exponential",
-        enrollment_duration_months: int = 12
+        enrollment_duration_months: int = None  # Now optional
     ) -> Dict[str, Any]:
         """
         Generate a complete realistic clinical trial
-
-        This is the main entry point for realistic trial generation
-
+        
+        NEW: Uses AACT statistics from 400K+ trials to set realistic defaults
+        
+        Args:
+            n_per_arm: Number of subjects per treatment arm
+            target_effect: Target treatment effect (mmHg)
+            indication: Disease indication (e.g., "hypertension", "diabetes")
+            phase: Trial phase (e.g., "Phase 3")
+            n_sites: Number of sites (auto-calculated from AACT if None)
+            site_heterogeneity: Site enrollment variability
+            missing_data_rate: Missing data rate (auto from AACT if None)
+            dropout_rate: Subject dropout rate (auto from AACT if None)
+            protocol_deviation_rate: Protocol violation rate
+            enrollment_pattern: Enrollment pattern
+            enrollment_duration_months: Enrollment duration (auto from AACT if None)
+            
         Returns:
-            {
-                'vitals': DataFrame,
-                'adverse_events': List[Dict],
-                'protocol_deviations': List[Dict],
-                'metadata': {
-                    'sites': site metadata,
-                    'enrollment': enrollment metadata,
-                    'realism_score': quality metrics
-                }
-            }
+            Dictionary with vitals, adverse_events, protocol_deviations, metadata
         """
+        # NEW: Import and use AACT defaults
+        try:
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).parent))
+            from aact_utils import get_aact_loader
+            
+            # Get AACT-informed defaults
+            aact = get_aact_loader()
+            defaults = aact.get_realistic_defaults(indication, phase)
+            
+            # Use AACT defaults if parameters not specified
+            n_sites = n_sites or defaults.get("n_sites", 5)
+            missing_data_rate = missing_data_rate if missing_data_rate is not None else defaults.get("missing_data_rate", 0.08)
+            dropout_rate = dropout_rate if dropout_rate is not None else defaults.get("dropout_rate", 0.15)
+            enrollment_duration_months = enrollment_duration_months or defaults.get("enrollment_duration_months", 12)
+        except Exception as e:
+            # Fallback to hardcoded defaults if AACT not available
+            n_sites = n_sites or 5
+            missing_data_rate = missing_data_rate if missing_data_rate is not None else 0.08
+            dropout_rate = dropout_rate if dropout_rate is not None else 0.15
+            enrollment_duration_months = enrollment_duration_months or 12
+        
         n_subjects = n_per_arm * 2
 
         # 1. Generate enrollment schedule

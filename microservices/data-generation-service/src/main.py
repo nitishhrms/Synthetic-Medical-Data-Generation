@@ -945,13 +945,15 @@ class RealisticTrialRequest(BaseModel):
     """Request model for realistic trial generation with imperfections"""
     n_per_arm: int = Field(default=50, ge=10, le=200, description="Number of subjects per treatment arm")
     target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
-    n_sites: int = Field(default=5, ge=1, le=20, description="Number of study sites")
+    indication: str = Field(default="hypertension", description="Disease indication")  # NEW
+    phase: str = Field(default="Phase 3", description="Trial phase")  # NEW
+    n_sites: Optional[int] = Field(default=None, description="Number of study sites (auto from AACT if None)")  # Optional
     site_heterogeneity: float = Field(default=0.3, ge=0.0, le=1.0, description="Site heterogeneity (0=uniform, 1=very skewed)")
-    missing_data_rate: float = Field(default=0.08, ge=0.0, le=0.3, description="Missing data rate (0-0.3)")
-    dropout_rate: float = Field(default=0.15, ge=0.0, le=0.5, description="Subject dropout rate (0-0.5)")
+    missing_data_rate: Optional[float] = Field(default=None, ge=0.0, le=0.3, description="Missing data rate (auto from AACT if None)")  # Optional
+    dropout_rate: Optional[float] = Field(default=None, ge=0.0, le=0.5, description="Dropout rate (auto from AACT if None)")  # Optional
     protocol_deviation_rate: float = Field(default=0.05, ge=0.0, le=0.3, description="Protocol deviation rate (0-0.3)")
     enrollment_pattern: str = Field(default="exponential", description="Enrollment pattern: 'linear', 'exponential', 'seasonal'")
-    enrollment_duration_months: int = Field(default=12, ge=1, le=24, description="Enrollment duration in months")
+    enrollment_duration_months: Optional[int] = Field(default=None, ge=1, le=24, description="Enrollment duration (auto from AACT if None)")  # Optional
     seed: int = Field(default=42, description="Random seed for reproducibility")
 
 class RealisticTrialResponse(BaseModel):
@@ -1107,10 +1109,12 @@ async def generate_realistic_trial(request: RealisticTrialRequest):
         # Initialize the realistic trial generator
         generator = RealisticTrialGenerator(seed=request.seed)
 
-        # Generate the complete trial
+        # Generate the complete trial - NOW WITH AACT PARAMETERS
         trial_data = generator.generate_realistic_trial(
             n_per_arm=request.n_per_arm,
             target_effect=request.target_effect,
+            indication=request.indication,  # NEW
+            phase=request.phase,  # NEW
             n_sites=request.n_sites,
             site_heterogeneity=request.site_heterogeneity,
             missing_data_rate=request.missing_data_rate,
@@ -1397,6 +1401,96 @@ async def estimate_memory_usage(total_subjects: int = 100_000, chunk_size: int =
             "high_memory_32gb": 100_000
         }
     }
+
+
+# ============================================================================
+# AACT Integration Endpoints - Industry Benchmarking
+# ============================================================================
+
+@app.get("/aact/indications")
+async def get_available_indications():
+    """
+    Get list of disease indications with AACT data
+    
+    Returns available disease indications from ClinicalTrials.gov database
+    (400,000+ trials processed via Daft)
+    
+    Returns:
+        List of indication names with trial counts
+    """
+    from aact_utils import get_aact_loader
+    
+    try:
+        aact = get_aact_loader()
+        indications = aact.get_available_indications()
+        
+        # Get trial counts for each indication
+        indication_details = []
+        for indication in indications:
+            phase_dist = aact.get_phase_distribution(indication)
+            total = sum(phase_dist.values())
+            indication_details.append({
+                "name": indication,
+                "total_trials": total,
+                "by_phase": phase_dist
+            })
+        
+        return {
+            "indications": indication_details,
+            "total": len(indications),
+            "source": "AACT ClinicalTrials.gov",
+            "total_studies": aact.stats.get("total_studies", 0)
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load AACT data: {str(e)}"
+        )
+
+
+@app.get("/aact/stats/{indication}")
+async def get_indication_stats(indication: str, phase: str = "Phase 3"):
+    """
+    Get industry statistics for a specific indication from AACT
+    
+    Args:
+        indication: Disease indication (e.g., "hypertension", "diabetes")
+        phase: Trial phase (default: "Phase 3")
+        
+    Returns:
+        Enrollment statistics, recommended defaults, and phase distribution
+        from real ClinicalTrials.gov data
+        
+    Example:
+        GET /aact/stats/hypertension?phase=Phase%203
+    """
+    from aact_utils import get_aact_loader
+    
+    try:
+        aact = get_aact_loader()
+        
+        enrollment_stats = aact.get_enrollment_stats(indication, phase)
+        defaults = aact.get_realistic_defaults(indication, phase)
+        phase_dist = aact.get_phase_distribution(indication)
+        
+        return {
+            "indication": indication,
+            "phase": phase,
+            "enrollment_statistics": enrollment_stats,
+            "recommended_defaults": defaults,
+            "phase_distribution": phase_dist,
+            "source": "AACT ClinicalTrials.gov"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get stats for {indication}: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

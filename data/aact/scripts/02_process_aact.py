@@ -20,7 +20,7 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-AACT_RAW_DIR = project_root / "data" / "aact" / "raw"
+AACT_RAW_DIR = project_root / "data" / "aact" / "clinical_data"
 AACT_PROCESSED_DIR = project_root / "data" / "aact" / "processed"
 
 # Ensure processed directory exists
@@ -158,8 +158,23 @@ def process_with_daft():
                     stats_by_phase = {}
 
                     if 'phase' in indication_data.columns:
+                        # Map AACT phases to standard format
+                        phase_map = {
+                            'PHASE1': 'Phase 1',
+                            'PHASE2': 'Phase 2',
+                            'PHASE3': 'Phase 3',
+                            'PHASE4': 'Phase 4',
+                            'Phase 1': 'Phase 1',
+                            'Phase 2': 'Phase 2',
+                            'Phase 3': 'Phase 3',
+                            'Phase 4': 'Phase 4'
+                        }
+                        
+                        # Create a normalized phase column
+                        indication_data['normalized_phase'] = indication_data['phase'].map(phase_map)
+                        
                         for phase in ['Phase 1', 'Phase 2', 'Phase 3', 'Phase 4']:
-                            phase_data = indication_data[indication_data['phase'] == phase]
+                            phase_data = indication_data[indication_data['normalized_phase'] == phase]
 
                             if len(phase_data) > 0 and 'enrollment' in phase_data.columns:
                                 enrollment = phase_data['enrollment'].dropna()
