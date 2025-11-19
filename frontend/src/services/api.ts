@@ -206,6 +206,94 @@ export const dataGenerationApi = {
     };
   },
 
+  async generateMillionScale(params: {
+    total_subjects: number;
+    chunk_size?: number;
+    target_effect?: number;
+    output_path?: string;
+    format?: string;
+  }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/million-scale`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async estimateMemory(params: { total_subjects: number; chunk_size: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/estimate-memory`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async getDaftStatus(): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/daft/status`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async generateDemographics(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/demographics`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 42
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateLabs(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/labs`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 42
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateAE(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/ae`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 7
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealVitalSigns(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-vitals`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealDemographics(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-demographics`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealAdverseEvents(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-ae`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
   async compareMethods(params: GenerationRequest): Promise<any> {
     const response = await fetch(`${DATA_GEN_SERVICE}/compare?${new URLSearchParams(params as any)}`, {
       headers: getAuthHeaders(),
@@ -716,6 +804,84 @@ export const daftApi = {
 };
 
 // ============================================================================
+// Medical Imaging API (EDC Service)
+// ============================================================================
+
+export const medicalImagingApi = {
+  async getStatus(): Promise<any> {
+    const response = await fetch(`${EDC_SERVICE}/images/status`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async uploadImage(file: File, subjectId: string, visitName?: string, imageType?: string): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('subject_id', subjectId);
+    if (visitName) formData.append('visit_name', visitName);
+    if (imageType) formData.append('image_type', imageType);
+
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${EDC_SERVICE}/images/upload`, {
+      method: "POST",
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+        // Don't set Content-Type - browser will set it with boundary for FormData
+      },
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
+  async getImageMetadata(imageId: number): Promise<any> {
+    const response = await fetch(`${EDC_SERVICE}/images/${imageId}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getImageFile(imageId: number, thumbnail: boolean = false): Promise<Blob> {
+    const params = new URLSearchParams();
+    if (thumbnail) params.append('thumbnail', 'true');
+
+    const response = await fetch(`${EDC_SERVICE}/images/${imageId}/file?${params}`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: "Failed to fetch image" }));
+      throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return response.blob();
+  },
+
+  async getSubjectImages(subjectId: string): Promise<any[]> {
+    const response = await fetch(`${EDC_SERVICE}/images/subject/${subjectId}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async batchProcessDicom(dicomPaths: string[]): Promise<any> {
+    const response = await fetch(`${EDC_SERVICE}/images/batch-metadata`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ dicom_paths: dicomPaths }),
+    });
+    return handleResponse(response);
+  },
+
+  async deleteImage(imageId: number): Promise<any> {
+    const response = await fetch(`${EDC_SERVICE}/images/${imageId}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
 // Default export (for backward compatibility)
 // ============================================================================
 
@@ -726,4 +892,5 @@ export const api = {
   edc: edcApi,
   quality: qualityApi,
   daft: daftApi,
+  medicalImaging: medicalImagingApi,
 };

@@ -21,6 +21,18 @@ from csr import generate_csr_draft
 from sdtm import export_to_sdtm_vs
 from db_utils import db, cache, startup_db, shutdown_db
 
+# Daft imports for distributed data processing
+try:
+    import daft
+    from daft_processor import DaftMedicalDataProcessor
+    from daft_aggregations import DaftAggregator
+    from daft_udfs import MedicalUDFs, AdvancedMedicalUDFs
+    DAFT_AVAILABLE = True
+except ImportError:
+    DAFT_AVAILABLE = False
+    import warnings
+    warnings.warn("Daft library not available. Install with: pip install getdaft==0.3.0")
+
 # Method comparison module
 try:
     from method_comparison_daft import compare_generation_methods
@@ -191,13 +203,14 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Analytics Service",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "features": [
             "Week-12 Statistics (t-test)",
             "RECIST + ORR Analysis",
             "RBQM Summary",
             "CSR Draft Generation",
-            "SDTM Export"
+            "SDTM Export",
+            "Daft Distributed Data Processing (NEW)"
         ],
         "endpoints": {
             "health": "/health",
@@ -206,8 +219,11 @@ async def root():
             "rbqm": "/rbqm/summary",
             "csr": "/csr/draft",
             "sdtm": "/sdtm/export",
+            "daft_status": "/daft/status",
+            "daft_endpoints": "/daft/* (treatment-effect, change-from-baseline, responder-analysis, etc.)",
             "docs": "/docs"
-        }
+        },
+        "daft_available": DAFT_AVAILABLE
     }
 
 @app.post("/stats/week12", response_model=StatisticsResponse)
@@ -620,6 +636,290 @@ async def comprehensive_quality_assessment(request: ComprehensiveQualityRequest)
 
 
 # ============================================================================
+<<<<<<< HEAD
+# DAFT-POWERED ENDPOINTS - Distributed Data Processing
+# ============================================================================
+
+@app.get("/daft/status")
+async def daft_status():
+    """Check if Daft is available and get version info"""
+    if not DAFT_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Daft library not available. Install with: pip install getdaft==0.3.0"
+        )
+    return {
+        "daft_available": True,
+        "daft_version": daft.__version__,
+        "message": "Daft distributed dataframe processing is ready"
+    }
+
+
+@app.post("/daft/aggregate/by-treatment-arm")
+async def daft_aggregate_by_treatment_arm(data: VitalsData):
+    """
+    Aggregate data by treatment arm using Daft's distributed processing
+
+    Returns comprehensive statistics for each vital sign by treatment arm.
+    Faster than pandas for large datasets (>10k records).
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(data.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.groupby_treatment_arm()
+
+        return {
+            "status": "success",
+            "aggregations": results,
+            "row_count": len(data.data),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aggregation failed: {str(e)}")
+
+
+@app.post("/daft/aggregate/by-visit")
+async def daft_aggregate_by_visit(data: VitalsData):
+    """
+    Aggregate data by visit using Daft
+
+    Returns mean values for each vital sign at each visit timepoint.
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(data.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.groupby_visit()
+
+        return {
+            "status": "success",
+            "aggregations": results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Aggregation failed: {str(e)}")
+
+
+@app.post("/daft/treatment-effect")
+async def daft_treatment_effect(data: VitalsData, endpoint: str = "SystolicBP", visit: str = "Week 12"):
+    """
+    Compute treatment effect with statistical testing using Daft
+
+    Performs t-test comparing active vs placebo at specified visit.
+    Uses Daft's distributed processing for faster computation on large datasets.
+
+    Args:
+        data: Vitals data
+        endpoint: Vital sign to analyze (default: SystolicBP)
+        visit: Visit to analyze (default: Week 12)
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(data.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.compute_treatment_effect(endpoint=endpoint, visit=visit)
+
+        return {
+            "status": "success",
+            "treatment_effect": results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Treatment effect calculation failed: {str(e)}")
+
+
+@app.post("/daft/change-from-baseline")
+async def daft_change_from_baseline(data: VitalsData):
+    """
+    Compute change from baseline for all subjects using Daft
+
+    Returns data with baseline values and change calculations for each vital sign.
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(data.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.compute_change_from_baseline()
+
+        return {
+            "status": "success",
+            "data": results.to_dict('records'),
+            "row_count": len(results),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Change from baseline failed: {str(e)}")
+
+
+@app.post("/daft/responder-analysis")
+async def daft_responder_analysis(data: VitalsData, threshold: float = -10.0, endpoint: str = "SystolicBP"):
+    """
+    Perform responder analysis using Daft
+
+    Identifies subjects achieving a specified threshold change from baseline.
+
+    Args:
+        data: Vitals data
+        threshold: Threshold for response (e.g., -10 mmHg reduction)
+        endpoint: Vital sign to analyze (default: SystolicBP)
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(data.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.compute_responder_analysis(threshold=threshold, endpoint=endpoint)
+
+        return {
+            "status": "success",
+            "responder_analysis": results,
+            "threshold": threshold,
+            "endpoint": endpoint,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Responder analysis failed: {str(e)}")
+
+
+@app.post("/daft/longitudinal-summary")
+async def daft_longitudinal_summary(data: VitalsData):
+    """
+    Compute longitudinal summary across all visits using Daft
+
+    Shows trajectories of vital signs over time for each treatment arm.
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(data.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.compute_longitudinal_summary()
+
+        return {
+            "status": "success",
+            "longitudinal_summary": results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Longitudinal summary failed: {str(e)}")
+
+
+@app.post("/daft/outlier-detection")
+async def daft_outlier_detection(data: VitalsData, column: str = "SystolicBP", method: str = "iqr"):
+    """
+    Detect outliers using Daft
+
+    Args:
+        data: Vitals data
+        column: Column to check for outliers (default: SystolicBP)
+        method: Method to use - 'iqr' or 'zscore' (default: iqr)
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(data.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.compute_outliers(column=column, method=method)
+
+        return {
+            "status": "success",
+            "outlier_detection": results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Outlier detection failed: {str(e)}")
+
+
+@app.post("/daft/add-medical-features")
+async def daft_add_medical_features(data: VitalsData):
+    """
+    Add medical-specific derived features using Daft:
+    - Pulse Pressure (SBP - DBP)
+    - Mean Arterial Pressure (MAP)
+    - Hypertension Category
+
+    Returns data with additional calculated columns.
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        processor.load_from_dict(data.data)
+
+        # Add derived features
+        processor.add_pulse_pressure()
+        processor.add_mean_arterial_pressure()
+        processor.add_hypertension_category()
+
+        result_df = processor.collect()
+
+        return {
+            "status": "success",
+            "data": result_df.to_dict('records'),
+            "features_added": [
+                "PulsePressure",
+                "MeanArterialPressure",
+                "HypertensionCategory"
+            ],
+            "row_count": len(result_df),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Adding features failed: {str(e)}")
+
+
+@app.post("/daft/correlation-matrix")
+async def daft_correlation_matrix(data: VitalsData):
+    """
+    Compute correlation matrix for vital signs using Daft
+
+    Returns correlation matrix showing relationships between vitals.
+    """
+    if not DAFT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Daft not available")
+
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(data.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.compute_correlation_matrix()
+
+        return {
+            "status": "success",
+            "correlation_analysis": results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Correlation analysis failed: {str(e)}")
+=======
 # Method Comparison Using Daft
 # ============================================================================
 
@@ -1166,6 +1466,7 @@ async def assess_trial_feasibility(request: FeasibilityAssessmentRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Feasibility assessment failed: {str(e)}"
         )
+>>>>>>> origin/daft
 
 
 if __name__ == "__main__":

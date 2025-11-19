@@ -16,6 +16,17 @@ from validation import validate_vitals
 from repair import auto_repair_vitals
 from db_utils import db, cache, startup_db, shutdown_db
 
+# Medical imaging support
+try:
+    from image_processor import MedicalImageProcessor, process_medical_image
+    from fastapi import File, UploadFile
+    from fastapi.responses import Response
+    IMAGING_AVAILABLE = True
+except ImportError:
+    IMAGING_AVAILABLE = False
+    import warnings
+    warnings.warn("Medical imaging not available. Install: pip install pydicom pillow opencv-python")
+
 app = FastAPI(
     title="EDC Service",
     description="Electronic Data Capture for Clinical Trials",
@@ -834,6 +845,306 @@ async def get_lab_results(subject_id: str):
     """, subject_id)
 
     return {"labs": [dict(l) for l in labs]}
+
+
+# ============================================================================
+# MEDICAL IMAGING ENDPOINTS - NEW
+# ============================================================================
+
+class ImageUploadRequest(BaseModel):
+    subject_id: str
+    visit_name: Optional[str] = None
+    image_type: Optional[str] = None  # 'X-ray', 'CT', 'MRI', 'Ultrasound', 'ECG', 'Photo'
+    description: Optional[str] = None
+
+class ImageMetadataResponse(BaseModel):
+    image_id: int
+    subject_id: str
+    filename: str
+    file_type: str
+    image_type: Optional[str]
+    file_size_bytes: int
+    has_thumbnail: bool
+    uploaded_at: str
+
+@app.get("/images/status")
+async def imaging_status():
+    """Check if medical imaging is available"""
+    return {
+        "imaging_available": IMAGING_AVAILABLE,
+        "dicom_support": IMAGING_AVAILABLE,
+        "supported_formats": {
+            "dicom": [".dcm", ".dicom"],
+            "images": [".png", ".jpg", ".jpeg"],
+            "documents": [".pdf"]
+        },
+        "features": [
+            "DICOM metadata extraction",
+            "Thumbnail generation",
+            "Hash-based deduplication",
+            "Batch processing"
+        ] if IMAGING_AVAILABLE else []
+    }
+
+@app.post("/images/upload")
+async def upload_medical_image(
+    file: UploadFile = File(...),
+    subject_id: str = "",
+    visit_name: Optional[str] = None,
+    image_type: Optional[str] = None,
+    user_id: int = 1
+):
+    """
+    Upload a medical image (DICOM, PNG, JPEG, PDF)
+
+    Features:
+    - DICOM metadata extraction
+    - Automatic thumbnail generation
+    - Hash-based deduplication
+    - Supports X-rays, CT scans, MRI, ultrasound, ECG, photos
+
+    Example:
+        curl -X POST http://localhost:8004/images/upload \
+          -F "file=@chest_xray.dcm" \
+          -F "subject_id=RA001-001" \
+          -F "visit_name=Week 4" \
+          -F "image_type=X-ray"
+    """
+    if not IMAGING_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Medical imaging not available. Install: pip install pydicom pillow opencv-python"
+        )
+
+    if not subject_id:
+        raise HTTPException(status_code=400, detail="subject_id is required")
+
+    try:
+        # Read file content
+        content = await file.read()
+
+        # Process image
+        processor = MedicalImageProcessor(storage_base="/data/medical-images")
+        result = processor.process_upload(
+            filename=file.filename,
+            content=content,
+            subject_id=subject_id,
+            visit_name=visit_name,
+            image_type=image_type
+        )
+
+        # Store metadata in database
+        image_id = await db.fetchval("""
+            INSERT INTO medical_images (
+                subject_id, visit_name, filename, unique_filename,
+                file_type, file_hash, file_size_bytes,
+                original_path, thumbnail_path, image_type,
+                modality, dicom_metadata, thumbnail_metadata,
+                processing_status, uploaded_by, uploaded_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, NOW())
+            RETURNING image_id
+        """,
+            result['subject_id'],
+            result.get('visit_name'),
+            result['filename'],
+            result['unique_filename'],
+            result['file_type'],
+            result['file_hash'],
+            result['file_size_bytes'],
+            result['original_path'],
+            result.get('thumbnail_path'),
+            result.get('image_type'),
+            result.get('dicom_metadata', {}).get('modality') if result.get('dicom_metadata') else None,
+            json.dumps(result.get('dicom_metadata', {})),
+            json.dumps(result.get('thumbnail_metadata', {})),
+            'processed' if 'thumbnail_path' in result else 'uploaded',
+            user_id
+        )
+
+        return {
+            "image_id": image_id,
+            "subject_id": subject_id,
+            "filename": file.filename,
+            "file_type": result['file_type'],
+            "file_size_bytes": result['file_size_bytes'],
+            "has_thumbnail": 'thumbnail_path' in result,
+            "has_dicom_metadata": 'dicom_metadata' in result,
+            "message": "Image uploaded successfully"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
+
+@app.get("/images/{image_id}")
+async def get_image_metadata(image_id: int):
+    """Get metadata for a specific image"""
+    image = await db.fetchrow("""
+        SELECT image_id, subject_id, visit_name, filename, file_type,
+               image_type, modality, file_size_bytes, dicom_metadata,
+               thumbnail_metadata, uploaded_at, processing_status
+        FROM medical_images
+        WHERE image_id = $1
+    """, image_id)
+
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    return dict(image)
+
+@app.get("/images/{image_id}/file")
+async def download_image_file(image_id: int, thumbnail: bool = False):
+    """
+    Download image file or thumbnail
+
+    Query params:
+        thumbnail: If true, returns thumbnail instead of original
+    """
+    if not IMAGING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Imaging not available")
+
+    image = await db.fetchrow("""
+        SELECT original_path, thumbnail_path, filename
+        FROM medical_images
+        WHERE image_id = $1
+    """, image_id)
+
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    try:
+        processor = MedicalImageProcessor()
+
+        if thumbnail and image['thumbnail_path']:
+            file_bytes = processor.get_image_bytes(image['thumbnail_path'])
+            media_type = "image/jpeg"
+            filename = f"thumb_{image['filename']}"
+        else:
+            file_bytes = processor.get_image_bytes(image['original_path'])
+
+            # Determine media type
+            if image['filename'].lower().endswith(('.dcm', '.dicom')):
+                media_type = "application/dicom"
+            elif image['filename'].lower().endswith('.pdf'):
+                media_type = "application/pdf"
+            elif image['filename'].lower().endswith(('.png', '.jpg', '.jpeg')):
+                media_type = "image/" + image['filename'].split('.')[-1].lower()
+            else:
+                media_type = "application/octet-stream"
+
+            filename = image['filename']
+
+        return Response(
+            content=file_bytes,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Image file not found on disk")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve image: {str(e)}")
+
+@app.get("/images/subject/{subject_id}")
+async def list_subject_images(subject_id: str):
+    """List all images for a subject"""
+    images = await db.fetch("""
+        SELECT image_id, subject_id, visit_name, filename, file_type,
+               image_type, modality, file_size_bytes,
+               (thumbnail_path IS NOT NULL) as has_thumbnail,
+               uploaded_at
+        FROM medical_images
+        WHERE subject_id = $1
+        ORDER BY uploaded_at DESC
+    """, subject_id)
+
+    return {
+        "subject_id": subject_id,
+        "image_count": len(images),
+        "images": [dict(img) for img in images]
+    }
+
+@app.post("/images/batch-metadata")
+async def batch_extract_dicom_metadata(image_ids: List[int]):
+    """
+    Batch extract DICOM metadata for multiple images
+
+    Useful for processing uploaded DICOM files in bulk
+    """
+    if not IMAGING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Imaging not available")
+
+    images = await db.fetch("""
+        SELECT image_id, original_path, file_type
+        FROM medical_images
+        WHERE image_id = ANY($1::int[])
+        AND file_type = 'dicom'
+    """, image_ids)
+
+    if not images:
+        return {"processed": 0, "results": []}
+
+    processor = MedicalImageProcessor()
+    dicom_paths = [img['original_path'] for img in images]
+
+    # Batch process
+    results = processor.batch_process_dicom(dicom_paths, use_daft=True)
+
+    # Update database with extracted metadata
+    for i, result in enumerate(results):
+        if result['processing_status'] == 'success':
+            await db.execute("""
+                UPDATE medical_images
+                SET dicom_metadata = $1::jsonb,
+                    modality = $2,
+                    processing_status = 'processed',
+                    updated_at = NOW()
+                WHERE image_id = $3
+            """,
+                json.dumps(result),
+                result.get('modality'),
+                images[i]['image_id']
+            )
+
+    return {
+        "processed": len(results),
+        "successful": sum(1 for r in results if r['processing_status'] == 'success'),
+        "failed": sum(1 for r in results if r['processing_status'] == 'failed'),
+        "results": results
+    }
+
+@app.delete("/images/{image_id}")
+async def delete_image(image_id: int, user_id: int = 1):
+    """Delete an image (metadata and files)"""
+    if not IMAGING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Imaging not available")
+
+    # Get image paths
+    image = await db.fetchrow("""
+        SELECT original_path, thumbnail_path
+        FROM medical_images
+        WHERE image_id = $1
+    """, image_id)
+
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Delete files
+    from pathlib import Path
+
+    try:
+        if image['original_path']:
+            Path(image['original_path']).unlink(missing_ok=True)
+        if image['thumbnail_path']:
+            Path(image['thumbnail_path']).unlink(missing_ok=True)
+    except Exception as e:
+        # Log but don't fail - database cleanup is more important
+        print(f"Warning: Failed to delete files: {e}")
+
+    # Delete from database
+    await db.execute("DELETE FROM medical_images WHERE image_id = $1", image_id)
+
+    return {"image_id": image_id, "status": "deleted"}
 
 
 if __name__ == "__main__":
