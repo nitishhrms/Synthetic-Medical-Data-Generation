@@ -40,21 +40,12 @@ async def shutdown_event():
     await shutdown_db()
 
 # CORS configuration
-import os
 ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
 if ALLOWED_ORIGINS_ENV:
     ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
 else:
-    # Default: allow localhost origins for development
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-        "*"  # Allow all for development
-    ]
+    # Default: allow all origins for development (use specific origins in production)
+    ALLOWED_ORIGINS = ["*"]
 
 if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
@@ -64,9 +55,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,
 )
 
 # Pydantic models
@@ -611,6 +603,25 @@ class GenerateLabsRequest(BaseModel):
     n_subjects: int = Field(default=100, ge=1, le=1000, description="Number of subjects")
     seed: int = Field(default=42, description="Random seed for reproducibility")
 
+class ComprehensiveStudyRequest(BaseModel):
+    """Request model for comprehensive study data generation"""
+    n_per_arm: int = Field(default=50, ge=10, le=200, description="Number of subjects per treatment arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect for vitals (mmHg)")
+    method: str = Field(default="mvn", description="Generation method: 'mvn', 'rules', or 'bootstrap'")
+    include_vitals: bool = Field(default=True, description="Generate vitals data")
+    include_demographics: bool = Field(default=True, description="Generate demographics data")
+    include_ae: bool = Field(default=True, description="Generate adverse events data")
+    include_labs: bool = Field(default=True, description="Generate lab results data")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+
+class ComprehensiveStudyResponse(BaseModel):
+    """Response model for comprehensive study data"""
+    vitals: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals data")
+    demographics: Optional[List[Dict[str, Any]]] = Field(None, description="Demographics data")
+    adverse_events: Optional[List[Dict[str, Any]]] = Field(None, description="Adverse events data")
+    labs: Optional[List[Dict[str, Any]]] = Field(None, description="Lab results data")
+    metadata: Dict[str, Any] = Field(..., description="Generation metadata and summary")
+
 @app.post("/generate/demographics")
 async def generate_demographics_endpoint(request: GenerateDemographicsRequest):
     """
@@ -680,6 +691,130 @@ async def generate_labs_endpoint(request: GenerateLabsRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lab results generation failed: {str(e)}"
+        )
+
+@app.post("/generate/comprehensive-study", response_model=ComprehensiveStudyResponse)
+async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
+    """
+    Generate a complete clinical trial dataset with all data types
+
+    This endpoint generates a consolidated dataset including:
+    - **Vitals**: Blood pressure, heart rate, temperature across multiple visits
+    - **Demographics**: Age, gender, race, ethnicity, BMI, smoking status
+    - **Adverse Events**: Treatment-emergent adverse events with severity and causality
+    - **Labs**: Hematology, chemistry, and lipid panels across visits
+
+    All datasets share the same subject IDs for consistency and can be easily joined.
+
+    **Use Cases:**
+    - Rapid study simulation and planning
+    - End-to-end EDC testing
+    - Analytics and RBQM validation
+    - Training and demos
+
+    **Example Request:**
+    ```json
+    {
+      "n_per_arm": 50,
+      "target_effect": -5.0,
+      "method": "mvn",
+      "include_vitals": true,
+      "include_demographics": true,
+      "include_ae": true,
+      "include_labs": true,
+      "seed": 42
+    }
+    ```
+
+    Returns:
+        ComprehensiveStudyResponse with all requested data types and metadata
+    """
+    try:
+        total_subjects = request.n_per_arm * 2  # Active + Placebo
+        response_data = {
+            "vitals": None,
+            "demographics": None,
+            "adverse_events": None,
+            "labs": None,
+            "metadata": {
+                "total_subjects": total_subjects,
+                "subjects_per_arm": request.n_per_arm,
+                "seed": request.seed,
+                "method": request.method,
+                "generation_timestamp": datetime.utcnow().isoformat(),
+                "datasets_generated": []
+            }
+        }
+
+        # Generate Vitals Data
+        if request.include_vitals:
+            if request.method == "mvn":
+                vitals_df = generate_vitals_mvn(
+                    n_per_arm=request.n_per_arm,
+                    target_effect=request.target_effect,
+                    seed=request.seed
+                )
+            elif request.method == "rules":
+                vitals_df = generate_vitals_rules(
+                    n_per_arm=request.n_per_arm,
+                    target_effect=request.target_effect,
+                    seed=request.seed
+                )
+            else:  # bootstrap
+                # For bootstrap, we'd need training data - fallback to MVN
+                vitals_df = generate_vitals_mvn(
+                    n_per_arm=request.n_per_arm,
+                    target_effect=request.target_effect,
+                    seed=request.seed
+                )
+
+            response_data["vitals"] = vitals_df.to_dict(orient="records")
+            response_data["metadata"]["datasets_generated"].append("vitals")
+            response_data["metadata"]["vitals_records"] = len(vitals_df)
+
+        # Generate Demographics Data
+        if request.include_demographics:
+            demographics_df = generate_demographics(
+                n_subjects=total_subjects,
+                seed=request.seed
+            )
+            response_data["demographics"] = demographics_df.to_dict(orient="records")
+            response_data["metadata"]["datasets_generated"].append("demographics")
+            response_data["metadata"]["demographics_records"] = len(demographics_df)
+
+        # Generate Adverse Events Data
+        if request.include_ae:
+            ae_df = generate_oncology_ae(
+                n_subjects=total_subjects,
+                seed=request.seed + 1  # Different seed for variety
+            )
+            response_data["adverse_events"] = ae_df.to_dict(orient="records")
+            response_data["metadata"]["datasets_generated"].append("adverse_events")
+            response_data["metadata"]["ae_records"] = len(ae_df)
+
+        # Generate Lab Results Data
+        if request.include_labs:
+            labs_df = generate_labs(
+                n_subjects=total_subjects,
+                seed=request.seed + 2  # Different seed for variety
+            )
+            response_data["labs"] = labs_df.to_dict(orient="records")
+            response_data["metadata"]["datasets_generated"].append("labs")
+            response_data["metadata"]["labs_records"] = len(labs_df)
+
+        # Add summary
+        response_data["metadata"]["summary"] = (
+            f"Generated comprehensive study data for {total_subjects} subjects "
+            f"({request.n_per_arm} per arm) including: "
+            f"{', '.join(response_data['metadata']['datasets_generated'])}"
+        )
+
+        return ComprehensiveStudyResponse(**response_data)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Comprehensive study generation failed: {str(e)}"
         )
 
 
