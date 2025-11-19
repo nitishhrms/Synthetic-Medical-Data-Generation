@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { analyticsApi, dataGenerationApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
-import type { VitalsRecord, Week12StatsResponse, QualityAssessmentResponse, PCAComparisonResponse } from "@/types";
+import type { VitalsRecord, PCAComparisonResponse } from "@/types";
 import { BarChart3, CheckCircle, AlertCircle, Loader2, TrendingDown, Activity, Target, Layers } from "lucide-react";
 import {
   LineChart,
@@ -22,7 +22,6 @@ import {
   ResponsiveContainer,
   Cell,
   ComposedChart,
-  Area,
   ReferenceLine,
 } from "recharts";
 
@@ -630,7 +629,7 @@ export function Analytics() {
                 <CardHeader>
                   <CardTitle>{vital.replace(/([A-Z])/g, ' $1').trim()} Distribution Comparison</CardTitle>
                   <CardDescription>
-                    Real pilot data (n={pilotData.length}) vs Synthetic data (n={generatedData.length})
+                    Real pilot data (n={pilotData.length}) vs Synthetic data (n={generatedData?.length ?? 0})
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1237,30 +1236,30 @@ export function Analytics() {
                 <div className="grid gap-4 md:grid-cols-4">
                   <div className="p-4 border rounded-lg text-center">
                     <p className="text-sm text-muted-foreground mb-1">Total Records</p>
-                    <p className="text-3xl font-bold">{generatedData.length}</p>
+                    <p className="text-3xl font-bold">{generatedData?.length ?? 0}</p>
                   </div>
                   <div className="p-4 border rounded-lg text-center">
                     <p className="text-sm text-muted-foreground mb-1">Unique Subjects</p>
                     <p className="text-3xl font-bold">
-                      {new Set(generatedData.map(d => d.SubjectID)).size}
+                      {new Set(generatedData?.map(d => d.SubjectID) ?? []).size}
                     </p>
                   </div>
                   <div className="p-4 border rounded-lg text-center">
                     <p className="text-sm text-muted-foreground mb-1">Active Arm</p>
                     <p className="text-3xl font-bold text-blue-600">
-                      {generatedData.filter(d => d.TreatmentArm === "Active").length}
+                      {(generatedData?.filter(d => d.TreatmentArm === "Active") ?? []).length}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {new Set(generatedData.filter(d => d.TreatmentArm === "Active").map(d => d.SubjectID)).size} subjects
+                      {new Set((generatedData?.filter(d => d.TreatmentArm === "Active") ?? []).map(d => d.SubjectID)).size} subjects
                     </p>
                   </div>
                   <div className="p-4 border rounded-lg text-center">
                     <p className="text-sm text-muted-foreground mb-1">Placebo Arm</p>
                     <p className="text-3xl font-bold text-red-600">
-                      {generatedData.filter(d => d.TreatmentArm === "Placebo").length}
+                      {(generatedData?.filter(d => d.TreatmentArm === "Placebo") ?? []).length}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {new Set(generatedData.filter(d => d.TreatmentArm === "Placebo").map(d => d.SubjectID)).size} subjects
+                      {new Set((generatedData?.filter(d => d.TreatmentArm === "Placebo") ?? []).map(d => d.SubjectID)).size} subjects
                     </p>
                   </div>
                 </div>
