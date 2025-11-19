@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
-import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare, ClipboardEdit, FlaskConical, Database, Shield } from "lucide-react";
+import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare, ClipboardEdit, FlaskConical, Database, Shield, ImageIcon } from "lucide-react";
 
-export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry" | "trial-planning";
+export type Screen = "dashboard" | "generate" | "analytics" | "daft" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry" | "trial-planning" | "linkup" | "medical-imaging";
 
 interface NavigationRailProps {
   activeScreen: Screen;
@@ -17,6 +17,7 @@ const navItems = [
   { id: "trial-planning" as Screen, label: "Planning", icon: FlaskConical },
   { id: "rbqm" as Screen, label: "RBQM", icon: TrendingUp },
   { id: "linkup" as Screen, label: "Linkup", icon: Shield },
+  { id: "medical-imaging" as Screen, label: "Imaging", icon: ImageIcon },
   { id: "queries" as Screen, label: "Queries", icon: MessageSquare },
   { id: "data-entry" as Screen, label: "Data Entry", icon: ClipboardEdit },
   { id: "studies" as Screen, label: "Studies", icon: FileText },

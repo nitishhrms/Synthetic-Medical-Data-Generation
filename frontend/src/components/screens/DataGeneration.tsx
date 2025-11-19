@@ -338,6 +338,157 @@ export function DataGeneration() {
         </Card>
       </div>
 
+      {/* Million-Scale Generation */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            Million-Scale Data Generation (Daft-Powered)
+          </CardTitle>
+          <CardDescription>
+            Generate 100K to 10M+ records using chunked processing and Parquet export
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="text-xs text-blue-700 dark:text-blue-300">
+                <p className="font-medium mb-1">Million-scale generation capabilities:</p>
+                <ul className="list-disc list-inside space-y-0.5 ml-2">
+                  <li>Memory-efficient chunked processing</li>
+                  <li>Streaming Parquet writes (recommended for large datasets)</li>
+                  <li>Performance: 10K subjects in ~2s, 1M subjects in ~3-5 min</li>
+                  <li>No memory limits - can generate 10M+ records</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="totalSubjects">Total Subjects</Label>
+              <Input
+                id="totalSubjects"
+                type="number"
+                placeholder="e.g., 100000"
+                min={1000}
+                max={10000000}
+                step={1000}
+              />
+              <p className="text-xs text-muted-foreground">
+                Range: 1,000 to 10,000,000 subjects (both arms combined)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="chunkSize">Chunk Size</Label>
+              <Input
+                id="chunkSize"
+                type="number"
+                placeholder="e.g., 10000"
+                defaultValue={10000}
+                min={1000}
+                max={100000}
+                step={1000}
+              />
+              <p className="text-xs text-muted-foreground">
+                Subjects per chunk (controls memory usage)
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="outputFormat">Output Format</Label>
+            <Select defaultValue="parquet">
+              <SelectTrigger id="outputFormat">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="parquet">Parquet (Recommended for large datasets)</SelectItem>
+                <SelectItem value="csv">CSV (Slower for large datasets)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            className="w-full"
+            variant="secondary"
+            onClick={async () => {
+              const totalSubjectsInput = document.getElementById('totalSubjects') as HTMLInputElement;
+              const chunkSizeInput = document.getElementById('chunkSize') as HTMLInputElement;
+              const formatSelect = document.getElementById('outputFormat') as HTMLSelectElement;
+
+              const totalSubjects = parseInt(totalSubjectsInput?.value ?? '0');
+              const chunkSize = parseInt(chunkSizeInput?.value ?? '10000');
+              const format = formatSelect?.value ?? 'parquet';
+
+              if (!totalSubjects || totalSubjects < 1000) {
+                setError('Please enter a valid total subjects count (minimum 1,000)');
+                return;
+              }
+
+              setIsGenerating(true);
+              setError("");
+
+              try {
+                // First, estimate memory usage
+                const estimate = await dataGenerationApi.estimateMemory({
+                  total_subjects: totalSubjects,
+                  chunk_size: chunkSize
+                });
+
+                const proceed = confirm(
+                  `Memory Estimate:\n\n` +
+                  `Total Records: ${(estimate?.total_records ?? 0).toLocaleString()}\n` +
+                  `Total Size: ${(estimate?.total_size_mb ?? 0).toFixed(1)} MB\n` +
+                  `Chunks: ${estimate?.num_chunks ?? 0}\n` +
+                  `Chunk Size: ${(estimate?.chunk_size_mb ?? 0).toFixed(1)} MB each\n\n` +
+                  `${estimate?.recommendation ?? ''}\n\n` +
+                  `Proceed with generation?`
+                );
+
+                if (!proceed) {
+                  setIsGenerating(false);
+                  return;
+                }
+
+                const result = await dataGenerationApi.generateMillionScale({
+                  total_subjects: totalSubjects,
+                  chunk_size: chunkSize,
+                  target_effect: targetEffect,
+                  format: format
+                });
+
+                setMetadata(result ?? {});
+
+                const successMsg =
+                  `Successfully generated ${(result?.total_records ?? 0).toLocaleString()} records\n` +
+                  `Time: ${(result?.time_seconds ?? 0).toFixed(2)}s\n` +
+                  `Speed: ${(result?.records_per_second ?? 0).toLocaleString()} records/sec\n` +
+                  `Output: ${result?.output_path ?? 'N/A'}`;
+
+                alert(successMsg);
+              } catch (err: any) {
+                setError(err?.message ?? 'Million-scale generation failed');
+              } finally {
+                setIsGenerating(false);
+              }
+            }}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating (this may take several minutes)...
+              </>
+            ) : (
+              'Generate Million-Scale Data'
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Demographics Configuration */}
       <Card>
         <CardHeader>

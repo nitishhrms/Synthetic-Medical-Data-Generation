@@ -15,6 +15,7 @@ import { QueryManagement } from "@/components/screens/QueryManagement";
 import { DataEntry } from "@/components/screens/DataEntry";
 import { DaftAnalytics } from "@/components/screens/DaftAnalytics";
 import { LinkupIntegration } from "@/components/screens/LinkupIntegration";
+import { MedicalImaging } from "@/components/screens/MedicalImaging";
 import { TopAppBar } from "@/components/layout/TopAppBar";
 import { NavigationRail, type Screen } from "@/components/layout/NavigationRail";
 
@@ -74,6 +75,8 @@ function AppContent() {
         return <RBQMDashboard />;
       case "linkup":
         return <LinkupIntegration />;
+      case "medical-imaging":
+        return <MedicalImaging />;
       case "queries":
         return <QueryManagement />;
       case "data-entry":
