@@ -20,21 +20,7 @@ from generators import (
     generate_demographics,
     generate_labs
 )
-
-# Import new advanced generators
-try:
-    from bayesian_generator import generate_vitals_bayesian
-    BAYESIAN_AVAILABLE = True
-except ImportError:
-    BAYESIAN_AVAILABLE = False
-    print("Warning: Bayesian generator not available (pgmpy not installed)")
-
-try:
-    from mice_generator import generate_vitals_mice
-    MICE_AVAILABLE = True
-except ImportError:
-    MICE_AVAILABLE = False
-    print("Warning: MICE generator not available (sklearn not installed)")
+from realistic_trial import RealisticTrialGenerator
 from db_utils import db, cache, startup_db, shutdown_db
 
 # Daft imports for million-scale generation
@@ -64,21 +50,12 @@ async def shutdown_event():
     await shutdown_db()
 
 # CORS configuration
-import os
 ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
 if ALLOWED_ORIGINS_ENV:
     ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
 else:
-    # Default: allow localhost origins for development
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-        "*"  # Allow all for development
-    ]
+    # Default: allow all origins for development (use specific origins in production)
+    ALLOWED_ORIGINS = ["*"]
 
 if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
@@ -88,9 +65,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,
 )
 
 # Pydantic models
@@ -196,8 +174,7 @@ async def root():
             "mvn": "/generate/mvn",
             "llm": "/generate/llm",
             "bootstrap": "/generate/bootstrap",
-            "bayesian": "/generate/bayesian",
-            "mice": "/generate/mice",
+            "realistic_trial": "/generate/realistic-trial (NEW!)",
             "ae": "/generate/ae",
             "demographics": "/generate/demographics",
             "labs": "/generate/labs",
@@ -945,6 +922,45 @@ class GenerateLabsRequest(BaseModel):
     n_subjects: int = Field(default=100, ge=1, le=1000, description="Number of subjects")
     seed: int = Field(default=42, description="Random seed for reproducibility")
 
+class ComprehensiveStudyRequest(BaseModel):
+    """Request model for comprehensive study data generation"""
+    n_per_arm: int = Field(default=50, ge=10, le=200, description="Number of subjects per treatment arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect for vitals (mmHg)")
+    method: str = Field(default="mvn", description="Generation method: 'mvn', 'rules', or 'bootstrap'")
+    include_vitals: bool = Field(default=True, description="Generate vitals data")
+    include_demographics: bool = Field(default=True, description="Generate demographics data")
+    include_ae: bool = Field(default=True, description="Generate adverse events data")
+    include_labs: bool = Field(default=True, description="Generate lab results data")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+
+class ComprehensiveStudyResponse(BaseModel):
+    """Response model for comprehensive study data"""
+    vitals: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals data")
+    demographics: Optional[List[Dict[str, Any]]] = Field(None, description="Demographics data")
+    adverse_events: Optional[List[Dict[str, Any]]] = Field(None, description="Adverse events data")
+    labs: Optional[List[Dict[str, Any]]] = Field(None, description="Lab results data")
+    metadata: Dict[str, Any] = Field(..., description="Generation metadata and summary")
+
+class RealisticTrialRequest(BaseModel):
+    """Request model for realistic trial generation with imperfections"""
+    n_per_arm: int = Field(default=50, ge=10, le=200, description="Number of subjects per treatment arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
+    n_sites: int = Field(default=5, ge=1, le=20, description="Number of study sites")
+    site_heterogeneity: float = Field(default=0.3, ge=0.0, le=1.0, description="Site heterogeneity (0=uniform, 1=very skewed)")
+    missing_data_rate: float = Field(default=0.08, ge=0.0, le=0.3, description="Missing data rate (0-0.3)")
+    dropout_rate: float = Field(default=0.15, ge=0.0, le=0.5, description="Subject dropout rate (0-0.5)")
+    protocol_deviation_rate: float = Field(default=0.05, ge=0.0, le=0.3, description="Protocol deviation rate (0-0.3)")
+    enrollment_pattern: str = Field(default="exponential", description="Enrollment pattern: 'linear', 'exponential', 'seasonal'")
+    enrollment_duration_months: int = Field(default=12, ge=1, le=24, description="Enrollment duration in months")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+
+class RealisticTrialResponse(BaseModel):
+    """Response model for realistic trial data"""
+    vitals: List[Dict[str, Any]] = Field(..., description="Vitals data with realistic patterns")
+    adverse_events: List[Dict[str, Any]] = Field(..., description="Adverse events correlated with vitals")
+    protocol_deviations: List[Dict[str, Any]] = Field(..., description="Protocol deviations and compliance issues")
+    metadata: Dict[str, Any] = Field(..., description="Generation metadata including realism scores")
+
 @app.post("/generate/demographics")
 async def generate_demographics_endpoint(request: GenerateDemographicsRequest):
     """
@@ -1014,6 +1030,239 @@ async def generate_labs_endpoint(request: GenerateLabsRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lab results generation failed: {str(e)}"
+        )
+
+@app.post("/generate/realistic-trial", response_model=RealisticTrialResponse)
+async def generate_realistic_trial(request: RealisticTrialRequest):
+    """
+    Generate a REALISTIC clinical trial with imperfections and patterns found in real studies
+
+    **NEW in v2.0** - This is a game-changer for trial simulation!
+
+    **What Makes This Different:**
+    Unlike other methods that generate "perfect" synthetic data, this creates trials with
+    realistic imperfections, heterogeneity, and patterns observed in real clinical studies:
+
+    **Realistic Features:**
+    - 📅 **Variable Enrollment**: Exponential/seasonal patterns instead of instant enrollment
+    - 🏥 **Site Heterogeneity**: Uneven site distribution (some sites enroll 2x others)
+    - 📊 **Site Effects**: Each site has slightly different baselines and response rates
+    - 🚪 **Dropout**: Subjects drop out over time (configurable rate)
+    - ❌ **Missing Data**: MAR (Missing At Random) patterns - more common at later visits
+    - ⚠️ **Protocol Deviations**: Visit window violations, consent issues, non-compliance
+    - 💊 **Correlated AEs**: Adverse events triggered by vitals (high BP → headache)
+    - 🎯 **Individual Variability**: Each subject has unique response trajectory
+
+    **Use Cases:**
+    - 🔬 **Trial Planning**: Simulate realistic scenarios with dropout and missing data
+    - 🎓 **Training**: Show data managers what real-world messiness looks like
+    - 🧪 **RBQM Testing**: Generate site-level quality metrics for testing dashboards
+    - 📈 **Analytics Validation**: Test statistical methods on realistic imperfect data
+    - 🤖 **ML Training**: Train predictive models on realistic trial data
+
+    **Parameters:**
+    - `n_per_arm`: Subjects per treatment arm (default: 50)
+    - `target_effect`: Target SBP reduction at Week 12 in mmHg (default: -5.0)
+    - `n_sites`: Number of study sites (default: 5)
+    - `site_heterogeneity`: 0=all sites equal, 1=very uneven (default: 0.3)
+    - `missing_data_rate`: Fraction of data missing (default: 0.08 = 8%)
+    - `dropout_rate`: Fraction of subjects dropping out (default: 0.15 = 15%)
+    - `protocol_deviation_rate`: Rate of protocol violations (default: 0.05 = 5%)
+    - `enrollment_pattern`: "linear", "exponential", or "seasonal" (default: "exponential")
+    - `enrollment_duration_months`: Enrollment duration (default: 12 months)
+    - `seed`: Random seed for reproducibility
+
+    **Returns:**
+    - `vitals`: DataFrame with enrollment dates, site assignments, dropout flags
+    - `adverse_events`: AEs correlated with vitals patterns
+    - `protocol_deviations`: Visit window violations, consent issues, etc.
+    - `metadata`: Realism scores, site statistics, quality metrics
+
+    **Example Request:**
+    ```json
+    {
+      "n_per_arm": 50,
+      "target_effect": -5.0,
+      "n_sites": 8,
+      "site_heterogeneity": 0.4,
+      "missing_data_rate": 0.10,
+      "dropout_rate": 0.18,
+      "protocol_deviation_rate": 0.07,
+      "enrollment_pattern": "exponential",
+      "enrollment_duration_months": 14,
+      "seed": 42
+    }
+    ```
+
+    **Quality Score:**
+    The response includes a `realism_score` (0-100) that evaluates how realistic the
+    generated data is based on:
+    - Missing data patterns (MAR vs MCAR)
+    - Correlation structure preservation
+    - Dropout patterns over time
+    - AE rates and severity distribution
+    - Site heterogeneity metrics
+    """
+    try:
+        # Initialize the realistic trial generator
+        generator = RealisticTrialGenerator(seed=request.seed)
+
+        # Generate the complete trial
+        trial_data = generator.generate_realistic_trial(
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            n_sites=request.n_sites,
+            site_heterogeneity=request.site_heterogeneity,
+            missing_data_rate=request.missing_data_rate,
+            dropout_rate=request.dropout_rate,
+            protocol_deviation_rate=request.protocol_deviation_rate,
+            enrollment_pattern=request.enrollment_pattern,
+            enrollment_duration_months=request.enrollment_duration_months
+        )
+
+        # Convert vitals DataFrame to records, replacing NaN with None for JSON
+        vitals_df = trial_data['vitals'].copy()
+        # Replace NaN and Inf with None for JSON serialization
+        vitals_df = vitals_df.replace([float('inf'), float('-inf')], None)
+        vitals_df = vitals_df.where(pd.notnull(vitals_df), None)
+        vitals_records = vitals_df.to_dict(orient='records')
+
+        # Return the response
+        return RealisticTrialResponse(
+            vitals=vitals_records,
+            adverse_events=trial_data['adverse_events'],
+            protocol_deviations=trial_data['protocol_deviations'],
+            metadata=trial_data['metadata']
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Realistic trial generation failed: {str(e)}"
+        )
+
+@app.post("/generate/comprehensive-study", response_model=ComprehensiveStudyResponse)
+async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
+    """
+    Generate a complete clinical trial dataset with all data types
+
+    This endpoint generates a consolidated dataset including:
+    - **Vitals**: Blood pressure, heart rate, temperature across multiple visits
+    - **Demographics**: Age, gender, race, ethnicity, BMI, smoking status
+    - **Adverse Events**: Treatment-emergent adverse events with severity and causality
+    - **Labs**: Hematology, chemistry, and lipid panels across visits
+
+    All datasets share the same subject IDs for consistency and can be easily joined.
+
+    **Use Cases:**
+    - Rapid study simulation and planning
+    - End-to-end EDC testing
+    - Analytics and RBQM validation
+    - Training and demos
+
+    **Example Request:**
+    ```json
+    {
+      "n_per_arm": 50,
+      "target_effect": -5.0,
+      "method": "mvn",
+      "include_vitals": true,
+      "include_demographics": true,
+      "include_ae": true,
+      "include_labs": true,
+      "seed": 42
+    }
+    ```
+
+    Returns:
+        ComprehensiveStudyResponse with all requested data types and metadata
+    """
+    try:
+        total_subjects = request.n_per_arm * 2  # Active + Placebo
+        response_data = {
+            "vitals": None,
+            "demographics": None,
+            "adverse_events": None,
+            "labs": None,
+            "metadata": {
+                "total_subjects": total_subjects,
+                "subjects_per_arm": request.n_per_arm,
+                "seed": request.seed,
+                "method": request.method,
+                "generation_timestamp": datetime.utcnow().isoformat(),
+                "datasets_generated": []
+            }
+        }
+
+        # Generate Vitals Data
+        if request.include_vitals:
+            if request.method == "mvn":
+                vitals_df = generate_vitals_mvn(
+                    n_per_arm=request.n_per_arm,
+                    target_effect=request.target_effect,
+                    seed=request.seed
+                )
+            elif request.method == "rules":
+                vitals_df = generate_vitals_rules(
+                    n_per_arm=request.n_per_arm,
+                    target_effect=request.target_effect,
+                    seed=request.seed
+                )
+            else:  # bootstrap
+                # For bootstrap, we'd need training data - fallback to MVN
+                vitals_df = generate_vitals_mvn(
+                    n_per_arm=request.n_per_arm,
+                    target_effect=request.target_effect,
+                    seed=request.seed
+                )
+
+            response_data["vitals"] = vitals_df.to_dict(orient="records")
+            response_data["metadata"]["datasets_generated"].append("vitals")
+            response_data["metadata"]["vitals_records"] = len(vitals_df)
+
+        # Generate Demographics Data
+        if request.include_demographics:
+            demographics_df = generate_demographics(
+                n_subjects=total_subjects,
+                seed=request.seed
+            )
+            response_data["demographics"] = demographics_df.to_dict(orient="records")
+            response_data["metadata"]["datasets_generated"].append("demographics")
+            response_data["metadata"]["demographics_records"] = len(demographics_df)
+
+        # Generate Adverse Events Data
+        if request.include_ae:
+            ae_df = generate_oncology_ae(
+                n_subjects=total_subjects,
+                seed=request.seed + 1  # Different seed for variety
+            )
+            response_data["adverse_events"] = ae_df.to_dict(orient="records")
+            response_data["metadata"]["datasets_generated"].append("adverse_events")
+            response_data["metadata"]["ae_records"] = len(ae_df)
+
+        # Generate Lab Results Data
+        if request.include_labs:
+            labs_df = generate_labs(
+                n_subjects=total_subjects,
+                seed=request.seed + 2  # Different seed for variety
+            )
+            response_data["labs"] = labs_df.to_dict(orient="records")
+            response_data["metadata"]["datasets_generated"].append("labs")
+            response_data["metadata"]["labs_records"] = len(labs_df)
+
+        # Add summary
+        response_data["metadata"]["summary"] = (
+            f"Generated comprehensive study data for {total_subjects} subjects "
+            f"({request.n_per_arm} per arm) including: "
+            f"{', '.join(response_data['metadata']['datasets_generated'])}"
+        )
+
+        return ComprehensiveStudyResponse(**response_data)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Comprehensive study generation failed: {str(e)}"
         )
 
 
