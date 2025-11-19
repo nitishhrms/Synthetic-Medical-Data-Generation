@@ -60,6 +60,31 @@ def safe_int(val):
         return None
 
 
+def is_plausible_vital(vital_type: str, value: float) -> bool:
+    """
+    Validate that a vital sign value is physiologically plausible.
+    Filters out lab values, counts, or other measurements that matched keywords.
+
+    Ranges are intentionally wide to capture extreme but real clinical values.
+    """
+    if value is None:
+        return False
+
+    # Physiological ranges (wide to avoid false negatives)
+    plausible_ranges = {
+        'systolic': (70, 250),      # mmHg - captures hypertensive emergencies
+        'diastolic': (40, 150),     # mmHg - captures extreme cases
+        'heart_rate': (30, 200),    # bpm - captures bradycardia to severe tachycardia
+        'temperature': (32.0, 42.0) # °C - captures hypothermia to hyperthermia
+    }
+
+    if vital_type not in plausible_ranges:
+        return False
+
+    min_val, max_val = plausible_ranges[vital_type]
+    return min_val <= value <= max_val
+
+
 def process_comprehensive_aact():
     """Process ALL valuable AACT files for maximum synthetic data realism"""
 
@@ -215,6 +240,7 @@ def process_comprehensive_aact():
 
         # Process each baseline measurement
         processed_count = 0
+        rejected_count = 0
         for _, row in baseline_df.iterrows():
             nct_id = row.get('nct_id')
             title = str(row.get('title', '')).lower()
@@ -230,6 +256,11 @@ def process_comprehensive_aact():
             # Match to vital type
             for vital_type, keywords in vital_keywords.items():
                 if any(kw in title or kw in category for kw in keywords):
+                    # Validate physiological plausibility
+                    if not is_plausible_vital(vital_type, param_value):
+                        rejected_count += 1
+                        continue
+
                     # Store value for each indication
                     for indication in indications:
                         if phase:  # Only if phase is valid (Phase 1-4)
@@ -237,6 +268,7 @@ def process_comprehensive_aact():
                             processed_count += 1
 
         print(f"   ✅ Processed {processed_count:,} vital sign measurements")
+        print(f"   🚫 Rejected {rejected_count:,} implausible values (out of range)")
 
         # Calculate statistics
         for indication in statistics.get('indications', {}).keys():
