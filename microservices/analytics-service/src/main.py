@@ -21,6 +21,14 @@ from csr import generate_csr_draft
 from sdtm import export_to_sdtm_vs
 from db_utils import db, cache, startup_db, shutdown_db
 
+# Method comparison module
+try:
+    from method_comparison_daft import compare_generation_methods
+    METHOD_COMPARISON_AVAILABLE = True
+except ImportError:
+    METHOD_COMPARISON_AVAILABLE = False
+    print("Warning: Method comparison module not available")
+
 app = FastAPI(
     title="Analytics Service",
     description="Clinical Trial Analytics, RBQM, CSR, and SDTM Export",
@@ -592,6 +600,144 @@ async def comprehensive_quality_assessment(request: ComprehensiveQualityRequest)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Quality assessment failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# Method Comparison Using Daft
+# ============================================================================
+
+class MethodComparisonRequest(BaseModel):
+    real_data: List[Dict[str, Any]] = Field(..., description="Real/baseline dataset")
+    synthetic_datasets: Dict[str, List[Dict[str, Any]]] = Field(
+        ...,
+        description="Dictionary of {method_name: synthetic_data}"
+    )
+    generation_times: Dict[str, float] = Field(
+        default={},
+        description="Dictionary of {method_name: generation_time_ms}"
+    )
+
+
+@app.post("/quality/compare-methods")
+async def compare_all_methods(request: MethodComparisonRequest):
+    """
+    Compare all 6 generation methods using Daft
+
+    **Comprehensive comparison across multiple dimensions:**
+
+    1. **Distribution Similarity** (Wasserstein Distance)
+       - Measures how close synthetic distributions are to real
+       - Lower distance = better match
+       - Computed for SystolicBP, DiastolicBP, HeartRate, Temperature
+
+    2. **Correlation Preservation**
+       - Checks if variable relationships are maintained
+       - Frobenius norm of correlation matrix difference
+       - Score 0-1, higher is better
+
+    3. **Statistical Utility** (Kolmogorov-Smirnov Tests)
+       - Tests if distributions are statistically indistinguishable
+       - Proportion of KS tests that pass (p>0.05)
+       - Higher proportion = higher utility
+
+    4. **Privacy Risk** (Simple Assessment)
+       - Checks for duplicate records (potential memorization)
+       - For full assessment, use /privacy/assess/comprehensive
+
+    5. **Generation Performance**
+       - Time to generate dataset
+       - Throughput (records/second)
+
+    **Methods Compared:**
+    - MVN (Multivariate Normal)
+    - Bootstrap
+    - Rules-based
+    - LLM (GPT-4o-mini)
+    - Bayesian Network
+    - MICE (Multiple Imputation)
+
+    **Returns:**
+    - Overall quality scores (0-100) for each method
+    - Rankings (1st, 2nd, 3rd, etc.)
+    - Detailed metrics for each dimension
+    - Recommendations for method selection
+
+    **Use Cases:**
+    - Validate which method works best for your data
+    - Compare privacy/utility tradeoffs
+    - Benchmark new generation methods
+    - Select method based on specific needs (speed vs quality)
+
+    **Example Request:**
+    ```json
+    {
+      "real_data": [...],  // Your real clinical data
+      "synthetic_datasets": {
+        "mvn": [...],      // Generated with MVN
+        "bootstrap": [...], // Generated with Bootstrap
+        "bayesian": [...],  // Generated with Bayesian
+        "mice": [...]       // Generated with MICE
+      },
+      "generation_times": {
+        "mvn": 28.5,
+        "bootstrap": 15.2,
+        "bayesian": 45.3,
+        "mice": 38.1
+      }
+    }
+    ```
+
+    **Example Response:**
+    ```json
+    {
+      "rankings": {
+        "bootstrap": {"rank": 1, "score": 87.5, "best_for": ["Fastest generation", "Best distribution similarity"]},
+        "bayesian": {"rank": 2, "score": 85.2, "best_for": ["Best correlation preservation"]},
+        "mvn": {"rank": 3, "score": 82.1, "best_for": ["Balanced performance"]},
+        "mice": {"rank": 4, "score": 78.9, "best_for": []}
+      },
+      "recommendations": {
+        "best_overall": "bootstrap",
+        "fastest": "bootstrap",
+        "highest_quality": "bayesian",
+        "general_guidance": "Choose based on your needs: Bootstrap for speed and realism..."
+      }
+    }
+    ```
+    """
+    if not METHOD_COMPARISON_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Method comparison not available. Check method_comparison_daft module."
+        )
+
+    try:
+        # Convert to DataFrames
+        real_df = pd.DataFrame(request.real_data)
+
+        synthetic_dfs = {}
+        for method, data in request.synthetic_datasets.items():
+            synthetic_dfs[method] = pd.DataFrame(data)
+
+        # Run comparison
+        results = compare_generation_methods(
+            real_df,
+            synthetic_dfs,
+            request.generation_times
+        )
+
+        return {
+            "comparison_results": results,
+            "timestamp": datetime.utcnow().isoformat(),
+            "service": "analytics-service",
+            "comparison_engine": "daft" if METHOD_COMPARISON_AVAILABLE else "pandas_fallback"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Method comparison failed: {str(e)}"
         )
 
 
