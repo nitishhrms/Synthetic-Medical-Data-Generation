@@ -2,8 +2,9 @@
 EDC Service - Electronic Data Capture
 Handles subject data, visits, validation, and auto-repair
 """
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import pandas as pd
@@ -19,8 +20,6 @@ from db_utils import db, cache, startup_db, shutdown_db
 # Medical imaging support
 try:
     from image_processor import MedicalImageProcessor, process_medical_image
-    from fastapi import File, UploadFile
-    from fastapi.responses import Response
     IMAGING_AVAILABLE = True
 except ImportError:
     IMAGING_AVAILABLE = False

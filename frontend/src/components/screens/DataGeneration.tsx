@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataGenerationApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
-import { Download, Loader2, AlertCircle, Activity, Users, Flask, AlertTriangle, Database } from "lucide-react";
+import { Download, Loader2, AlertCircle, Activity, Users, FlaskConical, AlertTriangle, Database } from "lucide-react";
 
 export function DataGeneration() {
   const { setGeneratedData, setPilotData } = useData();
@@ -253,7 +253,7 @@ export function DataGeneration() {
             Demographics
           </TabsTrigger>
           <TabsTrigger value="labs">
-            <Flask className="h-4 w-4 mr-2" />
+            <FlaskConical className="h-4 w-4 mr-2" />
             Labs
           </TabsTrigger>
           <TabsTrigger value="ae">

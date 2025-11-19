@@ -636,7 +636,6 @@ async def comprehensive_quality_assessment(request: ComprehensiveQualityRequest)
 
 
 # ============================================================================
-<<<<<<< HEAD
 # DAFT-POWERED ENDPOINTS - Distributed Data Processing
 # ============================================================================
 
@@ -919,7 +918,9 @@ async def daft_correlation_matrix(data: VitalsData):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Correlation analysis failed: {str(e)}")
-=======
+
+
+# ============================================================================
 # Method Comparison Using Daft
 # ============================================================================
 
@@ -1466,7 +1467,6 @@ async def assess_trial_feasibility(request: FeasibilityAssessmentRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Feasibility assessment failed: {str(e)}"
         )
->>>>>>> origin/daft
 
 
 if __name__ == "__main__":
