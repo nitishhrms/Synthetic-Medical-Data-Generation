@@ -12,6 +12,19 @@ import type {
   Week12StatsRequest,
   Week12StatsResponse,
   PCAComparisonResponse,
+  SYNDATAMetricsResponse,
+  QualityReportResponse,
+  PrivacyAssessmentResponse,
+  VirtualControlArmRequest,
+  VirtualControlArmResponse,
+  AugmentControlArmRequest,
+  AugmentControlArmResponse,
+  WhatIfEnrollmentRequest,
+  WhatIfEnrollmentResponse,
+  WhatIfPatientMixRequest,
+  WhatIfPatientMixResponse,
+  FeasibilityAssessmentRequest,
+  FeasibilityAssessmentResponse,
 } from "@/types";
 
 // ============================================================================
@@ -20,9 +33,10 @@ import type {
 
 const DATA_GEN_SERVICE = import.meta.env.VITE_DATA_GEN_URL || "http://localhost:8002";
 const ANALYTICS_SERVICE = import.meta.env.VITE_ANALYTICS_URL || "http://localhost:8003";
-const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8004";
+const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8001";
 const SECURITY_SERVICE = import.meta.env.VITE_SECURITY_URL || "http://localhost:8005";
-const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8006";
+const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8004";
+const DAFT_SERVICE = import.meta.env.VITE_DAFT_URL || "http://localhost:8007";
 
 // ============================================================================
 // Helper Functions
@@ -154,6 +168,42 @@ export const dataGenerationApi = {
       body: JSON.stringify(params),
     });
     return handleResponse(response);
+  },
+
+  async generateBayesian(params: GenerationRequest): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bayesian`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "bayesian",
+      },
+    };
+  },
+
+  async generateMICE(params: GenerationRequest): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mice`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "mice",
+      },
+    };
   },
 
   async compareMethods(params: GenerationRequest): Promise<any> {
@@ -299,4 +349,381 @@ export const qualityApi = {
     });
     return handleResponse(response);
   },
+
+  async assessSYNDATA(realData: VitalsRecord[], syntheticData: VitalsRecord[]): Promise<SYNDATAMetricsResponse> {
+    const response = await fetch(`${QUALITY_SERVICE}/syndata/assess`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        real_data: realData,
+        synthetic_data: syntheticData,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateQualityReport(
+    methodName: string,
+    realData: VitalsRecord[],
+    syntheticData: VitalsRecord[],
+    syndataMetrics?: any,
+    privacyMetrics?: any,
+    generationTimeMs?: number
+  ): Promise<QualityReportResponse> {
+    const response = await fetch(`${QUALITY_SERVICE}/quality/report`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        method_name: methodName,
+        real_data: realData,
+        synthetic_data: syntheticData,
+        syndata_metrics: syndataMetrics,
+        privacy_metrics: privacyMetrics,
+        generation_time_ms: generationTimeMs,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async assessPrivacy(
+    realData: VitalsRecord[],
+    syntheticData: VitalsRecord[],
+    quasiIdentifiers?: string[],
+    sensitiveAttributes?: string[]
+  ): Promise<PrivacyAssessmentResponse> {
+    const response = await fetch(`${QUALITY_SERVICE}/privacy/assess/comprehensive`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        real_data: realData,
+        synthetic_data: syntheticData,
+        quasi_identifiers: quasiIdentifiers,
+        sensitive_attributes: sensitiveAttributes,
+      }),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Trial Planning API
+// ============================================================================
+
+export const trialPlanningApi = {
+  async createVirtualControlArm(request: VirtualControlArmRequest): Promise<VirtualControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/virtual-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async augmentControlArm(request: AugmentControlArmRequest): Promise<AugmentControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/augment-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfEnrollment(request: WhatIfEnrollmentRequest): Promise<WhatIfEnrollmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/enrollment`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfPatientMix(request: WhatIfPatientMixRequest): Promise<WhatIfPatientMixResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/patient-mix`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async assessFeasibility(request: FeasibilityAssessmentRequest): Promise<FeasibilityAssessmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/feasibility`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Daft Analytics API
+// ============================================================================
+
+export const daftApi = {
+  // Health check
+  async healthCheck(): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/health`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // Core Data Processing
+  async loadData(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/load`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async filterData(
+    data: VitalsRecord[],
+    condition?: string,
+    treatmentArm?: string,
+    visitName?: string
+  ): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/filter`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        data,
+        condition,
+        treatment_arm: treatmentArm,
+        visit_name: visitName,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async selectColumns(data: VitalsRecord[], columns: string[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/select?${new URLSearchParams({ columns: columns.join(",") })}`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async addDerivedColumn(data: VitalsRecord[], columnName: string, expression: string): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/add-derived-column`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        data,
+        column_name: columnName,
+        expression,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async addMedicalFeatures(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/add-medical-features`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  // Aggregation endpoints
+  async aggregateByTreatmentArm(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/aggregate/by-treatment-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async aggregateByVisit(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/aggregate/by-visit`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async aggregateBySubject(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/aggregate/by-subject`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async computeTreatmentEffect(
+    data: VitalsRecord[],
+    endpoint: string = "SystolicBP",
+    visit: string = "Week 12"
+  ): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/treatment-effect`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data, endpoint, visit }),
+    });
+    return handleResponse(response);
+  },
+
+  async computeLongitudinalSummary(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/longitudinal-summary`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async computeCorrelationMatrix(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/correlation-matrix`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  // Advanced Analytics
+  async computeChangeFromBaseline(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/change-from-baseline`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async responderAnalysis(
+    data: VitalsRecord[],
+    threshold: number = -10.0,
+    endpoint: string = "SystolicBP"
+  ): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/responder-analysis`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data, threshold, endpoint }),
+    });
+    return handleResponse(response);
+  },
+
+  async timeToEffect(
+    data: VitalsRecord[],
+    threshold: number = -5.0,
+    endpoint: string = "SystolicBP"
+  ): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/time-to-effect?${new URLSearchParams({
+      threshold: threshold.toString(),
+      endpoint,
+    })}`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async detectOutliers(
+    data: VitalsRecord[],
+    column: string = "SystolicBP",
+    method: string = "iqr"
+  ): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/outlier-detection`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data, column, method }),
+    });
+    return handleResponse(response);
+  },
+
+  // UDF endpoints
+  async applyQualityFlags(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/apply-quality-flags`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async identifyResponders(
+    data: VitalsRecord[],
+    threshold: number = -10.0,
+    endpoint: string = "SystolicBP"
+  ): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/identify-responders?${new URLSearchParams({
+      threshold: threshold.toString(),
+      endpoint,
+    })}`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  // SQL Query
+  async executeSqlQuery(data: VitalsRecord[], query: string): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/sql`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data, query }),
+    });
+    return handleResponse(response);
+  },
+
+  // Export endpoints
+  async exportToCsv(data: VitalsRecord[], filename: string = "daft_export.csv"): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/export/csv?${new URLSearchParams({ filename })}`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async exportToParquet(data: VitalsRecord[], filename: string = "daft_export.parquet"): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/export/parquet?${new URLSearchParams({ filename })}`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  // Explain & Benchmark
+  async explainExecutionPlan(data: VitalsRecord[], operations: string[] = []): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/explain?${new URLSearchParams({ operations: operations.join(",") })}`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+
+  async benchmark(data: VitalsRecord[]): Promise<any> {
+    const response = await fetch(`${DAFT_SERVICE}/daft/benchmark`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ data }),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Default export (for backward compatibility)
+// ============================================================================
+
+export const api = {
+  auth: authApi,
+  dataGeneration: dataGenerationApi,
+  analytics: analyticsApi,
+  edc: edcApi,
+  quality: qualityApi,
+  daft: daftApi,
 };

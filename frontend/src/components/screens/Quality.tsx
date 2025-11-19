@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { qualityApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
-import type { ValidationResponse } from "@/types";
 import { CheckCircle2, XCircle, AlertTriangle, Loader2, Shield } from "lucide-react";
 
 export function Quality() {
@@ -162,7 +161,7 @@ export function Quality() {
             </Card>
           </div>
 
-          {validationResults.violations.length > 0 ? (
+          {validationResults.violations && validationResults.violations.length > 0 ? (
             <Card>
               <CardHeader>
                 <CardTitle>Validation Violations</CardTitle>

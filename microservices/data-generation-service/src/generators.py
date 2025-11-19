@@ -183,7 +183,14 @@ def load_pilot_vitals(use_cleaned: bool = True) -> pd.DataFrame:
         To generate cleaned data, run: python data/validate_and_repair_real_data.py
     """
     # Locate the pilot data in the data directory
-    base_path = Path(__file__).resolve().parents[3]
+    # Use Path for robust path resolution (works in both local and Docker)
+    current_file = Path(__file__).resolve()
+    if str(current_file).startswith("/app/"):
+        # Running in Docker: /app/src/generators.py -> /app
+        base_path = current_file.parents[1]
+    else:
+        # Running locally: .../microservices/data-generation-service/src/generators.py -> project root
+        base_path = current_file.parents[3]
 
     if use_cleaned:
         # Use validated and cleaned data (recommended)
