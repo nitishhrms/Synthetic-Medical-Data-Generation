@@ -350,6 +350,86 @@ async def generate_bootstrap_based(request: GenerateBootstrapRequest):
             detail=f"Bootstrap generation failed: {str(e)}"
         )
 
+@app.post("/generate/diffusion", response_model=VitalsResponse)
+async def generate_diffusion_based(request: GenerateDiffusionRequest):
+    """
+    Generate synthetic vitals data using Diffusion-style iterative refinement
+
+    **Method:** Lightweight diffusion-inspired generation with statistical methods
+
+    **Best for:**
+    - High-quality synthetic data generation
+    - Capturing complex data distributions
+    - Realistic correlation preservation
+    - Advanced statistical modeling
+
+    **Advantages:**
+    - 🎯 State-of-the-art generative modeling approach
+    - 🔬 Learns complex patterns from real data
+    - 📊 Preserves statistical properties and correlations
+    - 🔧 Iterative refinement for better quality
+    - ⚡ Fast inference (no deep learning frameworks needed)
+    - 💰 No API costs
+    - ✅ Enforces clinical constraints
+
+    **How it works:**
+    1. Learns statistical distribution from pilot data
+    2. Samples from multivariate normal with learned correlations
+    3. Applies iterative refinement steps (diffusion-inspired)
+    4. Each step moves data towards conditional distributions
+    5. Gradually reduces noise while maintaining correlations
+    6. Enforces physiological constraints at each step
+    7. Applies target treatment effect for Active arm
+
+    **Parameters:**
+    - n_per_arm: Subjects per arm (default: 50)
+    - target_effect: Target SystolicBP reduction at Week 12 (default: -5.0 mmHg)
+    - n_steps: Number of refinement iterations (default: 50, range: 10-200)
+    - seed: Random seed for reproducibility (default: 42)
+
+    **Quality:**
+    - High fidelity to original data distribution
+    - Excellent correlation preservation
+    - Smooth, realistic value distributions
+    - Better than simple bootstrap for diverse datasets
+    """
+    try:
+        # Path to pilot data (fixed path in container)
+        import os
+        # Try multiple possible paths
+        possible_paths = [
+            "/app/data/pilot_trial_cleaned.csv",
+            "../../data/pilot_trial_cleaned.csv",
+            "/home/user/Synthetic-Medical-Data-Generation/data/pilot_trial_cleaned.csv",
+            os.path.join(os.path.dirname(__file__), "../../data/pilot_trial_cleaned.csv")
+        ]
+
+        data_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                data_path = path
+                break
+
+        if data_path is None:
+            raise FileNotFoundError("Pilot data file not found. Please ensure pilot_trial_cleaned.csv exists.")
+
+        # Generate synthetic data
+        df = generate_with_simple_diffusion(
+            data_path=data_path,
+            n_per_arm=request.n_per_arm,
+            n_steps=request.n_steps,
+            target_effect=request.target_effect,
+            seed=request.seed
+        )
+
+        # Return just the data array for compatibility with EDC validation service
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Diffusion generation failed: {str(e)}"
+        )
+
 @app.get("/compare")
 async def compare_methods(
     n_per_arm: int = 50,
@@ -377,10 +457,18 @@ async def compare_methods(
         import time
 
         # Load pilot data for bootstrap
-        # Use dynamic path resolution to work in any environment
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
-        pilot_path = os.path.join(project_root, "data/pilot_trial_cleaned.csv")
+        # Use Path for robust path resolution (works in both local and Docker)
+        from pathlib import Path
+        # In Docker: /app/src/main.py -> parents[1] = /app
+        # Locally: .../microservices/data-generation-service/src/main.py -> parents[3] = project root
+        current_file = Path(__file__).resolve()
+        if str(current_file).startswith("/app/"):
+            # Running in Docker
+            base_path = current_file.parents[1]  # /app
+        else:
+            # Running locally
+            base_path = current_file.parents[3]  # project root
+        pilot_path = base_path / "data" / "pilot_trial_cleaned.csv"
         pilot_df = pd.read_csv(pilot_path)
 
         # Generate with MVN
@@ -478,16 +566,24 @@ async def get_pilot_data():
     - Used by frontend for quality assessment and comparison
     """
     try:
-        # Use dynamic path resolution to work in any environment
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
-        pilot_path = os.path.join(project_root, "data/pilot_trial_cleaned.csv")
+        # Use Path for robust path resolution (works in both local and Docker)
+        from pathlib import Path
+        # In Docker: /app/src/main.py -> parents[1] = /app
+        # Locally: .../microservices/data-generation-service/src/main.py -> parents[3] = project root
+        current_file = Path(__file__).resolve()
+        if str(current_file).startswith("/app/"):
+            # Running in Docker
+            base_path = current_file.parents[1]  # /app
+        else:
+            # Running locally
+            base_path = current_file.parents[3]  # project root
+        pilot_path = base_path / "data" / "pilot_trial_cleaned.csv"
 
         # Check if file exists
-        if not os.path.exists(pilot_path):
+        if not pilot_path.exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Pilot data file not found at: {pilot_path}"
+                detail=f"UPDATED_CODE: Pilot data file not found at: {pilot_path}. Expected at: {base_path}/data/pilot_trial_cleaned.csv"
             )
 
         # Read and return pilot data
