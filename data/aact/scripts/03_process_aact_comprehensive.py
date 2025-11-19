@@ -27,21 +27,12 @@ import warnings
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Default paths - can be overridden with environment variable
-AACT_RAW_DIR = Path(os.getenv('AACT_DATA_DIR', '/home/user/clinical_data'))
+# Paths
+AACT_RAW_DIR = project_root / "data" / "aact" / "clinical_data"
 AACT_PROCESSED_DIR = project_root / "data" / "aact" / "processed"
 
 # Ensure processed directory exists
 AACT_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-
-print(f"\n📂 Looking for AACT data in: {AACT_RAW_DIR}")
-if not AACT_RAW_DIR.exists():
-    print(f"\n❌ ERROR: AACT data directory not found at {AACT_RAW_DIR}")
-    print("\nPlease either:")
-    print("  1. Set AACT_DATA_DIR environment variable: export AACT_DATA_DIR=/path/to/your/clinical_data")
-    print("  2. Or edit this script and change AACT_RAW_DIR to point to your data")
-    print(f"\nExpected files: studies.txt, conditions.txt, baseline_measurements.txt, etc.")
-    sys.exit(1)
 
 
 def safe_float(val):
