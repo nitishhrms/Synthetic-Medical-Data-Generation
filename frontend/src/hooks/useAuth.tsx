@@ -19,23 +19,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const checkAuth = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (token) {
-          const currentUser = await authApi.getCurrentUser();
-          setUser(currentUser);
-        }
-      } catch (error) {
-        console.error("Auth check failed:", error);
-        localStorage.removeItem("token");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    // TEMPORARY: Skip auth for demo purposes (backend not running)
+    setUser({
+      user_id: "demo-user",
+      username: "demo",
+      email: "demo@example.com",
+      role: "researcher",
+      tenant_id: "demo-tenant",
+    } as User);
+    setIsLoading(false);
 
-    checkAuth();
+    // Check if user is already logged in
+    // const checkAuth = async () => {
+    //   try {
+    //     const token = localStorage.getItem("token");
+    //     if (token) {
+    //       const currentUser = await authApi.getCurrentUser();
+    //       setUser(currentUser);
+    //     }
+    //   } catch (error) {
+    //     console.error("Auth check failed:", error);
+    //     localStorage.removeItem("token");
+    //   } finally {
+    //     setIsLoading(false);
+    //   }
+    // };
+    // checkAuth();
   }, []);
 
   const login = async (credentials: LoginRequest) => {

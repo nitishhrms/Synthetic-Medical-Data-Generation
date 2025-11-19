@@ -146,6 +146,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    volumes:
+      - ./data:/app/data:ro  # Mount data directory as read-only
     depends_on:
       postgres:
         condition: service_healthy
