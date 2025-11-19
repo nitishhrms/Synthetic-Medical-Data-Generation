@@ -477,6 +477,128 @@ async def get_pilot_data():
         )
 
 
+@app.get("/data/real-vitals", response_model=VitalsResponse)
+async def get_real_vitals_data():
+    """
+    Get real vitals signs data from clinical trials
+
+    Returns comprehensive vitals data from real clinical trials including:
+    - Systolic and Diastolic Blood Pressure
+    - Heart Rate
+    - Temperature
+    - Multiple visits per subject
+
+    Returns:
+    - Array of vitals records from real clinical trial data
+    - Used by frontend for comparison and quality assessment
+    """
+    try:
+        # Use dynamic path resolution to work in any environment
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
+        vitals_path = os.path.join(project_root, "data/vital_signs.csv")
+
+        # Check if file exists
+        if not os.path.exists(vitals_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Real vitals data file not found at: {vitals_path}"
+            )
+
+        # Read and return vitals data
+        vitals_df = pd.read_csv(vitals_path)
+
+        return vitals_df.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load real vitals data: {str(e)}"
+        )
+
+
+@app.get("/data/real-demographics", response_model=VitalsResponse)
+async def get_real_demographics_data():
+    """
+    Get real demographics data from clinical trials
+
+    Returns demographic information from real clinical trials including:
+    - Age, Gender, Race, Ethnicity
+    - Physical measurements (Height, Weight, BMI)
+    - Smoking status and medical history
+
+    Returns:
+    - Array of demographic records from real clinical trial data
+    - Used by frontend for baseline characteristics and quality assessment
+    """
+    try:
+        # Use dynamic path resolution to work in any environment
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
+        demographics_path = os.path.join(project_root, "data/demographics.csv")
+
+        # Check if file exists
+        if not os.path.exists(demographics_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Real demographics data file not found at: {demographics_path}"
+            )
+
+        # Read and return demographics data
+        demographics_df = pd.read_csv(demographics_path)
+
+        return demographics_df.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load real demographics data: {str(e)}"
+        )
+
+
+@app.get("/data/real-ae", response_model=VitalsResponse)
+async def get_real_adverse_events_data():
+    """
+    Get real adverse events (AE) data from clinical trials
+
+    Returns adverse event information from real clinical trials including:
+    - AE description and severity
+    - Relationship to study drug
+    - Onset and resolution dates
+    - Serious AE classification
+
+    Returns:
+    - Array of adverse event records from real clinical trial data
+    - Used by frontend for safety analysis and RBQM
+    """
+    try:
+        # Use dynamic path resolution to work in any environment
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
+        ae_path = os.path.join(project_root, "data/adverse_events.csv")
+
+        # Check if file exists
+        if not os.path.exists(ae_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Real adverse events data file not found at: {ae_path}"
+            )
+
+        # Read and return adverse events data
+        ae_df = pd.read_csv(ae_path)
+
+        return ae_df.to_dict(orient="records")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load real adverse events data: {str(e)}"
+        )
+
+
 # ============================================================================
 # Demographics and Lab Results Generation
 # ============================================================================
