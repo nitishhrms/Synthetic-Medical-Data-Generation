@@ -14,7 +14,7 @@ export interface VitalsRecord {
 }
 
 // Generation Methods
-export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm";
+export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm" | "bayesian" | "mice";
 
 // Generation Request
 export interface GenerationRequest {
@@ -25,6 +25,10 @@ export interface GenerationRequest {
   indication?: string; // for LLM
   api_key?: string; // for LLM
   model?: string; // for LLM
+  learn_structure?: boolean; // for bayesian
+  missing_rate?: number; // for MICE
+  estimator?: string; // for MICE - "bayesian_ridge" or "random_forest"
+  n_imputations?: number; // for MICE
 }
 
 // Generation Response
@@ -170,4 +174,282 @@ export interface PCAComparisonResponse {
   synthetic_pca: Array<{ pca1: number; pca2: number }>;
   explained_variance: number[];
   quality_score: number;
+}
+
+// ============================================================================
+// SYNDATA Quality Metrics Types
+// ============================================================================
+
+export interface SYNDATAMetricsResponse {
+  syndata_metrics: {
+    support_coverage: {
+      overall_score: number;
+      by_variable: { [key: string]: number };
+    };
+    cross_classification: {
+      utility_score: number;
+      joint_distribution_similarity: number;
+    };
+    ci_coverage: {
+      overall_coverage: number;
+      by_variable: { [key: string]: number };
+      meets_cart_standard: boolean; // 88-98%
+      interpretation: string;
+    };
+    membership_disclosure: {
+      disclosure_risk: number;
+      classifier_accuracy: number;
+      safe: boolean;
+    };
+    attribute_disclosure: {
+      disclosure_risk: number;
+      prediction_accuracy: number;
+      safe: boolean;
+    };
+    overall_syndata_score: number;
+    grade: "A" | "B" | "C" | "D" | "F";
+  };
+  timestamp: string;
+  service: string;
+}
+
+export interface QualityReportResponse {
+  report: string; // Markdown formatted report
+  method: GenerationMethod;
+  timestamp: string;
+  service: string;
+}
+
+// ============================================================================
+// Trial Planning Types
+// ============================================================================
+
+export interface VirtualControlArmRequest {
+  historical_data: VitalsRecord[];
+  n_control: number;
+  target_effect: number;
+  baseline_mean_sbp: number;
+  baseline_std_sbp: number;
+  seed?: number;
+}
+
+export interface VirtualControlArmResponse {
+  virtual_control_data: VitalsRecord[];
+  summary: {
+    virtual_control: {
+      mean_sbp: number;
+      std_sbp: number;
+    };
+  };
+  quality_metrics: {
+    similarity_score: number;
+    wasserstein_distance: number;
+    correlation_preservation: number;
+  };
+  use_case: string;
+  timestamp?: string;
+}
+
+export interface AugmentControlArmRequest {
+  real_control_data: VitalsRecord[];
+  n_synthetic: number;
+  target_effect: number;
+  seed?: number;
+}
+
+export interface AugmentControlArmResponse {
+  augmented_data: VitalsRecord[];
+  summary: {
+    n_real: number;
+    n_synthetic: number;
+    n_combined: number;
+    real_only: {
+      mean_sbp: number;
+      std_sbp: number;
+    };
+    augmented: {
+      mean_sbp: number;
+      std_sbp: number;
+    };
+  };
+  quality_metrics: {
+    similarity_score: number;
+    wasserstein_distance: number;
+  };
+  timestamp?: string;
+}
+
+export interface WhatIfEnrollmentRequest {
+  historical_data: VitalsRecord[];
+  baseline_n: number;
+  scenarios: number[];
+  target_effect: number;
+  seed?: number;
+}
+
+export interface WhatIfEnrollmentResponse {
+  scenarios: Array<{
+    n_per_arm: number;
+    power: number;
+    significant: boolean;
+    p_value: number;
+    effect: number;
+  }>;
+  recommendation: string;
+  timestamp?: string;
+}
+
+export interface WhatIfPatientMixRequest {
+  historical_data: VitalsRecord[];
+  n_per_scenario: number;
+  baseline_sbp_scenarios: number[];
+  target_effect: number;
+  seed?: number;
+}
+
+export interface WhatIfPatientMixResponse {
+  scenarios: Array<{
+    baseline_sbp: number;
+    population_type: string;
+    effect: number;
+    significant: boolean;
+    p_value: number;
+  }>;
+  recommendation: string;
+  timestamp?: string;
+}
+
+export interface FeasibilityAssessmentRequest {
+  target_effect: number;
+  expected_std: number;
+  alpha?: number;
+  power?: number;
+  allocation_ratio?: number;
+}
+
+export interface FeasibilityAssessmentResponse {
+  required_n_per_arm: number;
+  total_n: number;
+  effect_size_cohens_d: number;
+  feasibility: string;
+  interpretation: string;
+  assumptions: string[];
+  recommendation: string;
+  timestamp?: string;
+}
+
+// ============================================================================
+// Privacy Assessment Types
+// ============================================================================
+
+export interface PrivacyAssessmentRequest {
+  real_data: VitalsRecord[];
+  synthetic_data: VitalsRecord[];
+  quasi_identifiers?: string[];
+  sensitive_attributes?: string[];
+}
+
+export interface PrivacyAssessmentResponse {
+  dataset_info: {
+    real_records: number;
+    synthetic_records: number;
+    real_columns: string[];
+    synthetic_columns: string[];
+  };
+  k_anonymity: {
+    k: number;
+    mean_group_size: number;
+    median_group_size: number;
+    total_equivalence_classes: number;
+    risky_records: number;
+    risky_percentage: number;
+    safe: boolean;
+    recommendation: string;
+    quasi_identifiers_used: string[];
+  };
+  l_diversity: {
+    l: number;
+    mean_diversity: number;
+    safe: boolean;
+    recommendation: string;
+    quasi_identifiers_used: string[];
+    sensitive_attributes_checked: string[];
+  };
+  reidentification: {
+    singling_out?: {
+      attack_rate: number;
+      baseline_rate: number;
+      risk: number;
+      safe: boolean;
+    };
+    linkability?: {
+      attack_rate: number;
+      baseline_rate: number;
+      risk: number;
+      safe: boolean;
+    };
+    inference?: {
+      attack_rate: number;
+      baseline_rate: number;
+      risk: number;
+      safe: boolean;
+      secret_column: string;
+    };
+    overall?: {
+      max_risk: number;
+      mean_risk: number;
+      risk_level: string;
+      safe_for_release: boolean;
+    };
+  };
+  differential_privacy: {
+    epsilon: number;
+    delta: number;
+    n_queries: number;
+    total_epsilon: number;
+    privacy_level: string;
+    budget_remaining: number;
+    recommendation: string;
+  };
+  overall_assessment: {
+    k_anonymity_safe: boolean;
+    l_diversity_safe: boolean;
+    reidentification_safe: boolean;
+    safe_for_release: boolean;
+    recommendation: string;
+  };
+}
+
+// ============================================================================
+// Demographics Types
+// ============================================================================
+
+export interface DemographicRecord {
+  SubjectID: string;
+  Age: number;
+  Gender: "Male" | "Female";
+  Race: "White" | "Black" | "Asian" | "Other";
+  Ethnicity: "Hispanic" | "Non-Hispanic";
+  Height: number; // cm
+  Weight: number; // kg
+  BMI: number;
+  SmokingStatus: "Never" | "Former" | "Current";
+}
+
+export interface GenerationParamsWithDemographics {
+  n_per_arm?: number;
+  target_effect?: number;
+  seed?: number;
+  include_demographics?: boolean;
+  demographic_stratification?: {
+    oversample_minority?: boolean;
+    target_gender_ratio?: number; // 0.5 = 50/50
+    target_age_range?: [number, number];
+    target_race_distribution?: {
+      White?: number;
+      Black?: number;
+      Asian?: number;
+      Other?: number;
+    };
+  };
 }

@@ -16,6 +16,17 @@ from validation import validate_vitals
 from repair import auto_repair_vitals
 from db_utils import db, cache, startup_db, shutdown_db
 
+# Medical imaging support
+try:
+    from image_processor import MedicalImageProcessor, process_medical_image
+    from fastapi import File, UploadFile
+    from fastapi.responses import Response
+    IMAGING_AVAILABLE = True
+except ImportError:
+    IMAGING_AVAILABLE = False
+    import warnings
+    warnings.warn("Medical imaging not available. Install: pip install pydicom pillow opencv-python")
+
 app = FastAPI(
     title="EDC Service",
     description="Electronic Data Capture for Clinical Trials",
