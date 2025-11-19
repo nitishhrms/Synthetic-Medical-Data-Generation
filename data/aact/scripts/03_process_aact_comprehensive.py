@@ -18,6 +18,7 @@ Usage:
 import os
 import sys
 import json
+import math
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -36,11 +37,15 @@ AACT_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def safe_float(val):
-    """Safely convert to float, return None if invalid"""
+    """Safely convert to float, return None if invalid (including NaN/inf)"""
     try:
         if val is None or val == '' or val == 'NA':
             return None
-        return float(val)
+        result = float(val)
+        # Check if result is NaN or infinite
+        if math.isnan(result) or math.isinf(result):
+            return None
+        return result
     except:
         return None
 
@@ -524,16 +529,28 @@ def process_comprehensive_aact():
             outcomes_df = pd.read_csv(outcomes_path, delimiter="|", low_memory=False)
             print(f"   ✅ Loaded {len(outcomes_df):,} outcome measurements with pandas")
 
+        valid_values_count = 0
+        total_rows = 0
+        skipped_no_value = 0
+        skipped_no_keywords = 0
+
         for _, row in outcomes_df.iterrows():
+            total_rows += 1
             nct_id = row.get('nct_id')
             param_value = safe_float(row.get('param_value_num'))
             title = str(row.get('title', '')).lower()
 
-            if nct_id not in nct_to_indication or param_value is None:
+            if nct_id not in nct_to_indication:
                 continue
 
-            # Look for treatment difference/change keywords
-            if not any(kw in title for kw in ['change', 'difference', 'reduction', 'improvement']):
+            if param_value is None:
+                skipped_no_value += 1
+                continue
+
+            # Look for treatment difference/change keywords (relaxed filtering)
+            if not any(kw in title for kw in ['change', 'difference', 'reduction', 'improvement',
+                                               'decrease', 'increase', 'effect', 'response']):
+                skipped_no_keywords += 1
                 continue
 
             indications = nct_to_indication[nct_id]
@@ -550,6 +567,12 @@ def process_comprehensive_aact():
             if phase:
                 for indication in indications:
                     treatment_effects[indication][phase].append(param_value)
+                    valid_values_count += 1
+
+        print(f"   📊 Processed {total_rows:,} outcome rows")
+        print(f"      ✓ Valid values collected: {valid_values_count:,}")
+        print(f"      ⚠ Skipped (no numeric value): {skipped_no_value:,}")
+        print(f"      ⚠ Skipped (no keywords): {skipped_no_keywords:,}")
 
         # Calculate statistics
         for indication in statistics.get('indications', {}).keys():
