@@ -35,7 +35,21 @@ async def shutdown_event():
 
 # CORS configuration
 import os
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",") if os.getenv("ALLOWED_ORIGINS") else ["*"]
+ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
+if ALLOWED_ORIGINS_ENV:
+    ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
+else:
+    # Default: allow localhost origins for development
+    ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+        "*"  # Allow all for development
+    ]
+
 if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
     warnings.warn("CORS wildcard enabled in production - security risk!", UserWarning)
@@ -44,8 +58,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Pydantic models
@@ -834,6 +849,133 @@ async def get_lab_results(subject_id: str):
     """, subject_id)
 
     return {"labs": [dict(l) for l in labs]}
+
+
+# ============================================================================
+# Privacy Assessment Endpoints
+# ============================================================================
+
+class PrivacyAssessmentRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Clinical data to assess for privacy risks")
+    k_anonymity: int = Field(default=5, ge=1, le=20, description="K-anonymity threshold")
+
+class PrivacyAssessmentResponse(BaseModel):
+    privacy_score: float = Field(..., description="Overall privacy score (0-1, higher is better)")
+    k_anonymity_satisfied: bool = Field(..., description="Whether k-anonymity threshold is met")
+    re_identification_risk: float = Field(..., description="Risk of re-identification (0-1, lower is better)")
+    uniqueness_ratio: float = Field(..., description="Ratio of unique records")
+    quasi_identifiers_found: List[str] = Field(..., description="Potential quasi-identifiers detected")
+    recommendations: List[str] = Field(..., description="Privacy improvement recommendations")
+    summary: str = Field(..., description="Human-readable summary")
+
+@app.post("/privacy/assess/comprehensive", response_model=PrivacyAssessmentResponse)
+async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
+    """
+    Comprehensive privacy assessment for clinical trial data
+
+    Evaluates privacy risks including:
+    - K-anonymity compliance
+    - Re-identification risk analysis
+    - Quasi-identifier detection
+    - Uniqueness analysis
+
+    **Privacy Metrics:**
+    1. **K-Anonymity**: Ensures each combination of quasi-identifiers appears at least K times
+    2. **Re-identification Risk**: Probability that individuals can be re-identified
+    3. **Uniqueness Ratio**: Proportion of records with unique attribute combinations
+    4. **Quasi-Identifiers**: Attributes that could be combined for re-identification
+
+    **Use Cases:**
+    - HIPAA compliance validation
+    - Data sharing risk assessment
+    - Privacy impact assessments
+    - Regulatory submissions
+    """
+    try:
+        df = pd.DataFrame(request.data)
+
+        # Potential quasi-identifiers in clinical trial data
+        quasi_identifiers = []
+        for col in df.columns:
+            # Demographics and identifying information
+            if col in ["age", "gender", "race", "ethnicity", "site_id", "enrollment_date"]:
+                quasi_identifiers.append(col)
+            # Check for SubjectID patterns that might leak info
+            elif col.lower() in ["subjectid", "subject_id"]:
+                # SubjectID itself is not included, but we note it exists
+                pass
+
+        # If no quasi-identifiers found in columns, use visit patterns
+        if not quasi_identifiers:
+            # For vitals data, we'll use treatment arm and visit patterns as weak quasi-identifiers
+            available_cols = [c for c in ["TreatmentArm", "VisitName"] if c in df.columns]
+            quasi_identifiers = available_cols if available_cols else []
+
+        # Calculate uniqueness ratio
+        if quasi_identifiers:
+            # Group by quasi-identifiers
+            grouped = df.groupby(quasi_identifiers, dropna=False).size()
+            total_records = len(df)
+            unique_records = (grouped == 1).sum()
+            uniqueness_ratio = float(unique_records / len(grouped)) if len(grouped) > 0 else 0.0
+
+            # Check k-anonymity
+            min_group_size = int(grouped.min()) if len(grouped) > 0 else 0
+            k_anonymity_satisfied = min_group_size >= request.k_anonymity
+
+            # Re-identification risk (inverse of average group size)
+            avg_group_size = float(grouped.mean()) if len(grouped) > 0 else 1.0
+            re_identification_risk = float(1.0 / avg_group_size) if avg_group_size > 0 else 1.0
+        else:
+            # No quasi-identifiers detected - low risk but also low confidence
+            uniqueness_ratio = 0.0
+            k_anonymity_satisfied = True
+            re_identification_risk = 0.0
+
+        # Calculate overall privacy score
+        # Higher is better (inverse of risk)
+        privacy_score = 1.0 - re_identification_risk
+        privacy_score = max(0.0, min(1.0, privacy_score))
+
+        # Generate recommendations
+        recommendations = []
+        if not k_anonymity_satisfied:
+            recommendations.append(f"Increase data aggregation to meet k={request.k_anonymity} anonymity threshold")
+        if uniqueness_ratio > 0.1:
+            recommendations.append("High uniqueness ratio detected - consider generalization or suppression")
+        if re_identification_risk > 0.2:
+            recommendations.append("Re-identification risk above acceptable threshold - apply additional privacy techniques")
+        if len(quasi_identifiers) > 5:
+            recommendations.append("Multiple quasi-identifiers detected - consider reducing dimensionality")
+        if not quasi_identifiers:
+            recommendations.append("No standard quasi-identifiers found - manual review recommended for domain-specific identifiers")
+
+        if not recommendations:
+            recommendations.append("Privacy assessment passed - data meets acceptable privacy standards")
+
+        # Generate summary
+        if privacy_score >= 0.8:
+            summary = f"✅ EXCELLENT - Privacy score: {privacy_score:.2f}. Low re-identification risk. Data is well-protected."
+        elif privacy_score >= 0.6:
+            summary = f"⚠️ GOOD - Privacy score: {privacy_score:.2f}. Moderate privacy protection. Review recommendations."
+        else:
+            summary = f"❌ NEEDS IMPROVEMENT - Privacy score: {privacy_score:.2f}. High re-identification risk. Apply privacy-enhancing techniques."
+
+        return PrivacyAssessmentResponse(
+            privacy_score=round(privacy_score, 3),
+            k_anonymity_satisfied=k_anonymity_satisfied,
+            re_identification_risk=round(re_identification_risk, 3),
+            uniqueness_ratio=round(uniqueness_ratio, 3),
+            quasi_identifiers_found=quasi_identifiers,
+            recommendations=recommendations,
+            summary=summary
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Privacy assessment failed: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
