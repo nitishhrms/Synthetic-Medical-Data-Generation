@@ -113,9 +113,15 @@ class GenerateMICERequest(BaseModel):
     n_per_arm: int = Field(default=50, ge=1, le=500, description="Number of subjects per arm")
     target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
     seed: int = Field(default=42, description="Random seed for reproducibility")
-    missing_rate: float = Field(default=0.10, ge=0.0, le=0.3, description="Missing data rate to simulate (0.0-0.3)")
-    estimator: str = Field(default="bayesian_ridge", description="MICE estimator: 'bayesian_ridge' or 'random_forest'")
-    n_imputations: int = Field(default=1, ge=1, le=10, description="Number of multiple imputations (1 for single, >1 for pooling)")
+    missing_rate: float = Field(default=0.10, ge=0.0, le=0.5, description="Fraction of values to make missing (0.10 = 10%)")
+    estimator: str = Field(default="bayesian_ridge", description="Imputation estimator: 'bayesian_ridge' or 'random_forest'")
+    n_imputations: int = Field(default=1, ge=1, le=10, description="Number of imputations (1 for single, 5-10 for multiple)")
+
+class GenerateDiffusionRequest(BaseModel):
+    n_per_arm: int = Field(default=50, ge=1, le=500, description="Number of subjects per arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+    n_steps: int = Field(default=10, ge=1, le=100, description="Number of diffusion steps")
 
 # Response model - returns array directly for compatibility with EDC validation service
 VitalsResponse = List[Dict[str, Any]]

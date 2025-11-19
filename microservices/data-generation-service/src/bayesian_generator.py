@@ -298,13 +298,14 @@ class BayesianNetworkGenerator:
                 subject_id = f"RA001-{len(all_samples) // 4 + 1:03d}"
 
                 for visit in visits:
-                    # Generate sample conditioned on treatment and visit
-                    sample = sampler.forward_sample(
-                        size=1,
-                        evidence={'TreatmentArm': arm, 'VisitName': visit}
-                    )
+                    # Generate sample (forward sampling doesn't support evidence in newer pgmpy)
+                    sample = sampler.forward_sample(size=1)
 
+                    # Manually set evidence values
+                    sample['TreatmentArm'] = arm
+                    sample['VisitName'] = visit
                     sample['SubjectID'] = subject_id
+
                     all_samples.append(sample)
 
         # Combine all samples

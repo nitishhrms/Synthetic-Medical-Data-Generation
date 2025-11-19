@@ -342,14 +342,14 @@ export function TrialPlanning() {
                     <Card>
                       <CardContent className="pt-6 text-center">
                         <p className="text-sm text-muted-foreground">Total Records</p>
-                        <p className="text-3xl font-bold">{virtualControlResult.virtual_control_data.length}</p>
+                        <p className="text-3xl font-bold">{virtualControlResult.virtual_control_data?.length ?? 0}</p>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="pt-6 text-center">
                         <p className="text-sm text-muted-foreground">Mean SBP</p>
                         <p className="text-3xl font-bold">
-                          {virtualControlResult.summary.virtual_control.mean_sbp.toFixed(1)}
+                          {virtualControlResult.summary?.virtual_control?.mean_sbp?.toFixed(1) ?? 'N/A'}
                         </p>
                       </CardContent>
                     </Card>
@@ -357,7 +357,7 @@ export function TrialPlanning() {
                       <CardContent className="pt-6 text-center">
                         <p className="text-sm text-muted-foreground">Quality Score</p>
                         <p className="text-3xl font-bold text-green-600">
-                          {(virtualControlResult.quality_metrics.similarity_score * 100).toFixed(0)}%
+                          {((virtualControlResult.quality_metrics?.similarity_score ?? 0) * 100).toFixed(0)}%
                         </p>
                       </CardContent>
                     </Card>
@@ -372,13 +372,13 @@ export function TrialPlanning() {
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Wasserstein Distance:</span>
                           <span className="font-medium">
-                            {virtualControlResult.quality_metrics.wasserstein_distance.toFixed(2)}
+                            {virtualControlResult.quality_metrics?.wasserstein_distance?.toFixed(2) ?? 'N/A'}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Correlation Preservation:</span>
                           <span className="font-medium">
-                            {(virtualControlResult.quality_metrics.correlation_preservation * 100).toFixed(1)}%
+                            {((virtualControlResult.quality_metrics?.correlation_preservation ?? 0) * 100).toFixed(1)}%
                           </span>
                         </div>
                       </div>
@@ -388,7 +388,7 @@ export function TrialPlanning() {
                   <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200">
                     <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">Use Case</p>
                     <p className="text-sm text-blue-800 dark:text-blue-200">
-                      {virtualControlResult.use_case}
+                      {virtualControlResult.use_case ?? 'N/A'}
                     </p>
                   </div>
                 </div>
@@ -466,26 +466,26 @@ export function TrialPlanning() {
                     <Card>
                       <CardContent className="pt-6 text-center">
                         <p className="text-sm text-muted-foreground">Real Patients</p>
-                        <p className="text-3xl font-bold text-blue-600">{augmentResult.summary.n_real}</p>
+                        <p className="text-3xl font-bold text-blue-600">{augmentResult.summary?.n_real ?? 0}</p>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="pt-6 text-center">
                         <p className="text-sm text-muted-foreground">Synthetic Added</p>
-                        <p className="text-3xl font-bold text-purple-600">{augmentResult.summary.n_synthetic}</p>
+                        <p className="text-3xl font-bold text-purple-600">{augmentResult.summary?.n_synthetic ?? 0}</p>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="pt-6 text-center">
                         <p className="text-sm text-muted-foreground">Total Combined</p>
-                        <p className="text-3xl font-bold text-green-600">{augmentResult.summary.n_combined}</p>
+                        <p className="text-3xl font-bold text-green-600">{augmentResult.summary?.n_combined ?? 0}</p>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="pt-6 text-center">
                         <p className="text-sm text-muted-foreground">Similarity</p>
                         <p className="text-3xl font-bold">
-                          {(augmentResult.quality_metrics.similarity_score * 100).toFixed(0)}%
+                          {((augmentResult.quality_metrics?.similarity_score ?? 0) * 100).toFixed(0)}%
                         </p>
                       </CardContent>
                     </Card>
@@ -498,28 +498,28 @@ export function TrialPlanning() {
                     <CardContent>
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <p className="font-medium mb-2">Real Only (N={augmentResult.summary.n_real})</p>
+                          <p className="font-medium mb-2">Real Only (N={augmentResult.summary?.n_real ?? 0})</p>
                           <div className="space-y-1">
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Mean SBP:</span>
-                              <span>{augmentResult.summary.real_only.mean_sbp.toFixed(1)} mmHg</span>
+                              <span>{augmentResult.summary?.real_only?.mean_sbp?.toFixed(1) ?? 'N/A'} mmHg</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Std Dev:</span>
-                              <span>{augmentResult.summary.real_only.std_sbp.toFixed(1)} mmHg</span>
+                              <span>{augmentResult.summary?.real_only?.std_sbp?.toFixed(1) ?? 'N/A'} mmHg</span>
                             </div>
                           </div>
                         </div>
                         <div>
-                          <p className="font-medium mb-2">Combined (N={augmentResult.summary.n_combined})</p>
+                          <p className="font-medium mb-2">Combined (N={augmentResult.summary?.n_combined ?? 0})</p>
                           <div className="space-y-1">
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Mean SBP:</span>
-                              <span>{augmentResult.summary.augmented.mean_sbp.toFixed(1)} mmHg</span>
+                              <span>{augmentResult.summary?.augmented?.mean_sbp?.toFixed(1) ?? 'N/A'} mmHg</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Std Dev:</span>
-                              <span>{augmentResult.summary.augmented.std_sbp.toFixed(1)} mmHg</span>
+                              <span>{augmentResult.summary?.augmented?.std_sbp?.toFixed(1) ?? 'N/A'} mmHg</span>
                             </div>
                           </div>
                         </div>
@@ -530,8 +530,8 @@ export function TrialPlanning() {
                   <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200">
                     <p className="text-sm font-medium text-green-900 dark:text-green-100 mb-1">Benefit</p>
                     <p className="text-sm text-green-800 dark:text-green-200">
-                      Increased sample size from {augmentResult.summary.n_real} to {augmentResult.summary.n_combined}{" "}
-                      ({((augmentResult.summary.n_combined / augmentResult.summary.n_real - 1) * 100).toFixed(0)}%
+                      Increased sample size from {augmentResult.summary?.n_real ?? 0} to {augmentResult.summary?.n_combined ?? 0}{" "}
+                      ({(((augmentResult.summary?.n_combined ?? 0) / (augmentResult.summary?.n_real || 1) - 1) * 100).toFixed(0)}%
                       increase) while maintaining statistical properties. This improves power without recruiting more
                       placebo patients.
                     </p>
@@ -612,7 +612,7 @@ export function TrialPlanning() {
                   <div className="flex items-center gap-2 text-green-600">
                     <CheckCircle className="h-5 w-5" />
                     <span className="font-medium">
-                      Analyzed {enrollmentResult.scenarios.length} enrollment scenarios
+                      Analyzed {enrollmentResult.scenarios?.length ?? 0} enrollment scenarios
                     </span>
                   </div>
 
@@ -622,7 +622,7 @@ export function TrialPlanning() {
                     </CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={enrollmentResult.scenarios}>
+                        <LineChart data={enrollmentResult.scenarios ?? []}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="n_per_arm" label={{ value: "N per Arm", position: "insideBottom", offset: -5 }} />
                           <YAxis label={{ value: "Statistical Power", angle: -90, position: "insideLeft" }} domain={[0, 1]} />
@@ -647,7 +647,7 @@ export function TrialPlanning() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
-                        {enrollmentResult.scenarios.map((scenario, idx) => (
+                        {(enrollmentResult.scenarios ?? []).map((scenario, idx) => (
                           <div
                             key={idx}
                             className="flex items-center justify-between p-3 border rounded-lg"
@@ -683,7 +683,7 @@ export function TrialPlanning() {
 
                   <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200">
                     <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">Recommendation</p>
-                    <p className="text-sm text-blue-800 dark:text-blue-200">{enrollmentResult.recommendation}</p>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">{enrollmentResult.recommendation ?? 'N/A'}</p>
                   </div>
                 </div>
               )}
@@ -766,7 +766,7 @@ export function TrialPlanning() {
                   <div className="flex items-center gap-2 text-green-600">
                     <CheckCircle className="h-5 w-5" />
                     <span className="font-medium">
-                      Analyzed {patientMixResult.scenarios.length} patient mix scenarios
+                      Analyzed {patientMixResult.scenarios?.length ?? 0} patient mix scenarios
                     </span>
                   </div>
 
@@ -776,7 +776,7 @@ export function TrialPlanning() {
                     </CardHeader>
                     <CardContent>
                       <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={patientMixResult.scenarios}>
+                        <BarChart data={patientMixResult.scenarios ?? []}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis
                             dataKey="baseline_sbp"
@@ -788,7 +788,7 @@ export function TrialPlanning() {
                           <Tooltip />
                           <Legend />
                           <Bar dataKey="effect" name="Effect Size">
-                            {patientMixResult.scenarios.map((entry, index) => (
+                            {(patientMixResult.scenarios ?? []).map((entry, index) => (
                               <Cell
                                 key={`cell-${index}`}
                                 fill={entry.significant ? "#10b981" : "#94a3b8"}
@@ -806,7 +806,7 @@ export function TrialPlanning() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
-                        {patientMixResult.scenarios.map((scenario, idx) => (
+                        {(patientMixResult.scenarios ?? []).map((scenario, idx) => (
                           <div
                             key={idx}
                             className="flex items-center justify-between p-3 border rounded-lg"
@@ -838,7 +838,7 @@ export function TrialPlanning() {
 
                   <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200">
                     <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">Insight</p>
-                    <p className="text-sm text-blue-800 dark:text-blue-200">{patientMixResult.recommendation}</p>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">{patientMixResult.recommendation ?? 'N/A'}</p>
                   </div>
                 </div>
               )}
@@ -951,10 +951,10 @@ export function TrialPlanning() {
                     <Card className="border-2 border-primary">
                       <CardContent className="pt-6 text-center">
                         <p className="text-sm text-muted-foreground mb-2">Required Sample Size</p>
-                        <p className="text-5xl font-bold text-primary">{feasibilityResult.required_n_per_arm}</p>
+                        <p className="text-5xl font-bold text-primary">{feasibilityResult.required_n_per_arm ?? 0}</p>
                         <p className="text-sm text-muted-foreground mt-2">per arm</p>
                         <p className="text-lg font-semibold mt-1">
-                          Total: {feasibilityResult.total_n} patients
+                          Total: {feasibilityResult.total_n ?? 0} patients
                         </p>
                       </CardContent>
                     </Card>
@@ -969,7 +969,7 @@ export function TrialPlanning() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Cohen's d:</span>
-                            <span className="font-medium">{feasibilityResult.effect_size_cohens_d.toFixed(3)}</span>
+                            <span className="font-medium">{feasibilityResult.effect_size_cohens_d?.toFixed(3) ?? 'N/A'}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Power:</span>
@@ -996,16 +996,16 @@ export function TrialPlanning() {
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <Badge
-                            variant={feasibilityResult.feasibility === "Highly Feasible" ? "default" : "secondary"}
+                            variant={(feasibilityResult.feasibility ?? "") === "Highly Feasible" ? "default" : "secondary"}
                             className={
-                              feasibilityResult.feasibility === "Highly Feasible"
+                              (feasibilityResult.feasibility ?? "") === "Highly Feasible"
                                 ? "bg-green-500"
-                                : feasibilityResult.feasibility === "Feasible"
+                                : (feasibilityResult.feasibility ?? "") === "Feasible"
                                 ? "bg-yellow-500"
                                 : "bg-red-500"
                             }
                           >
-                            {feasibilityResult.feasibility}
+                            {feasibilityResult.feasibility ?? 'Unknown'}
                           </Badge>
                           <span className="text-sm">
                             Based on effect size of {Math.abs(feasibilityParams.target_effect)} mmHg
@@ -1013,13 +1013,13 @@ export function TrialPlanning() {
                         </div>
 
                         <div className="p-3 bg-muted rounded-lg">
-                          <p className="text-sm">{feasibilityResult.interpretation}</p>
+                          <p className="text-sm">{feasibilityResult.interpretation ?? 'N/A'}</p>
                         </div>
 
                         <div className="space-y-2">
                           <p className="text-sm font-medium">Assumptions:</p>
                           <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                            {feasibilityResult.assumptions.map((assumption, idx) => (
+                            {(feasibilityResult.assumptions ?? []).map((assumption, idx) => (
                               <li key={idx}>{assumption}</li>
                             ))}
                           </ul>
@@ -1033,7 +1033,7 @@ export function TrialPlanning() {
                       Recommendation
                     </p>
                     <p className="text-sm text-green-800 dark:text-green-200">
-                      {feasibilityResult.recommendation}
+                      {feasibilityResult.recommendation ?? 'N/A'}
                     </p>
                   </div>
                 </div>

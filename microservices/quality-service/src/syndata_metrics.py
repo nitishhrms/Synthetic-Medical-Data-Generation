@@ -18,6 +18,82 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple
 from scipy import stats
 from collections import defaultdict
+import math
+
+
+def safe_float(value, default=0.0):
+    """Convert value to float, handling NaN/Inf cases"""
+    try:
+        if value is None:
+            return default
+        val = float(value)
+        if math.isnan(val) or math.isinf(val):
+            return default
+        return val
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_value(value):
+    """Convert numpy types to Python native types for JSON serialization"""
+    if value is None:
+        return None
+
+    # Handle numpy bool
+    if isinstance(value, (np.bool_, np.bool8)):
+        return bool(value)
+
+    # Handle numpy integers
+    if isinstance(value, (np.integer, np.int_, np.int8, np.int16, np.int32, np.int64)):
+        return int(value)
+
+    # Handle numpy floats
+    if isinstance(value, (np.floating, np.float_, np.float16, np.float32, np.float64)):
+        val = float(value)
+        # Check for NaN/Inf
+        if math.isnan(val) or math.isinf(val):
+            return 0.0
+        return val
+
+    # Already a Python type
+    return value
+
+
+def sanitize_for_json(obj):
+    """Recursively sanitize object for JSON serialization, handling NaN/Inf"""
+    if obj is None:
+        return None
+
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_for_json(item) for item in obj]
+
+    # Handle numpy bools
+    if isinstance(obj, (np.bool_, np.bool8)):
+        return bool(obj)
+
+    # Handle numpy integers
+    if isinstance(obj, (np.integer, np.int_, np.int8, np.int16, np.int32, np.int64)):
+        return int(obj)
+
+    # Handle floats (both numpy and Python)
+    if isinstance(obj, (float, np.floating, np.float_, np.float16, np.float32, np.float64)):
+        try:
+            val = float(obj)
+            if math.isnan(val) or math.isinf(val):
+                return 0.0
+            return val
+        except (ValueError, TypeError):
+            return 0.0
+
+    # Handle integers
+    if isinstance(obj, (int, np.integer)):
+        return int(obj)
+
+    # Return as-is for strings, bools, etc.
+    return obj
 
 
 class SYNDATAMetrics:
@@ -64,7 +140,8 @@ class SYNDATAMetrics:
         # Generate interpretation
         results["interpretation"] = self._generate_interpretation(results)
 
-        return results
+        # Sanitize all values for JSON serialization
+        return sanitize_for_json(results)
 
     def compute_support_coverage(self) -> Dict:
         """
@@ -132,7 +209,8 @@ class SYNDATAMetrics:
             }
 
         # Overall support coverage score
-        overall_score = np.mean([c["coverage_score"] for c in coverage_results.values()])
+        scores = [c["coverage_score"] for c in coverage_results.values()]
+        overall_score = safe_float(np.mean(scores) if scores else 0.0, 0.0)
 
         return {
             "by_column": coverage_results,
@@ -198,7 +276,7 @@ class SYNDATAMetrics:
 
         # Overall cross-classification score
         scores = [r['utility_score'] for r in results.values() if 'utility_score' in r]
-        overall_score = np.mean(scores) if scores else 0
+        overall_score = safe_float(np.mean(scores) if scores else 0.0, 0.0)
 
         return {
             "cross_classifications": results,
@@ -322,23 +400,23 @@ class SYNDATAMetrics:
                 "coverage_90_pct": round(coverage_90, 2),
                 "coverage_99_pct": round(coverage_99, 2),
                 "quality": quality,
-                "meets_cart_standard": 88 <= coverage_pct <= 98
+                "meets_cart_standard": bool(88 <= coverage_pct <= 98)
             }
 
         # Overall CI coverage score
         coverage_values = [c["coverage_95_pct"] for c in ci_results.values()]
-        avg_coverage = np.mean(coverage_values) if coverage_values else 0
+        avg_coverage = safe_float(np.mean(coverage_values) if coverage_values else 0.0, 0.0)
 
         # How many variables meet CART standard?
         cart_compliant = sum(1 for c in ci_results.values() if c["meets_cart_standard"])
-        cart_compliance_pct = (cart_compliant / len(ci_results)) * 100 if ci_results else 0
+        cart_compliance_pct = safe_float((cart_compliant / len(ci_results)) * 100 if ci_results else 0.0, 0.0)
 
         return {
             "by_column": ci_results,
             "average_coverage_95": round(avg_coverage, 2),
             "cart_compliant_variables": cart_compliant,
             "cart_compliance_pct": round(cart_compliance_pct, 2),
-            "overall_score": round(avg_coverage / 100, 3),
+            "overall_score": round(safe_float(avg_coverage / 100, 0.0), 3),
             "interpretation": self._interpret_ci_coverage(avg_coverage, cart_compliance_pct)
         }
 
@@ -509,21 +587,22 @@ class SYNDATAMetrics:
         scores = []
 
         if "support_coverage" in results:
-            scores.append(results["support_coverage"].get("overall_score", 0))
+            scores.append(safe_float(results["support_coverage"].get("overall_score", 0), 0.0))
 
         if "cross_classification" in results:
-            scores.append(results["cross_classification"].get("overall_score", 0))
+            scores.append(safe_float(results["cross_classification"].get("overall_score", 0), 0.0))
 
         if "ci_coverage" in results:
-            scores.append(results["ci_coverage"].get("overall_score", 0))
+            scores.append(safe_float(results["ci_coverage"].get("overall_score", 0), 0.0))
 
         if "membership_disclosure" in results:
-            scores.append(results["membership_disclosure"].get("privacy_score", 0))
+            scores.append(safe_float(results["membership_disclosure"].get("privacy_score", 0), 0.0))
 
         if "attribute_disclosure" in results:
-            scores.append(results["attribute_disclosure"].get("privacy_score", 0))
+            scores.append(safe_float(results["attribute_disclosure"].get("privacy_score", 0), 0.0))
 
-        return round(np.mean(scores), 3) if scores else 0.0
+        mean_score = safe_float(np.mean(scores) if scores else 0.0, 0.0)
+        return round(mean_score, 3)
 
     def _generate_interpretation(self, results: Dict) -> str:
         """Generate overall interpretation"""

@@ -15,6 +15,7 @@ This addresses professor's feedback on:
 
 import pandas as pd
 import numpy as np
+import os
 from typing import Dict, List, Optional, Tuple
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer

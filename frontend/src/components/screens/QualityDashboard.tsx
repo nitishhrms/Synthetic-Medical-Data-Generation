@@ -323,28 +323,29 @@ export function QualityDashboard() {
                       {/* Per-Variable CI Coverage */}
                       <div className="space-y-3">
                         <h4 className="text-sm font-medium">CI Coverage by Variable</h4>
-                        {Object.entries(syndataMetrics.syndata_metrics.ci_coverage.by_variable).map(([variable, coverage]) => (
-                          <div key={variable} className="space-y-1">
+                        {syndataMetrics?.syndata_metrics?.ci_coverage?.by_column && Object.entries(syndataMetrics.syndata_metrics.ci_coverage.by_column).map(([variable, data]: [string, any]) => {
+                          const coveragePct = data.coverage_95_pct ?? 0;
+                          return (<div key={variable} className="space-y-1">
                             <div className="flex items-center justify-between text-sm">
                               <span className="font-medium">{variable}</span>
                               <span className="text-muted-foreground">
-                                {(coverage * 100).toFixed(1)}%
+                                {coveragePct.toFixed(1)}%
                               </span>
                             </div>
                             <div className="h-2 bg-muted rounded-full overflow-hidden">
                               <div
                                 className={`h-full ${
-                                  coverage >= 0.88 && coverage <= 0.98
+                                  coveragePct >= 88 && coveragePct <= 98
                                     ? "bg-green-500"
-                                    : coverage >= 0.80
+                                    : coveragePct >= 80
                                     ? "bg-yellow-500"
                                     : "bg-red-500"
                                 }`}
-                                style={{ width: `${coverage * 100}%` }}
+                                style={{ width: `${Math.min(100, coveragePct)}%` }}
                               />
                             </div>
-                          </div>
-                        ))}
+                          </div>);
+                        })}
                       </div>
 
                       <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
@@ -387,11 +388,11 @@ export function QualityDashboard() {
 
                       <div className="space-y-3">
                         <h4 className="text-sm font-medium">Coverage by Variable</h4>
-                        {Object.entries(syndataMetrics.syndata_metrics.support_coverage.by_variable).map(([variable, score]) => (
+                        {syndataMetrics?.syndata_metrics?.support_coverage?.by_column && Object.entries(syndataMetrics.syndata_metrics.support_coverage.by_column).map(([variable, data]: [string, any]) => (
                           <div key={variable} className="flex items-center justify-between">
                             <span className="text-sm">{variable}</span>
                             <Badge variant="outline">
-                              {(score * 100).toFixed(1)}%
+                              {((data.coverage_score ?? 0) * 100).toFixed(1)}%
                             </Badge>
                           </div>
                         ))}
