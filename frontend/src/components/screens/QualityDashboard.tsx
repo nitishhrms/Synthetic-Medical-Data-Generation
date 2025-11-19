@@ -8,7 +8,6 @@ import { useData } from "@/contexts/DataContext";
 import type { SYNDATAMetricsResponse, VitalsRecord } from "@/types";
 import {
   CheckCircle2,
-  XCircle,
   AlertTriangle,
   Loader2,
   Award,
