@@ -45,7 +45,21 @@ async def shutdown_event():
 
 # CORS configuration
 import os
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",") if os.getenv("ALLOWED_ORIGINS") else ["*"]
+ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
+if ALLOWED_ORIGINS_ENV:
+    ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
+else:
+    # Default: allow localhost origins for development
+    ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8000",
+        "*"  # Allow all for development
+    ]
+
 if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
     warnings.warn("CORS wildcard enabled in production - security risk!", UserWarning)
@@ -54,8 +68,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Pydantic models
@@ -847,303 +862,130 @@ async def get_lab_results(subject_id: str):
 
 
 # ============================================================================
-# MEDICAL IMAGING ENDPOINTS - NEW
+# Privacy Assessment Endpoints
 # ============================================================================
 
-class ImageUploadRequest(BaseModel):
-    subject_id: str
-    visit_name: Optional[str] = None
-    image_type: Optional[str] = None  # 'X-ray', 'CT', 'MRI', 'Ultrasound', 'ECG', 'Photo'
-    description: Optional[str] = None
+class PrivacyAssessmentRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Clinical data to assess for privacy risks")
+    k_anonymity: int = Field(default=5, ge=1, le=20, description="K-anonymity threshold")
 
-class ImageMetadataResponse(BaseModel):
-    image_id: int
-    subject_id: str
-    filename: str
-    file_type: str
-    image_type: Optional[str]
-    file_size_bytes: int
-    has_thumbnail: bool
-    uploaded_at: str
+class PrivacyAssessmentResponse(BaseModel):
+    privacy_score: float = Field(..., description="Overall privacy score (0-1, higher is better)")
+    k_anonymity_satisfied: bool = Field(..., description="Whether k-anonymity threshold is met")
+    re_identification_risk: float = Field(..., description="Risk of re-identification (0-1, lower is better)")
+    uniqueness_ratio: float = Field(..., description="Ratio of unique records")
+    quasi_identifiers_found: List[str] = Field(..., description="Potential quasi-identifiers detected")
+    recommendations: List[str] = Field(..., description="Privacy improvement recommendations")
+    summary: str = Field(..., description="Human-readable summary")
 
-@app.get("/images/status")
-async def imaging_status():
-    """Check if medical imaging is available"""
-    return {
-        "imaging_available": IMAGING_AVAILABLE,
-        "dicom_support": IMAGING_AVAILABLE,
-        "supported_formats": {
-            "dicom": [".dcm", ".dicom"],
-            "images": [".png", ".jpg", ".jpeg"],
-            "documents": [".pdf"]
-        },
-        "features": [
-            "DICOM metadata extraction",
-            "Thumbnail generation",
-            "Hash-based deduplication",
-            "Batch processing"
-        ] if IMAGING_AVAILABLE else []
-    }
-
-@app.post("/images/upload")
-async def upload_medical_image(
-    file: UploadFile = File(...),
-    subject_id: str = "",
-    visit_name: Optional[str] = None,
-    image_type: Optional[str] = None,
-    user_id: int = 1
-):
+@app.post("/privacy/assess/comprehensive", response_model=PrivacyAssessmentResponse)
+async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
     """
-    Upload a medical image (DICOM, PNG, JPEG, PDF)
+    Comprehensive privacy assessment for clinical trial data
 
-    Features:
-    - DICOM metadata extraction
-    - Automatic thumbnail generation
-    - Hash-based deduplication
-    - Supports X-rays, CT scans, MRI, ultrasound, ECG, photos
+    Evaluates privacy risks including:
+    - K-anonymity compliance
+    - Re-identification risk analysis
+    - Quasi-identifier detection
+    - Uniqueness analysis
 
-    Example:
-        curl -X POST http://localhost:8004/images/upload \
-          -F "file=@chest_xray.dcm" \
-          -F "subject_id=RA001-001" \
-          -F "visit_name=Week 4" \
-          -F "image_type=X-ray"
+    **Privacy Metrics:**
+    1. **K-Anonymity**: Ensures each combination of quasi-identifiers appears at least K times
+    2. **Re-identification Risk**: Probability that individuals can be re-identified
+    3. **Uniqueness Ratio**: Proportion of records with unique attribute combinations
+    4. **Quasi-Identifiers**: Attributes that could be combined for re-identification
+
+    **Use Cases:**
+    - HIPAA compliance validation
+    - Data sharing risk assessment
+    - Privacy impact assessments
+    - Regulatory submissions
     """
-    if not IMAGING_AVAILABLE:
-        raise HTTPException(
-            status_code=503,
-            detail="Medical imaging not available. Install: pip install pydicom pillow opencv-python"
-        )
-
-    if not subject_id:
-        raise HTTPException(status_code=400, detail="subject_id is required")
-
     try:
-        # Read file content
-        content = await file.read()
+        df = pd.DataFrame(request.data)
 
-        # Process image
-        processor = MedicalImageProcessor(storage_base="/data/medical-images")
-        result = processor.process_upload(
-            filename=file.filename,
-            content=content,
-            subject_id=subject_id,
-            visit_name=visit_name,
-            image_type=image_type
-        )
+        # Potential quasi-identifiers in clinical trial data
+        quasi_identifiers = []
+        for col in df.columns:
+            # Demographics and identifying information
+            if col in ["age", "gender", "race", "ethnicity", "site_id", "enrollment_date"]:
+                quasi_identifiers.append(col)
+            # Check for SubjectID patterns that might leak info
+            elif col.lower() in ["subjectid", "subject_id"]:
+                # SubjectID itself is not included, but we note it exists
+                pass
 
-        # Store metadata in database
-        image_id = await db.fetchval("""
-            INSERT INTO medical_images (
-                subject_id, visit_name, filename, unique_filename,
-                file_type, file_hash, file_size_bytes,
-                original_path, thumbnail_path, image_type,
-                modality, dicom_metadata, thumbnail_metadata,
-                processing_status, uploaded_by, uploaded_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14, $15, NOW())
-            RETURNING image_id
-        """,
-            result['subject_id'],
-            result.get('visit_name'),
-            result['filename'],
-            result['unique_filename'],
-            result['file_type'],
-            result['file_hash'],
-            result['file_size_bytes'],
-            result['original_path'],
-            result.get('thumbnail_path'),
-            result.get('image_type'),
-            result.get('dicom_metadata', {}).get('modality') if result.get('dicom_metadata') else None,
-            json.dumps(result.get('dicom_metadata', {})),
-            json.dumps(result.get('thumbnail_metadata', {})),
-            'processed' if 'thumbnail_path' in result else 'uploaded',
-            user_id
-        )
+        # If no quasi-identifiers found in columns, use visit patterns
+        if not quasi_identifiers:
+            # For vitals data, we'll use treatment arm and visit patterns as weak quasi-identifiers
+            available_cols = [c for c in ["TreatmentArm", "VisitName"] if c in df.columns]
+            quasi_identifiers = available_cols if available_cols else []
 
-        return {
-            "image_id": image_id,
-            "subject_id": subject_id,
-            "filename": file.filename,
-            "file_type": result['file_type'],
-            "file_size_bytes": result['file_size_bytes'],
-            "has_thumbnail": 'thumbnail_path' in result,
-            "has_dicom_metadata": 'dicom_metadata' in result,
-            "message": "Image uploaded successfully"
-        }
+        # Calculate uniqueness ratio
+        if quasi_identifiers:
+            # Group by quasi-identifiers
+            grouped = df.groupby(quasi_identifiers, dropna=False).size()
+            total_records = len(df)
+            unique_records = (grouped == 1).sum()
+            uniqueness_ratio = float(unique_records / len(grouped)) if len(grouped) > 0 else 0.0
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
+            # Check k-anonymity
+            min_group_size = int(grouped.min()) if len(grouped) > 0 else 0
+            k_anonymity_satisfied = min_group_size >= request.k_anonymity
 
-@app.get("/images/{image_id}")
-async def get_image_metadata(image_id: int):
-    """Get metadata for a specific image"""
-    image = await db.fetchrow("""
-        SELECT image_id, subject_id, visit_name, filename, file_type,
-               image_type, modality, file_size_bytes, dicom_metadata,
-               thumbnail_metadata, uploaded_at, processing_status
-        FROM medical_images
-        WHERE image_id = $1
-    """, image_id)
-
-    if not image:
-        raise HTTPException(status_code=404, detail="Image not found")
-
-    return dict(image)
-
-@app.get("/images/{image_id}/file")
-async def download_image_file(image_id: int, thumbnail: bool = False):
-    """
-    Download image file or thumbnail
-
-    Query params:
-        thumbnail: If true, returns thumbnail instead of original
-    """
-    if not IMAGING_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Imaging not available")
-
-    image = await db.fetchrow("""
-        SELECT original_path, thumbnail_path, filename
-        FROM medical_images
-        WHERE image_id = $1
-    """, image_id)
-
-    if not image:
-        raise HTTPException(status_code=404, detail="Image not found")
-
-    try:
-        processor = MedicalImageProcessor()
-
-        if thumbnail and image['thumbnail_path']:
-            file_bytes = processor.get_image_bytes(image['thumbnail_path'])
-            media_type = "image/jpeg"
-            filename = f"thumb_{image['filename']}"
+            # Re-identification risk (inverse of average group size)
+            avg_group_size = float(grouped.mean()) if len(grouped) > 0 else 1.0
+            re_identification_risk = float(1.0 / avg_group_size) if avg_group_size > 0 else 1.0
         else:
-            file_bytes = processor.get_image_bytes(image['original_path'])
+            # No quasi-identifiers detected - low risk but also low confidence
+            uniqueness_ratio = 0.0
+            k_anonymity_satisfied = True
+            re_identification_risk = 0.0
 
-            # Determine media type
-            if image['filename'].lower().endswith(('.dcm', '.dicom')):
-                media_type = "application/dicom"
-            elif image['filename'].lower().endswith('.pdf'):
-                media_type = "application/pdf"
-            elif image['filename'].lower().endswith(('.png', '.jpg', '.jpeg')):
-                media_type = "image/" + image['filename'].split('.')[-1].lower()
-            else:
-                media_type = "application/octet-stream"
+        # Calculate overall privacy score
+        # Higher is better (inverse of risk)
+        privacy_score = 1.0 - re_identification_risk
+        privacy_score = max(0.0, min(1.0, privacy_score))
 
-            filename = image['filename']
+        # Generate recommendations
+        recommendations = []
+        if not k_anonymity_satisfied:
+            recommendations.append(f"Increase data aggregation to meet k={request.k_anonymity} anonymity threshold")
+        if uniqueness_ratio > 0.1:
+            recommendations.append("High uniqueness ratio detected - consider generalization or suppression")
+        if re_identification_risk > 0.2:
+            recommendations.append("Re-identification risk above acceptable threshold - apply additional privacy techniques")
+        if len(quasi_identifiers) > 5:
+            recommendations.append("Multiple quasi-identifiers detected - consider reducing dimensionality")
+        if not quasi_identifiers:
+            recommendations.append("No standard quasi-identifiers found - manual review recommended for domain-specific identifiers")
 
-        return Response(
-            content=file_bytes,
-            media_type=media_type,
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        if not recommendations:
+            recommendations.append("Privacy assessment passed - data meets acceptable privacy standards")
+
+        # Generate summary
+        if privacy_score >= 0.8:
+            summary = f"✅ EXCELLENT - Privacy score: {privacy_score:.2f}. Low re-identification risk. Data is well-protected."
+        elif privacy_score >= 0.6:
+            summary = f"⚠️ GOOD - Privacy score: {privacy_score:.2f}. Moderate privacy protection. Review recommendations."
+        else:
+            summary = f"❌ NEEDS IMPROVEMENT - Privacy score: {privacy_score:.2f}. High re-identification risk. Apply privacy-enhancing techniques."
+
+        return PrivacyAssessmentResponse(
+            privacy_score=round(privacy_score, 3),
+            k_anonymity_satisfied=k_anonymity_satisfied,
+            re_identification_risk=round(re_identification_risk, 3),
+            uniqueness_ratio=round(uniqueness_ratio, 3),
+            quasi_identifiers_found=quasi_identifiers,
+            recommendations=recommendations,
+            summary=summary
         )
 
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Image file not found on disk")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve image: {str(e)}")
-
-@app.get("/images/subject/{subject_id}")
-async def list_subject_images(subject_id: str):
-    """List all images for a subject"""
-    images = await db.fetch("""
-        SELECT image_id, subject_id, visit_name, filename, file_type,
-               image_type, modality, file_size_bytes,
-               (thumbnail_path IS NOT NULL) as has_thumbnail,
-               uploaded_at
-        FROM medical_images
-        WHERE subject_id = $1
-        ORDER BY uploaded_at DESC
-    """, subject_id)
-
-    return {
-        "subject_id": subject_id,
-        "image_count": len(images),
-        "images": [dict(img) for img in images]
-    }
-
-@app.post("/images/batch-metadata")
-async def batch_extract_dicom_metadata(image_ids: List[int]):
-    """
-    Batch extract DICOM metadata for multiple images
-
-    Useful for processing uploaded DICOM files in bulk
-    """
-    if not IMAGING_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Imaging not available")
-
-    images = await db.fetch("""
-        SELECT image_id, original_path, file_type
-        FROM medical_images
-        WHERE image_id = ANY($1::int[])
-        AND file_type = 'dicom'
-    """, image_ids)
-
-    if not images:
-        return {"processed": 0, "results": []}
-
-    processor = MedicalImageProcessor()
-    dicom_paths = [img['original_path'] for img in images]
-
-    # Batch process
-    results = processor.batch_process_dicom(dicom_paths, use_daft=True)
-
-    # Update database with extracted metadata
-    for i, result in enumerate(results):
-        if result['processing_status'] == 'success':
-            await db.execute("""
-                UPDATE medical_images
-                SET dicom_metadata = $1::jsonb,
-                    modality = $2,
-                    processing_status = 'processed',
-                    updated_at = NOW()
-                WHERE image_id = $3
-            """,
-                json.dumps(result),
-                result.get('modality'),
-                images[i]['image_id']
-            )
-
-    return {
-        "processed": len(results),
-        "successful": sum(1 for r in results if r['processing_status'] == 'success'),
-        "failed": sum(1 for r in results if r['processing_status'] == 'failed'),
-        "results": results
-    }
-
-@app.delete("/images/{image_id}")
-async def delete_image(image_id: int, user_id: int = 1):
-    """Delete an image (metadata and files)"""
-    if not IMAGING_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Imaging not available")
-
-    # Get image paths
-    image = await db.fetchrow("""
-        SELECT original_path, thumbnail_path
-        FROM medical_images
-        WHERE image_id = $1
-    """, image_id)
-
-    if not image:
-        raise HTTPException(status_code=404, detail="Image not found")
-
-    # Delete files
-    from pathlib import Path
-
-    try:
-        if image['original_path']:
-            Path(image['original_path']).unlink(missing_ok=True)
-        if image['thumbnail_path']:
-            Path(image['thumbnail_path']).unlink(missing_ok=True)
-    except Exception as e:
-        # Log but don't fail - database cleanup is more important
-        print(f"Warning: Failed to delete files: {e}")
-
-    # Delete from database
-    await db.execute("DELETE FROM medical_images WHERE image_id = $1", image_id)
-
-    return {"image_id": image_id, "status": "deleted"}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Privacy assessment failed: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
