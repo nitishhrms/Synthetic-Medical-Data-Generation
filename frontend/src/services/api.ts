@@ -14,6 +14,7 @@ import type {
   PCAComparisonResponse,
   SYNDATAMetricsResponse,
   QualityReportResponse,
+  PrivacyAssessmentResponse,
   VirtualControlArmRequest,
   VirtualControlArmResponse,
   AugmentControlArmRequest,
@@ -378,6 +379,25 @@ export const qualityApi = {
         syndata_metrics: syndataMetrics,
         privacy_metrics: privacyMetrics,
         generation_time_ms: generationTimeMs,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async assessPrivacy(
+    realData: VitalsRecord[],
+    syntheticData: VitalsRecord[],
+    quasiIdentifiers?: string[],
+    sensitiveAttributes?: string[]
+  ): Promise<PrivacyAssessmentResponse> {
+    const response = await fetch(`${QUALITY_SERVICE}/privacy/assess/comprehensive`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        real_data: realData,
+        synthetic_data: syntheticData,
+        quasi_identifiers: quasiIdentifiers,
+        sensitive_attributes: sensitiveAttributes,
       }),
     });
     return handleResponse(response);

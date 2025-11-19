@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { qualityApi, dataGenerationApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
-import type { SYNDATAMetricsResponse, VitalsRecord } from "@/types";
+import type { SYNDATAMetricsResponse, VitalsRecord, PrivacyAssessmentResponse } from "@/types";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -15,7 +15,8 @@ import {
   Shield,
   FileText,
   Info,
-  Download
+  Download,
+  Lock
 } from "lucide-react";
 
 export function QualityDashboard() {
@@ -26,6 +27,8 @@ export function QualityDashboard() {
   const [syndataMetrics, setSyndataMetrics] = useState<SYNDATAMetricsResponse | null>(null);
   const [qualityReport, setQualityReport] = useState<string | null>(null);
   const [isLoadingRealData, setIsLoadingRealData] = useState(false);
+  const [privacyAssessment, setPrivacyAssessment] = useState<PrivacyAssessmentResponse | null>(null);
+  const [isAssessingPrivacy, setIsAssessingPrivacy] = useState(false);
 
   // Load real data on mount
   useEffect(() => {
@@ -70,6 +73,30 @@ export function QualityDashboard() {
       setError(err instanceof Error ? err.message : "Quality assessment failed");
     } finally {
       setIsAssessing(false);
+    }
+  };
+
+  const runPrivacyAssessment = async () => {
+    if (!generatedData || !realData) {
+      setError("Need both generated and real data to assess privacy");
+      return;
+    }
+
+    setIsAssessingPrivacy(true);
+    setError("");
+
+    try {
+      const assessment = await qualityApi.assessPrivacy(
+        realData,
+        generatedData,
+        undefined, // Use default quasi-identifiers
+        ["SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
+      );
+      setPrivacyAssessment(assessment);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Privacy assessment failed");
+    } finally {
+      setIsAssessingPrivacy(false);
     }
   };
 
@@ -409,63 +436,320 @@ export function QualityDashboard() {
                   </Card>
                 </TabsContent>
 
-                {/* Privacy Tab */}
+                {/* Privacy Tab - Comprehensive Privacy Assessment */}
                 <TabsContent value="privacy" className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
+                  {!privacyAssessment ? (
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base">Membership Disclosure</CardTitle>
+                        <CardTitle className="flex items-center gap-2">
+                          <Lock className="h-5 w-5" />
+                          Comprehensive Privacy Assessment
+                        </CardTitle>
                         <CardDescription>
-                          Can a classifier distinguish real from synthetic?
+                          Run detailed privacy analysis including K-anonymity, L-diversity, and re-identification risk
                         </CardDescription>
                       </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm">Disclosure Risk</span>
-                          <Badge variant={
-                            syndataMetrics.syndata_metrics.membership_disclosure.safe
-                              ? "default"
-                              : "destructive"
-                          }>
-                            {syndataMetrics.syndata_metrics.membership_disclosure.safe ? "✅ Safe" : "⚠️ Risk"}
-                          </Badge>
-                        </div>
-                        <div className="text-2xl font-bold">
-                          {(syndataMetrics.syndata_metrics.membership_disclosure.disclosure_risk * 100).toFixed(1)}%
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Classifier Accuracy: {(syndataMetrics.syndata_metrics.membership_disclosure.classifier_accuracy * 100).toFixed(1)}%
-                        </div>
-                      </CardContent>
-                    </Card>
+                      <CardContent className="space-y-4">
+                        <Button
+                          onClick={runPrivacyAssessment}
+                          disabled={isAssessingPrivacy || !realData || !generatedData}
+                        >
+                          {isAssessingPrivacy ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Assessing Privacy...
+                            </>
+                          ) : (
+                            <>
+                              <Shield className="mr-2 h-4 w-4" />
+                              Run Privacy Assessment
+                            </>
+                          )}
+                        </Button>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Attribute Disclosure</CardTitle>
-                        <CardDescription>
-                          Can sensitive attributes be predicted?
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm">Disclosure Risk</span>
-                          <Badge variant={
-                            syndataMetrics.syndata_metrics.attribute_disclosure.safe
-                              ? "default"
-                              : "destructive"
-                          }>
-                            {syndataMetrics.syndata_metrics.attribute_disclosure.safe ? "✅ Safe" : "⚠️ Risk"}
-                          </Badge>
-                        </div>
-                        <div className="text-2xl font-bold">
-                          {(syndataMetrics.syndata_metrics.attribute_disclosure.disclosure_risk * 100).toFixed(1)}%
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Prediction Accuracy: {(syndataMetrics.syndata_metrics.attribute_disclosure.prediction_accuracy * 100).toFixed(1)}%
+                        <div className="p-3 bg-muted/50 rounded-lg border border-muted">
+                          <div className="flex items-start gap-2">
+                            <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                            <div className="text-xs text-muted-foreground">
+                              <p className="font-medium text-foreground mb-1">Privacy Metrics</p>
+                              <p>This assessment includes:</p>
+                              <ul className="list-disc list-inside mt-1 space-y-0.5 ml-2">
+                                <li><strong>K-anonymity</strong>: Each record indistinguishable from k-1 others (target: k≥5)</li>
+                                <li><strong>L-diversity</strong>: Diversity of sensitive attributes (target: l≥2)</li>
+                                <li><strong>Re-identification Risk</strong>: Singling out, linkability, and inference attacks</li>
+                                <li><strong>Differential Privacy</strong>: ε (epsilon) privacy budget (ε&lt;1.0 is strong)</li>
+                              </ul>
+                            </div>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Overall Safety Card */}
+                      <Card className={`border-2 ${privacyAssessment.overall_assessment.safe_for_release ? "border-green-500" : "border-yellow-500"}`}>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Shield className="h-5 w-5" />
+                            Overall Privacy Assessment
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <Badge className={privacyAssessment.overall_assessment.safe_for_release ? "bg-green-500 text-white" : "bg-yellow-500 text-white"}>
+                              {privacyAssessment.overall_assessment.safe_for_release ? "✅ Safe for Release" : "⚠️ Review Required"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {privacyAssessment.overall_assessment.recommendation}
+                          </p>
+                          <div className="grid grid-cols-3 gap-2 mt-3">
+                            <div className="p-2 bg-muted/50 rounded text-center">
+                              <div className="text-xs text-muted-foreground">K-anonymity</div>
+                              <div className={`font-bold ${privacyAssessment.overall_assessment.k_anonymity_safe ? "text-green-600" : "text-yellow-600"}`}>
+                                {privacyAssessment.overall_assessment.k_anonymity_safe ? "✓ Safe" : "⚠ Risk"}
+                              </div>
+                            </div>
+                            <div className="p-2 bg-muted/50 rounded text-center">
+                              <div className="text-xs text-muted-foreground">L-diversity</div>
+                              <div className={`font-bold ${privacyAssessment.overall_assessment.l_diversity_safe ? "text-green-600" : "text-yellow-600"}`}>
+                                {privacyAssessment.overall_assessment.l_diversity_safe ? "✓ Safe" : "⚠ Risk"}
+                              </div>
+                            </div>
+                            <div className="p-2 bg-muted/50 rounded text-center">
+                              <div className="text-xs text-muted-foreground">Re-ID Risk</div>
+                              <div className={`font-bold ${privacyAssessment.overall_assessment.reidentification_safe ? "text-green-600" : "text-yellow-600"}`}>
+                                {privacyAssessment.overall_assessment.reidentification_safe ? "✓ Safe" : "⚠ Risk"}
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* K-anonymity */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base">K-anonymity Assessment</CardTitle>
+                          <CardDescription>
+                            Ensures each record is indistinguishable from at least k-1 other records
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                              <div className="text-sm text-muted-foreground mb-1">K-anonymity Value</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.k_anonymity.k}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {privacyAssessment.k_anonymity.k >= 5 ? "✅ Exceeds minimum (k≥5)" : "⚠️ Below recommended"}
+                              </div>
+                            </div>
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                              <div className="text-sm text-muted-foreground mb-1">Risky Records</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.k_anonymity.risky_percentage.toFixed(1)}%</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {privacyAssessment.k_anonymity.risky_records} of {privacyAssessment.dataset_info.synthetic_records} records
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid gap-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Mean Group Size:</span>
+                              <span className="font-medium">{privacyAssessment.k_anonymity.mean_group_size.toFixed(1)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Median Group Size:</span>
+                              <span className="font-medium">{privacyAssessment.k_anonymity.median_group_size}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Equivalence Classes:</span>
+                              <span className="font-medium">{privacyAssessment.k_anonymity.total_equivalence_classes}</span>
+                            </div>
+                          </div>
+                          <div className="p-2 bg-muted/50 rounded text-xs">
+                            <p className="font-medium mb-1">Quasi-identifiers used:</p>
+                            <p className="text-muted-foreground">{privacyAssessment.k_anonymity.quasi_identifiers_used.join(", ")}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground italic">
+                            {privacyAssessment.k_anonymity.recommendation}
+                          </p>
+                        </CardContent>
+                      </Card>
+
+                      {/* L-diversity */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base">L-diversity Assessment</CardTitle>
+                          <CardDescription>
+                            Ensures diversity of sensitive attributes within equivalence classes
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                              <div className="text-sm text-muted-foreground mb-1">L-diversity Value</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.l_diversity.l.toFixed(1)}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {privacyAssessment.l_diversity.l >= 2 ? "✅ Meets minimum (l≥2)" : "⚠️ Below recommended"}
+                              </div>
+                            </div>
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                              <div className="text-sm text-muted-foreground mb-1">Mean Diversity</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.l_diversity.mean_diversity.toFixed(2)}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Average diversity across groups
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-2 bg-muted/50 rounded text-xs">
+                            <p className="font-medium mb-1">Sensitive attributes checked:</p>
+                            <p className="text-muted-foreground">{privacyAssessment.l_diversity.sensitive_attributes_checked.join(", ")}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground italic">
+                            {privacyAssessment.l_diversity.recommendation}
+                          </p>
+                        </CardContent>
+                      </Card>
+
+                      {/* Re-identification Risk */}
+                      {privacyAssessment.reidentification.overall && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-base">Re-identification Risk Analysis</CardTitle>
+                            <CardDescription>
+                              Attack simulations to assess privacy vulnerabilities
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-medium">Overall Risk Level</span>
+                                <Badge className={
+                                  privacyAssessment.reidentification.overall.safe_for_release
+                                    ? "bg-green-500"
+                                    : "bg-yellow-500"
+                                }>
+                                  {privacyAssessment.reidentification.overall.risk_level}
+                                </Badge>
+                              </div>
+                              <div className="grid gap-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Max Risk:</span>
+                                  <span className="font-medium">{(privacyAssessment.reidentification.overall.max_risk * 100).toFixed(1)}%</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Mean Risk:</span>
+                                  <span className="font-medium">{(privacyAssessment.reidentification.overall.mean_risk * 100).toFixed(1)}%</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 md:grid-cols-3">
+                              {privacyAssessment.reidentification.singling_out && (
+                                <div className="p-3 border rounded-lg">
+                                  <div className="text-xs font-medium mb-2">Singling Out Attack</div>
+                                  <div className="space-y-1 text-xs">
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Attack Rate:</span>
+                                      <span>{(privacyAssessment.reidentification.singling_out.attack_rate * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Risk:</span>
+                                      <Badge variant={privacyAssessment.reidentification.singling_out.safe ? "default" : "destructive"} className="text-xs">
+                                        {(privacyAssessment.reidentification.singling_out.risk * 100).toFixed(1)}%
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {privacyAssessment.reidentification.linkability && (
+                                <div className="p-3 border rounded-lg">
+                                  <div className="text-xs font-medium mb-2">Linkability Attack</div>
+                                  <div className="space-y-1 text-xs">
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Attack Rate:</span>
+                                      <span>{(privacyAssessment.reidentification.linkability.attack_rate * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Risk:</span>
+                                      <Badge variant={privacyAssessment.reidentification.linkability.safe ? "default" : "destructive"} className="text-xs">
+                                        {(privacyAssessment.reidentification.linkability.risk * 100).toFixed(1)}%
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {privacyAssessment.reidentification.inference && (
+                                <div className="p-3 border rounded-lg">
+                                  <div className="text-xs font-medium mb-2">Inference Attack</div>
+                                  <div className="space-y-1 text-xs">
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Attack Rate:</span>
+                                      <span>{(privacyAssessment.reidentification.inference.attack_rate * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Risk:</span>
+                                      <Badge variant={privacyAssessment.reidentification.inference.safe ? "default" : "destructive"} className="text-xs">
+                                        {(privacyAssessment.reidentification.inference.risk * 100).toFixed(1)}%
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Differential Privacy */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base">Differential Privacy Budget</CardTitle>
+                          <CardDescription>
+                            Privacy budget tracking (lower ε = stronger privacy)
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                              <div className="text-sm text-muted-foreground mb-1">Epsilon (ε)</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.differential_privacy.epsilon.toFixed(3)}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {privacyAssessment.differential_privacy.privacy_level}
+                              </div>
+                            </div>
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                              <div className="text-sm text-muted-foreground mb-1">Budget Remaining</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.differential_privacy.budget_remaining.toFixed(3)}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                After {privacyAssessment.differential_privacy.n_queries} queries
+                              </div>
+                            </div>
+                          </div>
+                          <div className="grid gap-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Delta (δ):</span>
+                              <span className="font-medium">{privacyAssessment.differential_privacy.delta.toExponential(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Total ε Used:</span>
+                              <span className="font-medium">{privacyAssessment.differential_privacy.total_epsilon.toFixed(3)}</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground italic">
+                            {privacyAssessment.differential_privacy.recommendation}
+                          </p>
+                          <div className="p-2 bg-muted/50 rounded text-xs">
+                            <p className="font-medium mb-1">Privacy Level Guide:</p>
+                            <ul className="list-disc list-inside text-muted-foreground space-y-0.5 ml-2">
+                              <li>ε &lt; 1.0: Strong privacy</li>
+                              <li>ε 1.0-3.0: Moderate privacy</li>
+                              <li>ε &gt; 3.0: Weak privacy</li>
+                            </ul>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </>
+                  )}
                 </TabsContent>
               </Tabs>
 

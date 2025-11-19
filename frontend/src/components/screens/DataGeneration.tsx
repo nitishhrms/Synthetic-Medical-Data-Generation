@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { dataGenerationApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
 import type { GenerationMethod, VitalsRecord } from "@/types";
-import { Download, Loader2, AlertCircle, Info } from "lucide-react";
+import { Download, Loader2, AlertCircle, Info, Users } from "lucide-react";
 
 export function DataGeneration() {
   const { setGeneratedData: setGlobalGeneratedData, setGenerationMethod } = useData();
@@ -19,6 +21,16 @@ export function DataGeneration() {
   const [generatedData, setGeneratedData] = useState<VitalsRecord[] | null>(null);
   const [metadata, setMetadata] = useState<any>(null);
   const [error, setError] = useState("");
+
+  // Demographics state
+  const [includeDemographics, setIncludeDemographics] = useState(false);
+  const [oversampleMinority, setOversampleMinority] = useState(false);
+  const [genderRatio, setGenderRatio] = useState(0.5); // 0.5 = 50/50 male/female
+  const [ageRange, setAgeRange] = useState<[number, number]>([18, 65]);
+  const [raceWhite, setRaceWhite] = useState(60);
+  const [raceBlack, setRaceBlack] = useState(13);
+  const [raceAsian, setRaceAsian] = useState(6);
+  const [raceOther, setRaceOther] = useState(21);
 
   const methods = [
     {
@@ -84,11 +96,27 @@ export function DataGeneration() {
 
     try {
       let response;
-      const params = {
+      const params: any = {
         n_per_arm: nPerArm,
         target_effect: targetEffect,
         seed: Math.floor(Math.random() * 10000),
       };
+
+      // Add demographics parameters if enabled
+      if (includeDemographics) {
+        params.include_demographics = true;
+        params.demographic_stratification = {
+          oversample_minority: oversampleMinority,
+          target_gender_ratio: genderRatio,
+          target_age_range: ageRange,
+          target_race_distribution: {
+            White: raceWhite / 100,
+            Black: raceBlack / 100,
+            Asian: raceAsian / 100,
+            Other: raceOther / 100,
+          },
+        };
+      }
 
       console.log(`Generating with ${selectedMethod}...`, params);
 
@@ -309,6 +337,180 @@ export function DataGeneration() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Demographics Configuration */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Demographics & Diversity
+              </CardTitle>
+              <CardDescription>
+                Optional: Include demographic data and control population diversity
+              </CardDescription>
+            </div>
+            <Switch
+              checked={includeDemographics}
+              onCheckedChange={setIncludeDemographics}
+            />
+          </div>
+        </CardHeader>
+        {includeDemographics && (
+          <CardContent className="space-y-6">
+            {/* Diversity Options */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Oversample Minority Groups</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Increase representation of underrepresented racial groups for diversity
+                  </p>
+                </div>
+                <Switch
+                  checked={oversampleMinority}
+                  onCheckedChange={setOversampleMinority}
+                />
+              </div>
+
+              {/* Gender Ratio */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Gender Ratio (Female %)</Label>
+                  <span className="text-sm font-medium">{(genderRatio * 100).toFixed(0)}%</span>
+                </div>
+                <Slider
+                  value={[genderRatio * 100]}
+                  onValueChange={(value: number[]) => setGenderRatio(value[0] / 100)}
+                  min={0}
+                  max={100}
+                  step={5}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Target percentage of female subjects (0.5 = 50/50 split)
+                </p>
+              </div>
+
+              {/* Age Range */}
+              <div className="space-y-2">
+                <Label>Age Range</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Min Age</Label>
+                    <Input
+                      type="number"
+                      value={ageRange[0]}
+                      onChange={(e) => setAgeRange([parseInt(e.target.value), ageRange[1]])}
+                      min={18}
+                      max={100}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Max Age</Label>
+                    <Input
+                      type="number"
+                      value={ageRange[1]}
+                      onChange={(e) => setAgeRange([ageRange[0], parseInt(e.target.value)])}
+                      min={18}
+                      max={100}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Age range for generated subjects (default: 18-65 years)
+                </p>
+              </div>
+
+              {/* Race Distribution */}
+              <div className="space-y-3">
+                <Label>Race Distribution (%)</Label>
+                <div className="grid gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>White</span>
+                      <span className="font-medium">{raceWhite}%</span>
+                    </div>
+                    <Slider
+                      value={[raceWhite]}
+                      onValueChange={(value: number[]) => setRaceWhite(value[0])}
+                      min={0}
+                      max={100}
+                      step={1}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Black/African American</span>
+                      <span className="font-medium">{raceBlack}%</span>
+                    </div>
+                    <Slider
+                      value={[raceBlack]}
+                      onValueChange={(value: number[]) => setRaceBlack(value[0])}
+                      min={0}
+                      max={100}
+                      step={1}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Asian</span>
+                      <span className="font-medium">{raceAsian}%</span>
+                    </div>
+                    <Slider
+                      value={[raceAsian]}
+                      onValueChange={(value: number[]) => setRaceAsian(value[0])}
+                      min={0}
+                      max={100}
+                      step={1}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Other</span>
+                      <span className="font-medium">{raceOther}%</span>
+                    </div>
+                    <Slider
+                      value={[raceOther]}
+                      onValueChange={(value: number[]) => setRaceOther(value[0])}
+                      min={0}
+                      max={100}
+                      step={1}
+                    />
+                  </div>
+                </div>
+                <div className="p-2 bg-muted/50 rounded text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total:</span>
+                    <span className={`font-medium ${raceWhite + raceBlack + raceAsian + raceOther === 100 ? "text-green-600" : "text-yellow-600"}`}>
+                      {raceWhite + raceBlack + raceAsian + raceOther}%
+                      {raceWhite + raceBlack + raceAsian + raceOther !== 100 && " (should sum to 100%)"}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Default US demographics: White 60%, Black 13%, Asian 6%, Other 21%
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-muted/50 rounded-lg border border-muted">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground mb-1">Demographics Include:</p>
+                  <ul className="list-disc list-inside space-y-0.5 ml-2">
+                    <li>Age, Gender, Race, Ethnicity</li>
+                    <li>Height, Weight, BMI (auto-calculated)</li>
+                    <li>Smoking Status (Never/Former/Current)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
 
       {generatedData && generatedData.length > 0 && (
         <Card>

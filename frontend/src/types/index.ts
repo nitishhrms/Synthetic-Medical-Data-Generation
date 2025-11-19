@@ -337,3 +337,119 @@ export interface FeasibilityAssessmentResponse {
   recommendation: string;
   timestamp?: string;
 }
+
+// ============================================================================
+// Privacy Assessment Types
+// ============================================================================
+
+export interface PrivacyAssessmentRequest {
+  real_data: VitalsRecord[];
+  synthetic_data: VitalsRecord[];
+  quasi_identifiers?: string[];
+  sensitive_attributes?: string[];
+}
+
+export interface PrivacyAssessmentResponse {
+  dataset_info: {
+    real_records: number;
+    synthetic_records: number;
+    real_columns: string[];
+    synthetic_columns: string[];
+  };
+  k_anonymity: {
+    k: number;
+    mean_group_size: number;
+    median_group_size: number;
+    total_equivalence_classes: number;
+    risky_records: number;
+    risky_percentage: number;
+    safe: boolean;
+    recommendation: string;
+    quasi_identifiers_used: string[];
+  };
+  l_diversity: {
+    l: number;
+    mean_diversity: number;
+    safe: boolean;
+    recommendation: string;
+    quasi_identifiers_used: string[];
+    sensitive_attributes_checked: string[];
+  };
+  reidentification: {
+    singling_out?: {
+      attack_rate: number;
+      baseline_rate: number;
+      risk: number;
+      safe: boolean;
+    };
+    linkability?: {
+      attack_rate: number;
+      baseline_rate: number;
+      risk: number;
+      safe: boolean;
+    };
+    inference?: {
+      attack_rate: number;
+      baseline_rate: number;
+      risk: number;
+      safe: boolean;
+      secret_column: string;
+    };
+    overall?: {
+      max_risk: number;
+      mean_risk: number;
+      risk_level: string;
+      safe_for_release: boolean;
+    };
+  };
+  differential_privacy: {
+    epsilon: number;
+    delta: number;
+    n_queries: number;
+    total_epsilon: number;
+    privacy_level: string;
+    budget_remaining: number;
+    recommendation: string;
+  };
+  overall_assessment: {
+    k_anonymity_safe: boolean;
+    l_diversity_safe: boolean;
+    reidentification_safe: boolean;
+    safe_for_release: boolean;
+    recommendation: string;
+  };
+}
+
+// ============================================================================
+// Demographics Types
+// ============================================================================
+
+export interface DemographicRecord {
+  SubjectID: string;
+  Age: number;
+  Gender: "Male" | "Female";
+  Race: "White" | "Black" | "Asian" | "Other";
+  Ethnicity: "Hispanic" | "Non-Hispanic";
+  Height: number; // cm
+  Weight: number; // kg
+  BMI: number;
+  SmokingStatus: "Never" | "Former" | "Current";
+}
+
+export interface GenerationParamsWithDemographics {
+  n_per_arm?: number;
+  target_effect?: number;
+  seed?: number;
+  include_demographics?: boolean;
+  demographic_stratification?: {
+    oversample_minority?: boolean;
+    target_gender_ratio?: number; // 0.5 = 50/50
+    target_age_range?: [number, number];
+    target_race_distribution?: {
+      White?: number;
+      Black?: number;
+      Asian?: number;
+      Other?: number;
+    };
+  };
+}
