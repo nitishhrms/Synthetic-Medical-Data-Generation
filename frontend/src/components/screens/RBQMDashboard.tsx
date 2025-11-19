@@ -45,14 +45,14 @@ export function RBQMDashboard() {
       setError(null);
 
       // Fetch vitals data
-      const vitalsRes = await fetch('http://localhost:8001/store-vitals');
+      const vitalsRes = await fetch('http://localhost:8004/vitals/all');
       let vitals = [];
       if (vitalsRes.ok) {
         vitals = await vitalsRes.json();
       }
 
       // Fetch queries data
-      const queriesRes = await fetch('http://localhost:8001/queries');
+      const queriesRes = await fetch('http://localhost:8004/queries');
       let queries = [];
       if (queriesRes.ok) {
         queries = await queriesRes.json();

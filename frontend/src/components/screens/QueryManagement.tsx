@@ -44,7 +44,7 @@ export function QueryManagement() {
       if (statusFilter !== 'all') params.append('status_filter', statusFilter);
       if (severityFilter !== 'all') params.append('severity', severityFilter);
 
-      const url = `http://localhost:8001/queries${params.toString() ? `?${params.toString()}` : ''}`;
+      const url = `http://localhost:8004/queries${params.toString() ? `?${params.toString()}` : ''}`;
       const res = await fetch(url);
 
       if (res.ok) {
@@ -88,7 +88,7 @@ export function QueryManagement() {
         ? { response_text: responseText }
         : { resolution_notes: resolutionNotes };
 
-      const res = await fetch(`http://localhost:8001${endpoint}`, {
+      const res = await fetch(`http://localhost:8004${endpoint}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

@@ -83,7 +83,7 @@ export function DataEntry() {
 
   const loadStudies = async () => {
     try {
-      const res = await fetch('http://localhost:8001/studies');
+      const res = await fetch('http://localhost:8004/studies');
       if (res.ok) {
         const data = await res.json();
         setStudies(data.studies || []);
@@ -106,7 +106,7 @@ export function DataEntry() {
 
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:8001/subjects', {
+      const res = await fetch('http://localhost:8004/subjects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(enrollForm)
@@ -135,7 +135,7 @@ export function DataEntry() {
 
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:8001/vitals', {
+      const res = await fetch('http://localhost:8004/vitals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -176,7 +176,7 @@ export function DataEntry() {
 
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:8001/demographics', {
+      const res = await fetch('http://localhost:8004/demographics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,7 +230,7 @@ export function DataEntry() {
         }
       });
 
-      const res = await fetch('http://localhost:8001/labs', {
+      const res = await fetch('http://localhost:8004/labs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(labData)
