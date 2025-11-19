@@ -3,7 +3,7 @@ Daft Data Processor - Core Daft DataFrame operations for medical data analysis
 Provides distributed data processing capabilities using Daft library
 """
 import daft
-from daft import col, lit, expr
+from daft import col, lit
 from typing import List, Dict, Any, Optional, Tuple
 import pandas as pd
 import numpy as np

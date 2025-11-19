@@ -15,7 +15,7 @@ import {
 import { edcApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
 import type { Study } from "@/types";
-import { FileText, Plus, Upload, Loader2, Calendar, Users, CheckCircle2 } from "lucide-react";
+import { FileText, Plus, Upload, Loader2, Calendar, Users } from "lucide-react";
 
 export function Studies() {
   const { generatedData } = useData();
@@ -30,9 +30,11 @@ export function Studies() {
   const [formData, setFormData] = useState({
     study_name: "",
     indication: "",
-    phase: "Phase 3",
+    phase: "Phase 3" as "Phase 1" | "Phase 2" | "Phase 3",
     sponsor: "",
     start_date: new Date().toISOString().split("T")[0],
+    status: "active" as const,
+    tenant_id: "default-tenant", // TODO: Get from auth context
   });
 
   useEffect(() => {
@@ -61,9 +63,11 @@ export function Studies() {
       setFormData({
         study_name: "",
         indication: "",
-        phase: "Phase 3",
+        phase: "Phase 3" as "Phase 1" | "Phase 2" | "Phase 3",
         sponsor: "",
         start_date: new Date().toISOString().split("T")[0],
+        status: "active" as const,
+        tenant_id: "default-tenant", // TODO: Get from auth context
       });
       await loadStudies();
     } catch (err) {
@@ -256,7 +260,7 @@ export function Studies() {
                   id="phase"
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={formData.phase}
-                  onChange={(e) => setFormData({ ...formData, phase: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, phase: e.target.value as "Phase 1" | "Phase 2" | "Phase 3" })}
                 >
                   <option value="Phase 1">Phase 1</option>
                   <option value="Phase 2">Phase 2</option>

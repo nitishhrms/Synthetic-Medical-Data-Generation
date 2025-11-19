@@ -12,6 +12,19 @@ import type {
   Week12StatsRequest,
   Week12StatsResponse,
   PCAComparisonResponse,
+  SYNDATAMetricsResponse,
+  QualityReportResponse,
+  PrivacyAssessmentResponse,
+  VirtualControlArmRequest,
+  VirtualControlArmResponse,
+  AugmentControlArmRequest,
+  AugmentControlArmResponse,
+  WhatIfEnrollmentRequest,
+  WhatIfEnrollmentResponse,
+  WhatIfPatientMixRequest,
+  WhatIfPatientMixResponse,
+  FeasibilityAssessmentRequest,
+  FeasibilityAssessmentResponse,
 } from "@/types";
 
 // ============================================================================
@@ -20,9 +33,10 @@ import type {
 
 const DATA_GEN_SERVICE = import.meta.env.VITE_DATA_GEN_URL || "http://localhost:8002";
 const ANALYTICS_SERVICE = import.meta.env.VITE_ANALYTICS_URL || "http://localhost:8003";
-const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8004";
+const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8001";
 const SECURITY_SERVICE = import.meta.env.VITE_SECURITY_URL || "http://localhost:8005";
-const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8006";
+const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8004";
+const DAFT_SERVICE = import.meta.env.VITE_DAFT_URL || "http://localhost:8007";
 
 // ============================================================================
 // Helper Functions
@@ -152,6 +166,130 @@ export const dataGenerationApi = {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async generateBayesian(params: GenerationRequest): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bayesian`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "bayesian",
+      },
+    };
+  },
+
+  async generateMICE(params: GenerationRequest): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mice`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "mice",
+      },
+    };
+  },
+
+  async generateMillionScale(params: {
+    total_subjects: number;
+    chunk_size?: number;
+    target_effect?: number;
+    output_path?: string;
+    format?: string;
+  }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/million-scale`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async estimateMemory(params: { total_subjects: number; chunk_size: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/estimate-memory`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async getDaftStatus(): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/daft/status`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async generateDemographics(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/demographics`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 42
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateLabs(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/labs`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 42
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateAE(params: { n_subjects: number; seed?: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/ae`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 7
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealVitalSigns(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-vitals`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealDemographics(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-demographics`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealAdverseEvents(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-ae`, {
+      headers: getAuthHeaders(),
     });
     return handleResponse(response);
   },
@@ -308,6 +446,136 @@ export const qualityApi = {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({ records: data }),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Trial Planning API
+// ============================================================================
+
+export const trialPlanningApi = {
+  async createVirtualControlArm(
+    request: VirtualControlArmRequest
+  ): Promise<VirtualControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/virtual-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async augmentControlArm(
+    request: AugmentControlArmRequest
+  ): Promise<AugmentControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/augment-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfEnrollment(
+    request: WhatIfEnrollmentRequest
+  ): Promise<WhatIfEnrollmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/enrollment`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfPatientMix(
+    request: WhatIfPatientMixRequest
+  ): Promise<WhatIfPatientMixResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/patient-mix`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async assessFeasibility(
+    request: FeasibilityAssessmentRequest
+  ): Promise<FeasibilityAssessmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/feasibility`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Medical Imaging API
+// ============================================================================
+
+export const medicalImagingApi = {
+  async uploadImage(
+    file: File,
+    subjectId: string,
+    visitName?: string,
+    imageType?: string
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("subject_id", subjectId);
+    if (visitName) formData.append("visit_name", visitName);
+    if (imageType) formData.append("image_type", imageType);
+
+    const token = localStorage.getItem("token");
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${EDC_SERVICE}/imaging/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
+  async getSubjectImages(subjectId: string): Promise<any[]> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/subject/${subjectId}`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    const result = await handleResponse(response);
+    return result.images || [];
+  },
+
+  async getImageFile(imageId: number, thumbnail: boolean = false): Promise<Blob> {
+    const endpoint = thumbnail ? "thumbnail" : "file";
+    const response = await fetch(`${EDC_SERVICE}/imaging/${imageId}/${endpoint}`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
+    return response.blob();
+  },
+
+  async deleteImage(imageId: number): Promise<void> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/${imageId}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getStatus(): Promise<{ imaging_available: boolean; message?: string }> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/status`, {
+      method: "GET",
+      headers: getAuthHeaders(),
     });
     return handleResponse(response);
   },
