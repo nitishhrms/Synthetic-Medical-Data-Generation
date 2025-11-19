@@ -14,6 +14,10 @@ interface DataContextType {
   generationMethod: string | null;
   setGenerationMethod: (method: string | null) => void;
 
+  // Repaired Data
+  repairedData: VitalsRecord[] | null;
+  setRepairedData: (data: VitalsRecord[] | null) => void;
+
   // Pilot/Real Data
   pilotData: VitalsRecord[] | null;
   setPilotData: (data: VitalsRecord[] | null) => void;
@@ -39,6 +43,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export function DataProvider({ children }: { children: ReactNode }) {
   const [generatedData, setGeneratedData] = useState<VitalsRecord[] | null>(null);
   const [generationMethod, setGenerationMethod] = useState<string | null>(null);
+  const [repairedData, setRepairedData] = useState<VitalsRecord[] | null>(null);
   const [pilotData, setPilotData] = useState<VitalsRecord[] | null>(null);
   const [week12Stats, setWeek12Stats] = useState<Week12StatsResponse | null>(null);
   const [qualityMetrics, setQualityMetrics] = useState<QualityAssessmentResponse | null>(null);
@@ -48,6 +53,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const clearAllData = () => {
     setGeneratedData(null);
     setGenerationMethod(null);
+    setRepairedData(null);
     setPilotData(null);
     setWeek12Stats(null);
     setQualityMetrics(null);
@@ -62,6 +68,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setGeneratedData,
         generationMethod,
         setGenerationMethod,
+        repairedData,
+        setRepairedData,
         pilotData,
         setPilotData,
         week12Stats,

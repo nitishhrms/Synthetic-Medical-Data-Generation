@@ -299,4 +299,16 @@ export const qualityApi = {
     });
     return handleResponse(response);
   },
+
+  async repairVitals(data: VitalsRecord[]): Promise<{
+    repaired_records: VitalsRecord[];
+    validation_after: ValidationResponse;
+  }> {
+    const response = await fetch(`${EDC_SERVICE}/repair`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ records: data }),
+    });
+    return handleResponse(response);
+  },
 };
