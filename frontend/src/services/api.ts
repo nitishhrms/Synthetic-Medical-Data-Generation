@@ -557,6 +557,153 @@ export const analyticsApi = {
     });
     return handleResponse(response);
   },
+
+  // ============================================================================
+  // Survival Analysis (Tier 1 - 4 endpoints)
+  // ============================================================================
+
+  async comprehensiveSurvivalAnalysis(params: {
+    demographics_data: any[];
+    indication?: string;
+    median_survival_active?: number;
+    median_survival_placebo?: number;
+    seed?: number;
+  }): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/survival/comprehensive`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async calculateKaplanMeier(survivalData: any[], treatmentArm?: string): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/survival/kaplan-meier`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        survival_data: survivalData,
+        treatment_arm: treatmentArm,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async performLogRankTest(survivalData: any[], arm1?: string, arm2?: string): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/survival/log-rank-test`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        survival_data: survivalData,
+        arm1,
+        arm2,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async calculateHazardRatio(survivalData: any[], referenceArm?: string, treatmentArm?: string): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/survival/hazard-ratio`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        survival_data: survivalData,
+        reference_arm: referenceArm,
+        treatment_arm: treatmentArm,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  // ============================================================================
+  // ADaM Dataset Generation (Tier 1 - 2 endpoints)
+  // ============================================================================
+
+  async generateAllAdamDatasets(params: {
+    demographics_data: any[];
+    vitals_data?: any[];
+    labs_data?: any[];
+    ae_data?: any[];
+    survival_data?: any[];
+    study_id?: string;
+  }): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/adam/generate-all`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async generateADSL(params: {
+    demographics_data: any[];
+    vitals_data?: any[];
+    ae_data?: any[];
+    study_id?: string;
+  }): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/adam/adsl`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  // ============================================================================
+  // TLF Automation (Tier 1 - 4 endpoints)
+  // ============================================================================
+
+  async generateAllTLFTables(params: {
+    demographics_data: any[];
+    ae_data?: any[];
+    vitals_data?: any[];
+    survival_data?: any[];
+  }): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/tlf/generate-all`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async generateTable1Demographics(demographicsData: any[], includeStats?: boolean): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/tlf/table1-demographics`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        demographics_data: demographicsData,
+        include_stats: includeStats,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateTable2AdverseEvents(aeData: any[], bySOC?: boolean, minIncidence?: number): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/tlf/table2-adverse-events`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        ae_data: aeData,
+        by_soc: bySOC,
+        min_incidence: minIncidence,
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateTable3Efficacy(params: {
+    vitals_data?: any[];
+    survival_data?: any[];
+    endpoint_type?: string;
+  }): Promise<any> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/tlf/table3-efficacy`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
 };
 
 // ============================================================================
