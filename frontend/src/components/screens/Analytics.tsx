@@ -64,20 +64,26 @@ export function Analytics() {
       return;
     }
 
-    // Auto-detect the final visit from the data
-    // Typical order: Screening, Day 1, Week 4, Week 12, Month 6, Month 12, etc.
-    const visitOrder = ["Screening", "Day 1", "Week 4", "Week 8", "Week 12", "Week 16", "Week 24",
-                       "Month 3", "Month 6", "Month 9", "Month 12", "Month 18", "Month 24"];
+    // Auto-detect the final visit from the data using smart chronological sorting
     const uniqueVisits = [...new Set(generatedData.map(r => r.VisitName))];
 
-    // Find the final visit (last in typical order, or last unique visit)
-    let finalVisit = uniqueVisits[uniqueVisits.length - 1]; // Default to last visit in data
-    for (let i = visitOrder.length - 1; i >= 0; i--) {
-      if (uniqueVisits.includes(visitOrder[i])) {
-        finalVisit = visitOrder[i];
-        break;
-      }
-    }
+    // Function to convert visit name to days for sorting
+    const visitToDays = (visit: string): number => {
+      if (visit === "Screening") return 0;
+      if (visit === "Day 1") return 1;
+
+      const weekMatch = visit.match(/Week (\d+)/);
+      if (weekMatch) return parseInt(weekMatch[1]) * 7;
+
+      const monthMatch = visit.match(/Month (\d+)/);
+      if (monthMatch) return parseInt(monthMatch[1]) * 30;
+
+      return 999999; // Unknown visits go to end
+    };
+
+    // Sort visits chronologically and take the last one
+    const sortedVisits = uniqueVisits.sort((a, b) => visitToDays(a) - visitToDays(b));
+    const finalVisit = sortedVisits[sortedVisits.length - 1];
 
     if (!finalVisit) {
       setError("Could not determine final visit in the data. Available visits: " + uniqueVisits.join(", "));
