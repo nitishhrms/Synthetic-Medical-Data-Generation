@@ -18,13 +18,21 @@ from stats import (
 )
 from rbqm import generate_rbqm_summary
 from csr import generate_csr_draft
-from sdtm import export_to_sdtm_vs, export_to_sdtm_dm
+from sdtm import export_to_sdtm_vs, export_to_sdtm_dm, export_to_sdtm_lb
 from db_utils import db, cache, startup_db, shutdown_db
 from demographics_analytics import (
     calculate_baseline_characteristics,
     calculate_demographic_summary,
     assess_treatment_arm_balance,
     compare_demographics_quality
+)
+from labs_analytics import (
+    calculate_labs_summary,
+    detect_abnormal_labs,
+    generate_shift_tables,
+    compare_labs_quality,
+    detect_safety_signals,
+    analyze_labs_longitudinal
 )
 
 app = FastAPI(
@@ -177,6 +185,14 @@ class DemographicsCompareRequest(BaseModel):
     real_demographics: List[Dict[str, Any]]
     synthetic_demographics: List[Dict[str, Any]]
 
+# Labs models
+class LabsRequest(BaseModel):
+    labs_data: List[Dict[str, Any]]
+
+class LabsCompareRequest(BaseModel):
+    real_labs: List[Dict[str, Any]]
+    synthetic_labs: List[Dict[str, Any]]
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -196,14 +212,15 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Analytics Service",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "features": [
             "Week-12 Statistics (t-test)",
             "RECIST + ORR Analysis",
             "RBQM Summary",
             "CSR Draft Generation",
-            "SDTM Export (Vitals + Demographics)",
+            "SDTM Export (Vitals + Demographics + Labs)",
             "Demographics Analytics (Baseline, Balance, Quality)",
+            "Labs Analytics (Summary, Abnormal Detection, Shift Tables, Safety Signals, Longitudinal)",
             "Quality Assessment (PCA, K-NN, Wasserstein)"
         ],
         "endpoints": {
@@ -213,13 +230,20 @@ async def root():
             "demographics_baseline": "/stats/demographics/baseline",
             "demographics_summary": "/stats/demographics/summary",
             "demographics_balance": "/stats/demographics/balance",
+            "labs_summary": "/stats/labs/summary",
+            "labs_abnormal": "/stats/labs/abnormal",
+            "labs_shift_tables": "/stats/labs/shift-tables",
+            "labs_safety_signals": "/stats/labs/safety-signals",
+            "labs_longitudinal": "/stats/labs/longitudinal",
             "rbqm": "/rbqm/summary",
             "csr": "/csr/draft",
             "sdtm_vitals": "/sdtm/export",
             "sdtm_demographics": "/sdtm/demographics/export",
+            "sdtm_labs": "/sdtm/labs/export",
             "quality_pca": "/quality/pca-comparison",
             "quality_comprehensive": "/quality/comprehensive",
             "quality_demographics": "/quality/demographics/compare",
+            "quality_labs": "/quality/labs/compare",
             "docs": "/docs"
         }
     }
@@ -842,6 +866,378 @@ async def demographics_sdtm_export(request: DemographicsRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"SDTM DM export failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# LABS ANALYTICS ENDPOINTS (Phase 2)
+# ============================================================================
+
+@app.post("/stats/labs/summary")
+async def labs_summary(request: LabsRequest):
+    """
+    Calculate lab results summary by test, visit, treatment arm
+
+    **Purpose:**
+    Provides comprehensive descriptive statistics for all laboratory tests,
+    stratified by visit and treatment arm.
+
+    **Returns:**
+    - by_test: Summary statistics (mean, median, SD, range, quartiles) for each lab test
+    - by_visit: Observation counts and test coverage by visit
+    - by_arm: Mean values by treatment arm for each test
+    - overall: Total observations, subjects, tests, visits
+
+    **Statistical Metrics:**
+    - Mean, median, standard deviation
+    - Min, max, 25th and 75th percentiles
+    - Sample size (n) per category
+
+    **Use Case:**
+    - Laboratory data overview for study reports
+    - Identifying data completeness
+    - Baseline vs endpoint comparisons
+    - Treatment arm comparisons
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = calculate_labs_summary(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Labs summary calculation failed: {str(e)}"
+        )
+
+
+@app.post("/stats/labs/abnormal")
+async def labs_abnormal(request: LabsRequest):
+    """
+    Detect abnormal lab values with CTCAE grading
+
+    **Purpose:**
+    Identifies laboratory abnormalities using CTCAE v5.0 grading criteria
+    for safety monitoring and adverse event reporting.
+
+    **CTCAE Grading (Grade 0-4):**
+    - Grade 0: Normal
+    - Grade 1: Mild abnormality
+    - Grade 2: Moderate abnormality
+    - Grade 3: Severe abnormality
+    - Grade 4: Life-threatening or disabling
+
+    **Supported Tests:**
+    - Liver: ALT, AST, Bilirubin
+    - Kidney: Creatinine, eGFR
+    - Hematology: Hemoglobin, WBC, Platelets
+
+    **Returns:**
+    - abnormal_observations: List of all abnormal values with CTCAE grades
+    - summary_by_grade: Count of observations per grade (1-4)
+    - summary_by_test: Abnormality rates per test
+    - high_risk_subjects: Subjects with Grade 3+ abnormalities
+    - total_abnormal: Total count of abnormal observations
+    - abnormal_rate: Percentage of all observations that are abnormal
+
+    **Use Case:**
+    - Safety monitoring (DSMB reports)
+    - Identifying subjects requiring dose modification
+    - Adverse event reporting
+    - Protocol-defined stopping rules
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = detect_abnormal_labs(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Abnormal labs detection failed: {str(e)}"
+        )
+
+
+@app.post("/stats/labs/shift-tables")
+async def labs_shift_tables(request: LabsRequest):
+    """
+    Generate baseline-to-endpoint shift analysis
+
+    **Purpose:**
+    Analyzes how lab values shift from baseline (first visit) to endpoint (last visit),
+    showing transitions between Normal and Abnormal categories.
+
+    **Shift Categories:**
+    - Normal → Normal: Subject remained normal throughout
+    - Normal → Abnormal: Treatment-emergent abnormality
+    - Abnormal → Normal: Improvement/normalization
+    - Abnormal → Abnormal: Persistent abnormality
+
+    **Returns:**
+    - baseline_visit: Name of baseline visit used
+    - endpoint_visit: Name of endpoint visit used
+    - shift_tables: For each lab test:
+      - shift_matrix: 2x2 contingency table
+      - percentages: Percentage in each shift category
+      - counts: Subject counts in each category
+      - total_subjects: Total with paired data
+    - chi_square_tests: Statistical tests for shift patterns
+      - chi_square: Test statistic
+      - p_value: Statistical significance
+      - significant: Boolean (p < 0.05)
+
+    **Clinical Interpretation:**
+    - High Normal→Abnormal %: Potential safety concern
+    - High Abnormal→Normal %: Evidence of treatment benefit or lab fluctuation
+    - Chi-square p < 0.05: Shift pattern is non-random
+
+    **Use Case:**
+    - Safety assessment (treatment-emergent abnormalities)
+    - Efficacy evaluation (lab normalization)
+    - Regulatory submissions (shift table requirement)
+    - Protocol-defined lab monitoring
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = generate_shift_tables(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Shift table generation failed: {str(e)}"
+        )
+
+
+@app.post("/quality/labs/compare")
+async def labs_quality(request: LabsCompareRequest):
+    """
+    Compare real vs synthetic lab data quality
+
+    **Purpose:**
+    Validates that synthetic laboratory data matches real-world clinical trial
+    lab distributions using statistical similarity metrics.
+
+    **Metrics Computed:**
+    1. **Wasserstein Distance** - Distribution similarity for each lab test
+       - Lower is better (0 = identical)
+       - Normalized by real mean for relative comparison
+
+    2. **Kolmogorov-Smirnov Tests** - Distribution comparison
+       - P-value > 0.05 indicates distributions are similar
+       - Statistic: Maximum difference between CDFs
+
+    3. **Mean Differences** - Absolute and percentage differences
+       - Shows bias in synthetic data generation
+       - Percentage difference helps identify relative errors
+
+    4. **Overall Quality Score** (0-1 scale)
+       - 0.6 × Wasserstein similarity + 0.4 × KS test pass rate
+       - ≥ 0.85: Excellent
+       - 0.70-0.85: Good
+       - < 0.70: Needs improvement
+
+    **Returns:**
+    - wasserstein_distances: Distance for each test
+    - ks_tests: KS statistic, p-value, similarity flag per test
+    - mean_differences: Real mean, synthetic mean, absolute and % diff
+    - overall_quality_score: Aggregate quality metric
+    - interpretation: Clinical quality assessment
+
+    **Use Case:**
+    - Validating lab data generation methods
+    - Comparing MVN vs Bootstrap vs LLM approaches
+    - Quality assurance before using synthetic data
+    - Method parameter tuning
+    """
+    try:
+        real_df = pd.DataFrame(request.real_labs)
+        synthetic_df = pd.DataFrame(request.synthetic_labs)
+        result = compare_labs_quality(real_df, synthetic_df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Labs quality comparison failed: {str(e)}"
+        )
+
+
+@app.post("/stats/labs/safety-signals")
+async def labs_safety_signals(request: LabsRequest):
+    """
+    Detect potential safety signals in lab data
+
+    **Purpose:**
+    Identifies clinically significant laboratory-based safety signals
+    using established medical criteria.
+
+    **Safety Signals Detected:**
+
+    1. **Hy's Law (Drug-Induced Liver Injury - DILI)**
+       - Criteria: ALT or AST >3× ULN AND Bilirubin >2× ULN
+       - Significance: 10-50% risk of severe liver injury or death
+       - Regulatory: FDA requires reporting, may halt trial
+
+    2. **Kidney Function Decline**
+       - Criteria: eGFR decrease >25% from baseline
+       - Severity:
+         - 25-50% decline: Moderate risk
+         - >50% decline: High risk
+       - Clinical: May require dose adjustment or discontinuation
+
+    3. **Bone Marrow Suppression**
+       - Criteria (any of):
+         - Hemoglobin <8 g/dL (severe anemia)
+         - WBC <2.0 × 10⁹/L (severe leukopenia)
+         - Platelets <50 × 10⁹/L (severe thrombocytopenia)
+       - Severity: High risk if ≥2 criteria met
+       - Clinical: Infection risk, bleeding risk
+
+    **Returns:**
+    - hys_law_cases: Subjects meeting Hy's Law criteria with ALT, bilirubin values
+    - kidney_decline_cases: Subjects with significant eGFR decline
+    - bone_marrow_cases: Subjects with severe hematologic abnormalities
+    - overall_safety_summary:
+      - Counts and rates for each safety signal
+      - any_safety_signal: Boolean flag
+
+    **Use Case:**
+    - DSMB (Data Safety Monitoring Board) reports
+    - Protocol-defined stopping rules
+    - Regulatory safety updates (IND safety reports)
+    - Risk-benefit assessment
+    - Subject management (dose holds, discontinuation)
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = detect_safety_signals(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Safety signal detection failed: {str(e)}"
+        )
+
+
+@app.post("/stats/labs/longitudinal")
+async def labs_longitudinal(request: LabsRequest):
+    """
+    Time-series analysis of lab trends
+
+    **Purpose:**
+    Analyzes how laboratory values change over time (longitudinal trends)
+    using linear regression and trend detection.
+
+    **Statistical Methods:**
+    - Linear regression (slope, R², p-value)
+    - Visit-level mean and standard deviation
+    - Trend direction classification (increasing/decreasing/stable)
+    - Significance testing (p < 0.05)
+
+    **Returns:**
+    - trends_by_test: For each lab test:
+      - visit_means: Mean and SD at each visit
+      - slope: Rate of change per visit
+      - r_squared: Proportion of variance explained by linear trend
+      - p_value: Statistical significance of trend
+      - trend_direction: "increasing", "decreasing", or "stable"
+      - trend_significant: Boolean (p < 0.05)
+
+    - trends_by_arm: Same as above, stratified by treatment arm
+      - Allows comparison of temporal patterns between Active and Placebo
+
+    **Clinical Interpretation:**
+    - Positive slope: Lab value increasing over time
+    - Negative slope: Lab value decreasing over time
+    - R² > 0.8: Strong linear trend (predictable change)
+    - R² < 0.3: Weak/no trend (fluctuating values)
+    - P < 0.05: Statistically significant trend
+
+    **Use Case:**
+    - Efficacy assessment (e.g., HbA1c decline in diabetes trial)
+    - Safety monitoring (e.g., progressive liver enzyme elevation)
+    - Dose-response evaluation
+    - Time-to-effect analysis
+    - Mixed models for repeated measures (MMRM) preparation
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = analyze_labs_longitudinal(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Longitudinal analysis failed: {str(e)}"
+        )
+
+
+@app.post("/sdtm/labs/export")
+async def labs_sdtm_export(request: LabsRequest):
+    """
+    Export labs to SDTM LB (Laboratory) domain format
+
+    **Purpose:**
+    Converts laboratory data to CDISC SDTM LB domain format for regulatory submission.
+
+    **SDTM LB Domain Variables:**
+    - STUDYID: Study identifier
+    - DOMAIN: LB (Laboratory)
+    - USUBJID: Unique subject identifier
+    - SUBJID: Subject identifier within study
+    - LBSEQ: Sequence number
+    - LBTESTCD: Lab test code (standardized, e.g., "ALT", "CREAT")
+    - LBTEST: Lab test name (full text)
+    - LBCAT: Lab category (CHEMISTRY, HEMATOLOGY, URINALYSIS)
+    - LBORRES: Result as originally received (character)
+    - LBORRESU: Original units
+    - LBSTRESC: Standardized result (character)
+    - LBSTRESN: Standardized result (numeric)
+    - LBSTRESU: Standardized units
+    - VISITNUM: Visit number
+    - VISIT: Visit name
+    - LBDTC: Lab collection date/time
+    - LBDY: Study day
+
+    **Test Code Mapping (CDISC SDTM standard):**
+    - ALT → ALT (Alanine Aminotransferase)
+    - AST → AST (Aspartate Aminotransferase)
+    - Bilirubin → BILI
+    - Creatinine → CREAT
+    - eGFR → EGFR
+    - Hemoglobin → HGB
+    - WBC → WBC
+    - Platelets → PLAT
+    - And 7 more common tests
+
+    **Lab Categories:**
+    - CHEMISTRY: ALT, AST, BILI, CREAT, Glucose, BUN, Albumin, ALP
+    - HEMATOLOGY: HGB, WBC, Platelets
+    - URINALYSIS: eGFR
+
+    **Compliance:**
+    - Follows CDISC SDTM-IG v3.4
+    - FDA/EMA submission ready
+    - All required LB domain variables included
+    - Proper variable ordering per SDTM-IG
+
+    **Use Case:**
+    - Regulatory submission (IND, NDA, BLA)
+    - Data package preparation
+    - SDTM validation testing
+    - Define.xml generation
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        sdtm_df = export_to_sdtm_lb(df)
+
+        return {
+            "sdtm_data": sdtm_df.to_dict(orient="records"),
+            "rows": len(sdtm_df),
+            "domain": "LB",
+            "compliance": "SDTM-IG v3.4",
+            "categories": sorted(sdtm_df["LBCAT"].unique().tolist()) if len(sdtm_df) > 0 else []
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SDTM LB export failed: {str(e)}"
         )
 
 

@@ -128,3 +128,110 @@ def export_to_sdtm_dm(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
     return pd.DataFrame(rows, columns=columns)
+
+
+def export_to_sdtm_lb(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Export laboratory data to SDTM LB (Laboratory) domain
+
+    Converts lab data to CDISC SDTM LB domain format following SDTM-IG v3.4.
+
+    Args:
+        df: Laboratory DataFrame with columns:
+            - SubjectID: Unique subject identifier
+            - VisitName: Visit name
+            - TestName: Laboratory test name (e.g., "ALT", "Creatinine")
+            - TestValue: Numeric test result
+            - TestUnit: Unit of measurement
+            - TreatmentArm (optional): Treatment arm assignment
+
+    Returns:
+        SDTM LB DataFrame with standard variables
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # CDISC SDTM LBTESTCD mapping (standardized test codes)
+    test_code_mapping = {
+        "ALT": ("ALT", "Alanine Aminotransferase"),
+        "AST": ("AST", "Aspartate Aminotransferase"),
+        "Bilirubin": ("BILI", "Bilirubin"),
+        "Creatinine": ("CREAT", "Creatinine"),
+        "eGFR": ("EGFR", "Estimated Glomerular Filtration Rate"),
+        "Hemoglobin": ("HGB", "Hemoglobin"),
+        "WBC": ("WBC", "White Blood Cell Count"),
+        "Platelets": ("PLAT", "Platelet Count"),
+        "Glucose": ("GLUC", "Glucose"),
+        "Sodium": ("SODIUM", "Sodium"),
+        "Potassium": ("K", "Potassium"),
+        "Chloride": ("CL", "Chloride"),
+        "BUN": ("BUN", "Blood Urea Nitrogen"),
+        "Albumin": ("ALB", "Albumin"),
+        "Alkaline Phosphatase": ("ALP", "Alkaline Phosphatase")
+    }
+
+    # Initialize result list
+    rows = []
+
+    # Visit number mapping (assume visits are ordered chronologically)
+    visits = sorted(df["VisitName"].unique())
+    visit_num_mapping = {visit: idx + 1 for idx, visit in enumerate(visits)}
+
+    for _, r in df.iterrows():
+        # Convert SubjectID to USUBJID format
+        usubjid = str(r["SubjectID"]).replace("RA001", "RASTUDY")
+        subjid = str(r["SubjectID"]).split("-")[-1] if "-" in str(r["SubjectID"]) else str(r["SubjectID"])
+
+        # Get test code and test name
+        test_name = r.get("TestName", "")
+        if test_name in test_code_mapping:
+            lbtestcd, lbtest = test_code_mapping[test_name]
+        else:
+            # If not in mapping, use the original test name
+            lbtestcd = test_name.upper().replace(" ", "")[:8]  # Max 8 chars per SDTM
+            lbtest = test_name
+
+        # Get visit information
+        visit_name = r.get("VisitName", "")
+        visitnum = visit_num_mapping.get(visit_name, 0)
+
+        # Build SDTM LB record
+        lb_record = {
+            "STUDYID": "RASTUDY",
+            "DOMAIN": "LB",
+            "USUBJID": usubjid,
+            "SUBJID": subjid,
+            "LBSEQ": None,  # Sequence number (would be assigned sequentially in production)
+            "LBTESTCD": lbtestcd,
+            "LBTEST": lbtest,
+            "LBCAT": "CHEMISTRY" if lbtestcd in ["ALT", "AST", "BILI", "CREAT", "GLUC", "BUN", "ALB", "ALP"]
+                     else "HEMATOLOGY" if lbtestcd in ["HGB", "WBC", "PLAT"]
+                     else "URINALYSIS" if lbtestcd == "EGFR"
+                     else "CHEMISTRY",
+            "LBORRES": str(r.get("TestValue", "")),
+            "LBORRESU": r.get("TestUnit", ""),
+            "LBSTRESC": str(r.get("TestValue", "")),  # Standardized result (same as LBORRES for numeric)
+            "LBSTRESN": float(r.get("TestValue", 0)) if pd.notna(r.get("TestValue")) else None,
+            "LBSTRESU": r.get("TestUnit", ""),
+            "VISITNUM": visitnum,
+            "VISIT": visit_name,
+            "LBDTC": "",  # Lab collection date (would come from actual collection dates)
+            "LBDY": None  # Study day (would be calculated from RFSTDTC)
+        }
+
+        rows.append(lb_record)
+
+    # Create DataFrame with proper column order per SDTM-IG
+    columns = [
+        "STUDYID", "DOMAIN", "USUBJID", "SUBJID", "LBSEQ",
+        "LBTESTCD", "LBTEST", "LBCAT",
+        "LBORRES", "LBORRESU", "LBSTRESC", "LBSTRESN", "LBSTRESU",
+        "VISITNUM", "VISIT", "LBDTC", "LBDY"
+    ]
+
+    sdtm_df = pd.DataFrame(rows, columns=columns)
+
+    # Assign sequence numbers
+    sdtm_df["LBSEQ"] = range(1, len(sdtm_df) + 1)
+
+    return sdtm_df
