@@ -18,7 +18,15 @@ from generators import (
     generate_oncology_ae,
     generate_vitals_bootstrap,
     generate_demographics,
-    generate_labs
+    generate_labs,
+    # AACT v4.0 enhanced generators
+    generate_vitals_mvn_aact,
+    generate_vitals_bootstrap_aact,
+    generate_vitals_rules_aact,
+    generate_demographics_aact,
+    generate_vitals_bayesian_aact,
+    generate_vitals_mice_aact,
+    generate_visit_schedule
 )
 from realistic_trial import RealisticTrialGenerator
 from db_utils import db, cache, startup_db, shutdown_db
@@ -31,6 +39,24 @@ except ImportError:
     DAFT_AVAILABLE = False
     import warnings
     warnings.warn("Daft not available. Million-scale generation disabled. Install: pip install getdaft==0.3.0")
+
+# Bayesian Network generator imports
+try:
+    from bayesian_generator import generate_vitals_bayesian
+    BAYESIAN_AVAILABLE = True
+except ImportError:
+    BAYESIAN_AVAILABLE = False
+    import warnings
+    warnings.warn("Bayesian generator not available. Install: pip install pgmpy")
+
+# MICE (Multiple Imputation) generator imports
+try:
+    from mice_generator import generate_vitals_mice
+    MICE_AVAILABLE = True
+except ImportError:
+    MICE_AVAILABLE = False
+    import warnings
+    warnings.warn("MICE generator not available. Install: pip install scikit-learn")
 
 app = FastAPI(
     title="Data Generation Service",
@@ -124,6 +150,46 @@ class GenerateDiffusionRequest(BaseModel):
     target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
     seed: int = Field(default=42, description="Random seed for reproducibility")
     n_steps: int = Field(default=10, ge=1, le=100, description="Number of diffusion steps")
+
+# ======================== AACT v4.0 Enhanced Request Models ========================
+class GenerateAACTRequest(BaseModel):
+    """Base request model for AACT-enhanced generators"""
+    indication: str = Field(default="hypertension", description="Disease indication (e.g., 'hypertension', 'diabetes', 'cancer')")
+    phase: str = Field(default="Phase 3", description="Trial phase (e.g., 'Phase 3')")
+    n_per_arm: int = Field(default=50, ge=1, le=500, description="Number of subjects per arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect (mmHg)")
+    seed: int = Field(default=42, description="Random seed for reproducibility")
+    use_duration: bool = Field(default=True, description="Use AACT actual duration for visit scheduling")
+
+class GenerateMVNAACTRequest(GenerateAACTRequest):
+    """Request model for MVN with AACT real-world data"""
+    pass
+
+class GenerateBootstrapAACTRequest(GenerateAACTRequest):
+    """Request model for Bootstrap with AACT real-world data"""
+    jitter_frac: float = Field(default=0.05, ge=0, le=0.5, description="Fraction of std for numeric noise")
+
+class GenerateRulesAACTRequest(GenerateAACTRequest):
+    """Request model for Rules with AACT real-world data"""
+    pass
+
+class GenerateDemographicsAACTRequest(BaseModel):
+    """Request model for Demographics with AACT real-world distributions"""
+    indication: str = Field(default="hypertension", description="Disease indication")
+    phase: str = Field(default="Phase 3", description="Trial phase")
+    n_subjects: int = Field(default=100, ge=1, le=1000, description="Number of subjects")
+    seed: int = Field(default=42, description="Random seed")
+
+class GenerateBayesianAACTRequest(GenerateAACTRequest):
+    """Request model for Bayesian Network with AACT real-world data"""
+    learn_structure: bool = Field(default=False, description="Learn Bayesian network structure from data")
+    real_data_path: Optional[str] = Field(default=None, description="Path to real data for network training")
+
+class GenerateMICEAACTRequest(GenerateAACTRequest):
+    """Request model for MICE with AACT real-world data"""
+    missing_rate: float = Field(default=0.10, ge=0.0, le=0.5, description="Fraction of values to make missing")
+    estimator: str = Field(default="bayesian_ridge", description="Imputation estimator: 'bayesian_ridge' or 'random_forest'")
+    real_data_path: Optional[str] = Field(default=None, description="Path to real data for MICE training")
 
 # Response model - returns array directly for compatibility with EDC validation service
 VitalsResponse = List[Dict[str, Any]]
@@ -356,6 +422,302 @@ async def generate_bootstrap_based(request: GenerateBootstrapRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Bootstrap generation failed: {str(e)}"
         )
+
+# ======================== AACT v4.0 Enhanced Endpoints ========================
+
+@app.post("/generate/mvn-aact", response_model=VitalsResponse)
+async def generate_mvn_aact_based(request: GenerateMVNAACTRequest):
+    """
+    Generate synthetic vitals using MVN with AACT real-world data (v4.0) ⭐ NEW!
+
+    **Enhanced with AACT Statistics from 557K+ Trials:**
+    - ✅ Real baseline vitals by indication/phase (SBP, DBP, HR, Temperature)
+    - ✅ Real study duration for realistic visit schedules
+    - ✅ Maintains all MVN quality (covariance structure)
+    - ✅ Graceful fallback to defaults if AACT unavailable
+
+    **What's Different from Standard MVN:**
+    - Uses real mean/std from AACT instead of hardcoded values
+    - Adapts visit schedule to actual trial duration (e.g., 17 months for Hypertension Phase 3)
+    - Generates data matching real clinical trial patterns
+
+    **Example:**
+    For Hypertension Phase 3:
+    - Baseline SBP: 140.2 mmHg (from 1,025 real trials)
+    - Study duration: 17 months (median from AACT)
+    - Visits: Screening, Day 1, Month 6, Month 17
+
+    **Parameters:**
+    - indication: Disease (e.g., 'hypertension', 'diabetes', 'cancer')
+    - phase: Trial phase (e.g., 'Phase 3')
+    - n_per_arm: Subjects per arm (default: 50)
+    - target_effect: Target SBP reduction (default: -5.0 mmHg)
+    - use_duration: Use real study duration (default: True)
+    - seed: Random seed (default: 42)
+    """
+    try:
+        df = generate_vitals_mvn_aact(
+            indication=request.indication,
+            phase=request.phase,
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            seed=request.seed,
+            use_duration=request.use_duration
+        )
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT MVN generation failed: {str(e)}"
+        )
+
+@app.post("/generate/bootstrap-aact", response_model=VitalsResponse)
+async def generate_bootstrap_aact_based(request: GenerateBootstrapAACTRequest):
+    """
+    Generate synthetic vitals using Bootstrap with AACT real-world data (v4.0) ⭐ NEW!
+
+    **Enhanced with AACT Statistics:**
+    - ✅ Enriches pilot data with AACT patterns
+    - ✅ Real study duration for visit scheduling
+    - ✅ Maintains all Bootstrap quality (resampling preserves correlations)
+
+    **Best for:**
+    - Expanding existing datasets with real-world context
+    - When you need both pilot data characteristics AND industry benchmarks
+
+    **Parameters:**
+    - indication: Disease indication
+    - phase: Trial phase
+    - n_per_arm: Subjects per arm (default: 50)
+    - target_effect: Target SBP reduction (default: -5.0 mmHg)
+    - jitter_frac: Noise level (default: 0.05)
+    - use_duration: Use real study duration (default: True)
+    - seed: Random seed (default: 42)
+    """
+    try:
+        df = generate_vitals_bootstrap_aact(
+            indication=request.indication,
+            phase=request.phase,
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            jitter_frac=request.jitter_frac,
+            seed=request.seed,
+            use_duration=request.use_duration
+        )
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT Bootstrap generation failed: {str(e)}"
+        )
+
+@app.post("/generate/rules-aact", response_model=VitalsResponse)
+async def generate_rules_aact_based(request: GenerateRulesAACTRequest):
+    """
+    Generate synthetic vitals using Rules with AACT real-world data (v4.0) ⭐ NEW!
+
+    **Enhanced with AACT Statistics:**
+    - ✅ Real baseline vitals replace hardcoded values
+    - ✅ Real study duration for visit scheduling
+    - ✅ Maintains deterministic rules-based approach
+
+    **Example:**
+    For Diabetes Phase 3:
+    - Baseline SBP: 145.1 mmHg (from AACT, not hardcoded 130)
+    - Study duration: 19 months (from AACT, not hardcoded 12)
+    - Visits adapt to real trial timelines
+
+    **Parameters:**
+    - indication: Disease indication
+    - phase: Trial phase
+    - n_per_arm: Subjects per arm (default: 50)
+    - target_effect: Target SBP reduction (default: -5.0 mmHg)
+    - use_duration: Use real study duration (default: True)
+    - seed: Random seed (default: 42)
+    """
+    try:
+        df = generate_vitals_rules_aact(
+            indication=request.indication,
+            phase=request.phase,
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            seed=request.seed,
+            use_duration=request.use_duration
+        )
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT Rules generation failed: {str(e)}"
+        )
+
+@app.post("/generate/demographics-aact", response_model=List[Dict[str, Any]])
+async def generate_demographics_aact_based(request: GenerateDemographicsAACTRequest):
+    """
+    Generate demographics using AACT real-world distributions (v4.0) ⭐ NEW!
+
+    **Enhanced with AACT Statistics:**
+    - ✅ Real age distributions (median, mean from 557K+ trials)
+    - ✅ Real gender ratios by indication/phase
+    - ✅ Real race distributions from baseline characteristics
+    - ✅ Falls back to defaults if AACT unavailable
+
+    **What's Different from Standard Demographics:**
+    - Age distribution matches real trials (e.g., Hypertension median: 58 years)
+    - Gender ratio matches real enrollment (e.g., Cancer: 47% female)
+    - Race distribution from actual baseline counts
+
+    **Example Output:**
+    For Hypertension Phase 3 (100 subjects):
+    - Age: Median 58 years (from 1,025 trials)
+    - Gender: 52% Male, 48% Female (real ratio)
+    - Race: Matches real baseline distributions
+
+    **Parameters:**
+    - indication: Disease indication (default: 'hypertension')
+    - phase: Trial phase (default: 'Phase 3')
+    - n_subjects: Number of subjects (default: 100)
+    - seed: Random seed (default: 42)
+    """
+    try:
+        df = generate_demographics_aact(
+            indication=request.indication,
+            phase=request.phase,
+            n_subjects=request.n_subjects,
+            seed=request.seed
+        )
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT Demographics generation failed: {str(e)}"
+        )
+
+@app.post("/generate/bayesian-aact", response_model=VitalsResponse)
+async def generate_bayesian_aact_based(request: GenerateBayesianAACTRequest):
+    """
+    Generate synthetic vitals using Bayesian Network with AACT real-world data (v4.0) ⭐ NEW!
+
+    **Enhanced with AACT Statistics from 557K+ Trials:**
+    - ✅ Real baseline vitals by indication/phase
+    - ✅ Real study duration for realistic visit schedules
+    - ✅ Sophisticated dependency modeling (Bayesian networks)
+    - ✅ Captures non-linear relationships between variables
+    - ✅ Interpretable structure (DAG shows causal relationships)
+
+    **What's Different from Standard Bayesian:**
+    - Visit names adapt to actual study duration (e.g., hypertension Phase 3: 17 months)
+    - Baseline vitals match real-world distributions
+    - Combines Bayesian network sophistication with AACT realism
+
+    **Method:**
+    1. Learn or use expert-defined Bayesian network structure
+    2. Fit conditional probability distributions (CPDs) from real data
+    3. Sample from the network using forward sampling
+    4. Apply AACT-informed visit scheduling
+
+    **Use Cases:**
+    - When variable relationships are known (e.g., clinical pathways)
+    - For explainable AI (DAG shows causal structure)
+    - When you need to preserve complex dependencies with real-world parameters
+
+    **Parameters:**
+    - indication: Disease indication (default: 'hypertension')
+    - phase: Trial phase (default: 'Phase 3')
+    - n_per_arm: Subjects per arm (default: 50)
+    - target_effect: Target SBP reduction (default: -5.0 mmHg)
+    - use_duration: Use AACT actual duration (default: True)
+    - seed: Random seed (default: 42)
+    """
+    if not BAYESIAN_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Bayesian generator not available. Install pgmpy: pip install pgmpy"
+        )
+
+    try:
+        df = generate_vitals_bayesian_aact(
+            indication=request.indication,
+            phase=request.phase,
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            seed=request.seed,
+            use_duration=request.use_duration,
+            real_data_path=request.real_data_path
+        )
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT Bayesian generation failed: {str(e)}"
+        )
+
+
+@app.post("/generate/mice-aact", response_model=VitalsResponse)
+async def generate_mice_aact_based(request: GenerateMICEAACTRequest):
+    """
+    Generate synthetic vitals using MICE with AACT real-world data (v4.0) ⭐ NEW!
+
+    **Enhanced with AACT Statistics from 557K+ Trials:**
+    - ✅ Real baseline vitals by indication/phase
+    - ✅ Real study duration for realistic visit schedules
+    - ✅ Sophisticated missing data handling (MICE)
+    - ✅ Realistic missing data patterns
+    - ✅ Multiple imputation for uncertainty quantification
+
+    **What's Different from Standard MICE:**
+    - Visit names adapt to actual study duration (e.g., cancer Phase 2: 8 months)
+    - Baseline vitals match real-world distributions
+    - Combines MICE sophistication with AACT realism
+
+    **Method:**
+    1. Create template dataset with structure
+    2. Introduce realistic missing data pattern (MAR - Missing At Random)
+    3. Use iterative imputation to fill missing values
+    4. Apply AACT-informed visit scheduling
+    5. Optionally create multiple imputations for uncertainty
+
+    **Use Cases:**
+    - Simulating trials with dropout/missing data
+    - Testing missing data handling algorithms
+    - Creating diverse synthetic datasets with controlled missingness
+    - Demonstrating MICE methodology with real-world parameters
+
+    **Parameters:**
+    - indication: Disease indication (default: 'hypertension')
+    - phase: Trial phase (default: 'Phase 3')
+    - n_per_arm: Subjects per arm (default: 50)
+    - target_effect: Target SBP reduction (default: -5.0 mmHg)
+    - use_duration: Use AACT actual duration (default: True)
+    - missing_rate: Fraction of missing values (default: 0.10 = 10%)
+    - estimator: 'bayesian_ridge' (fast) or 'random_forest' (slower, non-linear)
+    - seed: Random seed (default: 42)
+    """
+    if not MICE_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="MICE generator not available. Install sklearn: pip install scikit-learn"
+        )
+
+    try:
+        df = generate_vitals_mice_aact(
+            indication=request.indication,
+            phase=request.phase,
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            seed=request.seed,
+            use_duration=request.use_duration,
+            missing_rate=request.missing_rate,
+            estimator=request.estimator,
+            real_data_path=request.real_data_path
+        )
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT MICE generation failed: {str(e)}"
+        )
+
 
 @app.post("/generate/diffusion", response_model=VitalsResponse)
 async def generate_diffusion_based(request: GenerateDiffusionRequest):

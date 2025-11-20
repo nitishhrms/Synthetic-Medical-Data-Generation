@@ -25,6 +25,10 @@ export function DataGeneration() {
   const [targetEffect, setTargetEffect] = useState(-5.0);
   const [selectedMethod, setSelectedMethod] = useState<string>("mvn");
 
+  // AACT parameters (NEW - for real-world data)
+  const [indication, setIndication] = useState("hypertension");
+  const [phase, setPhase] = useState("Phase 3");
+
   // Demographics state
   const [demographicsData, setDemographicsData] = useState<any[]>([]);
   const [demographicsMetadata, setDemographicsMetadata] = useState<any>(null);
@@ -60,7 +64,14 @@ export function DataGeneration() {
 
     try {
       let response;
-      const params = { n_per_arm: nPerArm, target_effect: targetEffect, seed: 42 };
+      // Include AACT parameters for real-world data
+      const params = {
+        n_per_arm: nPerArm,
+        target_effect: targetEffect,
+        seed: 42,
+        indication,
+        phase,
+      };
 
       switch (selectedMethod) {
         case "mvn":
@@ -99,7 +110,9 @@ export function DataGeneration() {
     try {
       const response = await dataGenerationApi.generateDemographics({
         n_subjects: demographicsN,
-        seed: 42
+        seed: 42,
+        indication,
+        phase,
       });
 
       setDemographicsData(response?.data ?? []);
@@ -274,6 +287,50 @@ export function DataGeneration() {
               <CardDescription>Generate SBP, DBP, Heart Rate, Temperature</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* AACT Configuration - Real-World Data */}
+              <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="h-4 w-4 text-purple-600" />
+                  <h3 className="font-semibold text-purple-900">AACT Real-World Data (557K+ Trials)</h3>
+                  <Badge variant="outline" className="bg-white">Enhanced v4.0</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-purple-900">Disease Indication</Label>
+                    <select
+                      value={indication}
+                      onChange={(e) => setIndication(e.target.value)}
+                      className="w-full mt-1 p-2 border rounded-md bg-white"
+                    >
+                      <option value="hypertension">Hypertension (8,695 trials)</option>
+                      <option value="diabetes">Diabetes (20,857 trials)</option>
+                      <option value="cancer">Cancer (82,255 trials)</option>
+                      <option value="heart failure">Heart Failure</option>
+                      <option value="asthma">Asthma</option>
+                      <option value="copd">COPD</option>
+                      <option value="depression">Depression</option>
+                      <option value="alzheimer disease">Alzheimer's Disease</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-purple-900">Trial Phase</Label>
+                    <select
+                      value={phase}
+                      onChange={(e) => setPhase(e.target.value)}
+                      className="w-full mt-1 p-2 border rounded-md bg-white"
+                    >
+                      <option value="Phase 1">Phase 1 - Safety</option>
+                      <option value="Phase 2">Phase 2 - Efficacy</option>
+                      <option value="Phase 3">Phase 3 - Confirmation</option>
+                      <option value="Phase 4">Phase 4 - Post-Marketing</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-xs text-purple-700 mt-2">
+                  ℹ️ Data uses real baseline vitals, study durations, and demographics from AACT database
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Generation Method</Label>
@@ -388,16 +445,58 @@ export function DataGeneration() {
           <Card>
             <CardHeader>
               <CardTitle>Demographics Generation</CardTitle>
-              <CardDescription>Generate Age, Gender, Race, Ethnicity, Height, Weight, BMI, Smoking Status</CardDescription>
+              <CardDescription>Generate Age, Gender, Race, Ethnicity, Height, Weight, BMI, Smoking Status with AACT real-world distributions</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* AACT Configuration - Real-World Data */}
+              <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="h-4 w-4 text-purple-600" />
+                  <h3 className="font-semibold text-purple-900">AACT Real-World Distributions</h3>
+                  <Badge variant="outline" className="bg-white">Enhanced v4.0</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-purple-900">Disease Indication</Label>
+                    <select
+                      value={indication}
+                      onChange={(e) => setIndication(e.target.value)}
+                      className="w-full mt-1 p-2 border rounded-md bg-white"
+                    >
+                      <option value="hypertension">Hypertension</option>
+                      <option value="diabetes">Diabetes</option>
+                      <option value="cancer">Cancer</option>
+                      <option value="heart failure">Heart Failure</option>
+                      <option value="asthma">Asthma</option>
+                      <option value="copd">COPD</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-purple-900">Trial Phase</Label>
+                    <select
+                      value={phase}
+                      onChange={(e) => setPhase(e.target.value)}
+                      className="w-full mt-1 p-2 border rounded-md bg-white"
+                    >
+                      <option value="Phase 1">Phase 1</option>
+                      <option value="Phase 2">Phase 2</option>
+                      <option value="Phase 3">Phase 3</option>
+                      <option value="Phase 4">Phase 4</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-xs text-purple-700 mt-2">
+                  ℹ️ Age, gender, and race distributions match real trials for this indication/phase
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 bg-muted rounded-lg">
                   <h3 className="font-medium mb-2">Generated Fields:</h3>
                   <ul className="text-sm space-y-1 text-muted-foreground">
-                    <li>• Age (18-85, normally distributed)</li>
-                    <li>• Gender (Male/Female, 50/50)</li>
-                    <li>• Race (US demographics)</li>
+                    <li>• Age (from AACT real distribution)</li>
+                    <li>• Gender (from AACT real ratio)</li>
+                    <li>• Race (from AACT baseline characteristics)</li>
                     <li>• Ethnicity (Hispanic/Not Hispanic)</li>
                     <li>• Height (gender-specific, cm)</li>
                     <li>• Weight (age-correlated, kg)</li>
