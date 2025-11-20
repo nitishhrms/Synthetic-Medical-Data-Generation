@@ -394,7 +394,16 @@ def generate_efficacy_table(
         for arm in arms:
             arm_df = arm_dfs[arm].sort_values("EventTime")
             # Simple median calculation
-            events = arm_df[arm_df["EventOccurred"] == True]
+            # Handle both "EventOccurred" and "Censored" field names
+            if "EventOccurred" in arm_df.columns:
+                events = arm_df[arm_df["EventOccurred"] == True]
+            elif "Censored" in arm_df.columns:
+                # Censored=False means event occurred, Censored=True means censored
+                events = arm_df[arm_df["Censored"] == False]
+            else:
+                # Fallback: assume all are events
+                events = arm_df
+
             if len(events) > 0:
                 medians[arm] = events["EventTime"].median()
             else:
