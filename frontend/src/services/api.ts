@@ -183,11 +183,17 @@ export const dataGenerationApi = {
     return handleResponse(response);
   },
 
-  async generateBayesian(params: GenerationRequest): Promise<GenerationResponse> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bayesian`, {
+  async generateBayesian(params: GenerationRequest & { indication?: string; phase?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bayesian-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+      }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
     const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
@@ -196,16 +202,24 @@ export const dataGenerationApi = {
       metadata: {
         records: data.length,
         subjects: uniqueSubjects,
-        method: "bayesian",
+        method: "bayesian-aact",
       },
     };
   },
 
-  async generateMICE(params: GenerationRequest): Promise<GenerationResponse> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mice`, {
+  async generateMICE(params: GenerationRequest & { indication?: string; phase?: string; missing_rate?: number; estimator?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mice-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+        missing_rate: params.missing_rate || 0.10,
+        estimator: params.estimator || "bayesian_ridge",
+      }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
     const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
@@ -214,7 +228,7 @@ export const dataGenerationApi = {
       metadata: {
         records: data.length,
         subjects: uniqueSubjects,
-        method: "mice",
+        method: "mice-aact",
       },
     };
   },
