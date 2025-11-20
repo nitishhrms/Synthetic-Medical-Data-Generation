@@ -2253,5 +2253,219 @@ async def get_indication_stats(indication: str, phase: str = "Phase 3"):
         )
 
 
+# ============================================================================
+# Scalability Features for College Project
+# ============================================================================
+
+class ComprehensiveStudyRequest(BaseModel):
+    """Request model for comprehensive study generation using AACT data"""
+    indication: str = Field(default="hypertension", description="Disease indication")
+    phase: str = Field(default="Phase 3", description="Trial phase")
+    n_per_arm: int = Field(default=50, ge=1, le=500, description="Subjects per arm")
+    target_effect: float = Field(default=-5.0, description="Target treatment effect")
+    seed: int = Field(default=42, description="Random seed")
+    method: str = Field(default="mvn", description="Generation method: mvn, bootstrap, or rules")
+    use_duration: bool = Field(default=True, description="Use AACT duration for visits")
+
+class ComprehensiveStudyResponse(BaseModel):
+    """Response model for comprehensive study generation"""
+    vitals: List[Dict[str, Any]]
+    demographics: List[Dict[str, Any]]
+    labs: List[Dict[str, Any]]
+    adverse_events: List[Dict[str, Any]]
+    metadata: Dict[str, Any]
+
+@app.post("/generate/comprehensive-study", response_model=ComprehensiveStudyResponse)
+async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
+    """
+    Generate complete clinical trial with all domains coordinated
+
+    **AACT-Enhanced**: Uses real-world statistics from 557K+ trials
+    **Coordinated**: Same subject IDs, visit schedules, treatment arms across all domains
+    **Complete**: Returns vitals, demographics, labs, and adverse events in one call
+    """
+    try:
+        import time
+        start_time = time.time()
+
+        # Generate coordinated study components
+        n_total = request.n_per_arm * 2
+        subject_ids = [f"RA001-{i:03d}" for i in range(1, n_total + 1)]
+        treatment_arms = {sid: "Active" if i < request.n_per_arm else "Placebo"
+                         for i, sid in enumerate(subject_ids)}
+
+        # Get visit schedule
+        try:
+            from aact_utils import get_demographics as aact_get_demographics
+            demographics_data = aact_get_demographics(request.indication, request.phase)
+            duration_months = int(demographics_data.get('actual_duration', {}).get('median_months', 12))
+        except:
+            duration_months = 12
+        visit_schedule, _ = generate_visit_schedule(duration_months, n_visits=4) if request.use_duration else (["Screening", "Day 1", "Week 4", "Week 12"], [])
+
+        # Generate vitals
+        if request.method == "mvn":
+            vitals_df = generate_vitals_mvn_aact(
+                indication=request.indication, phase=request.phase, n_per_arm=request.n_per_arm,
+                target_effect=request.target_effect, seed=request.seed,
+                subject_ids=subject_ids, visit_schedule=visit_schedule, treatment_arms=treatment_arms
+            )
+        elif request.method == "bootstrap":
+            vitals_df = generate_vitals_bootstrap_aact(
+                indication=request.indication, phase=request.phase, n_per_arm=request.n_per_arm,
+                target_effect=request.target_effect, seed=request.seed,
+                subject_ids=subject_ids, visit_schedule=visit_schedule, treatment_arms=treatment_arms
+            )
+        else:
+            vitals_df = generate_vitals_rules_aact(
+                indication=request.indication, phase=request.phase, n_per_arm=request.n_per_arm,
+                target_effect=request.target_effect, seed=request.seed,
+                subject_ids=subject_ids, visit_schedule=visit_schedule, treatment_arms=treatment_arms
+            )
+
+        # Generate other domains
+        demographics_df = generate_demographics_aact(request.indication, request.phase, n_total, request.seed + 1, subject_ids, treatment_arms)
+        labs_df = generate_labs_aact(request.indication, request.phase, n_total, request.seed + 2, request.use_duration, subject_ids, visit_schedule, treatment_arms)
+        ae_df = generate_oncology_ae_aact(request.indication, request.phase, n_total, request.seed + 3, subject_ids, visit_schedule, treatment_arms)
+
+        total_time = time.time() - start_time
+
+        return ComprehensiveStudyResponse(
+            vitals=vitals_df.to_dict(orient="records"),
+            demographics=demographics_df.to_dict(orient="records"),
+            labs=labs_df.to_dict(orient="records"),
+            adverse_events=ae_df.to_dict(orient="records"),
+            metadata={
+                "indication": request.indication,
+                "phase": request.phase,
+                "n_subjects": n_total,
+                "total_records": len(vitals_df) + len(demographics_df) + len(labs_df) + len(ae_df),
+                "generation_time_ms": round(total_time * 1000, 2),
+                "aact_enhanced": True
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Comprehensive study generation failed: {str(e)}")
+
+
+@app.get("/benchmark/performance")
+async def benchmark_performance(n_per_arm: int = 50, methods: str = "mvn,bootstrap,rules",
+                                indication: str = "hypertension", phase: str = "Phase 3"):
+    """
+    Benchmark AACT-enhanced generator performance
+
+    Compares generation speed across methods (runs each 3 times, averages results)
+    **Use Case**: Help users choose optimal method for their scalability needs
+    """
+    try:
+        import time
+        method_list = methods.split(",")
+        results = {}
+
+        for method in method_list:
+            times = []
+            for run in range(3):
+                start = time.time()
+                if method.strip() == "mvn":
+                    df = generate_vitals_mvn_aact(indication, phase, n_per_arm, seed=42+run)
+                elif method.strip() == "bootstrap":
+                    df = generate_vitals_bootstrap_aact(indication, phase, n_per_arm, seed=42+run)
+                elif method.strip() == "rules":
+                    df = generate_vitals_rules_aact(indication, phase, n_per_arm, seed=42+run)
+                else:
+                    continue
+                times.append(time.time() - start)
+
+            avg_time = sum(times) / len(times)
+            results[method.strip()] = {
+                "avg_time_ms": round(avg_time * 1000, 2),
+                "records_per_second": round(len(df) / avg_time, 2),
+                "records_generated": len(df)
+            }
+
+        ranked = sorted(results.items(), key=lambda x: x[1]["avg_time_ms"])
+        return {
+            "benchmark_results": results,
+            "fastest_method": ranked[0][0] if ranked else None,
+            "ranking": [{"method": m, "avg_time_ms": r["avg_time_ms"]} for m, r in ranked]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Benchmark failed: {str(e)}")
+
+
+@app.post("/stress-test/concurrent")
+async def stress_test_concurrent(n_concurrent_requests: int = 10, n_per_arm: int = 50,
+                                 indication: str = "hypertension", phase: str = "Phase 3"):
+    """
+    Stress test: Simulate multiple researchers generating data simultaneously
+
+    **Performance Target**: 10 concurrent studies (50 subjects each) in < 3 seconds
+    **Use Case**: Validate system can handle multiple simultaneous users
+    """
+    try:
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import random
+
+        start_time = time.time()
+        results = []
+        errors = []
+
+        def generate_single():
+            try:
+                df = generate_vitals_mvn_aact(indication, phase, n_per_arm, seed=random.randint(1, 10000))
+                return {"success": True, "records": len(df)}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        with ThreadPoolExecutor(max_workers=n_concurrent_requests) as executor:
+            futures = [executor.submit(generate_single) for _ in range(n_concurrent_requests)]
+            for future in as_completed(futures):
+                result = future.result()
+                (results if result["success"] else errors).append(result)
+
+        total_time = time.time() - start_time
+        total_records = sum(r["records"] for r in results)
+
+        return {
+            "stress_test_results": {
+                "total_requests": n_concurrent_requests,
+                "successful_requests": len(results),
+                "failed_requests": len(errors),
+                "total_time_seconds": round(total_time, 2),
+                "aggregate_throughput_records_per_second": round(total_records / total_time, 2) if total_time > 0 else 0
+            },
+            "pass_criteria": {
+                "target_time_seconds": 3,
+                "achieved_time": round(total_time, 2),
+                "passed": total_time < 3 and len(errors) == 0
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stress test failed: {str(e)}")
+
+
+@app.get("/analytics/portfolio")
+async def portfolio_analytics():
+    """
+    Portfolio-level analytics dashboard
+
+    **Use Case**: Executive summary of organization-wide trial generation activity
+    Returns mock data (in production, would query database for real statistics)
+    """
+    return {
+        "portfolio_summary": {
+            "total_studies": 127,
+            "total_subjects": 12750,
+            "studies_by_indication": {"hypertension": 45, "diabetes": 32, "oncology": 28, "cardiovascular": 22},
+            "studies_by_phase": {"Phase 1": 15, "Phase 2": 38, "Phase 3": 62, "Phase 4": 12},
+            "average_generation_time_ms": 287.5
+        },
+        "quality_metrics": {"average_quality_score": 0.89, "studies_meeting_quality_threshold": 121},
+        "resource_utilization": {"cache_hit_rate": 0.94, "aact_lookup_rate": 0.98},
+        "note": "Mock data - in production, queries database for real portfolio statistics"
+    }
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)
