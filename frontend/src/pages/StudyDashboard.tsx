@@ -401,7 +401,7 @@ export function StudyDashboard() {
                       </CardHeader>
                       <CardContent>
                         <div className="text-3xl font-bold">{correlationsData.moderate_correlations || 0}</div>
-                        <p className="text-sm text-muted-foreground mt-2">0.3 ≤ |r| < 0.7</p>
+                        <p className="text-sm text-muted-foreground mt-2">0.3 &le; |r| &lt; 0.7</p>
                       </CardContent>
                     </Card>
 
@@ -411,7 +411,7 @@ export function StudyDashboard() {
                       </CardHeader>
                       <CardContent>
                         <div className="text-3xl font-bold">{correlationsData.weak_correlations || 0}</div>
-                        <p className="text-sm text-muted-foreground mt-2">|r| < 0.3</p>
+                        <p className="text-sm text-muted-foreground mt-2">|r| &lt; 0.3</p>
                       </CardContent>
                     </Card>
                   </div>

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { analyticsApi, dataGenerationApi } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,10 +10,15 @@ import { Database, Download, CheckCircle2, FileJson, AlertCircle } from "lucide-
 export default function AdamGeneration() {
   const [generatedDatasets, setGeneratedDatasets] = useState<any>(null);
   const [studyId, setStudyId] = useState("STUDY001");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Generate all ADaM datasets
-  const generateAdamMutation = useMutation({
-    mutationFn: async () => {
+  const handleGenerateAdamDatasets = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
       // First generate sample data
       const pilotData = await dataGenerationApi.getPilotData();
 
@@ -72,7 +76,7 @@ export default function AdamGeneration() {
       });
 
       // Generate all ADaM datasets
-      return analyticsApi.generateAllAdamDatasets({
+      const result = await analyticsApi.generateAllAdamDatasets({
         demographics_data: uniqueSubjects,
         vitals_data: vitalsData,
         labs_data: labsData,
@@ -80,11 +84,14 @@ export default function AdamGeneration() {
         survival_data: survivalAnalysis.survival_data,
         study_id: studyId,
       });
-    },
-    onSuccess: (data) => {
-      setGeneratedDatasets(data);
-    },
-  });
+
+      setGeneratedDatasets(result);
+    } catch (err: any) {
+      setError(err.message || "Failed to generate ADaM datasets");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleDownloadDataset = (datasetName: string, data: any[]) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -195,11 +202,11 @@ export default function AdamGeneration() {
             </div>
             <div className="flex items-end">
               <Button
-                onClick={() => generateAdamMutation.mutate()}
-                disabled={generateAdamMutation.isPending}
+                onClick={handleGenerateAdamDatasets}
+                disabled={isLoading}
                 className="w-full"
               >
-                {generateAdamMutation.isPending ? "Generating..." : "Generate All ADaM Datasets"}
+                {isLoading ? "Generating..." : "Generate All ADaM Datasets"}
               </Button>
             </div>
           </div>
@@ -214,11 +221,11 @@ export default function AdamGeneration() {
             </Alert>
           )}
 
-          {generateAdamMutation.isError && (
+          {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                {generateAdamMutation.error?.message || "Failed to generate ADaM datasets"}
+                {error}
               </AlertDescription>
             </Alert>
           )}

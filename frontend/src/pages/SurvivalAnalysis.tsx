@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { analyticsApi, dataGenerationApi } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,27 +24,57 @@ export default function SurvivalAnalysis() {
   const [medianSurvivalActive, setMedianSurvivalActive] = useState(18.0);
   const [medianSurvivalPlacebo, setMedianSurvivalPlacebo] = useState(12.0);
 
-  // Fetch demographics data
-  const { data: pilotData, isLoading: isPilotLoading } = useQuery({
-    queryKey: ["pilotData"],
-    queryFn: () => dataGenerationApi.getPilotData(),
-  });
+  const [pilotData, setPilotData] = useState<any[] | null>(null);
+  const [isPilotLoading, setIsPilotLoading] = useState(false);
+  const [survivalResults, setSurvivalResults] = useState<any>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Run comprehensive survival analysis
-  const { data: survivalResults, isLoading: isAnalysisLoading, error } = useQuery({
-    queryKey: ["survivalAnalysis", demographicsData, indication, medianSurvivalActive, medianSurvivalPlacebo],
-    queryFn: () => {
-      if (!demographicsData || demographicsData.length === 0) return null;
-      return analyticsApi.comprehensiveSurvivalAnalysis({
-        demographics_data: demographicsData,
-        indication,
-        median_survival_active: medianSurvivalActive,
-        median_survival_placebo: medianSurvivalPlacebo,
-        seed: 42,
-      });
-    },
-    enabled: !!demographicsData && demographicsData.length > 0,
-  });
+  // Fetch pilot data on mount
+  useEffect(() => {
+    const fetchPilotData = async () => {
+      setIsPilotLoading(true);
+      try {
+        const data = await dataGenerationApi.getPilotData();
+        setPilotData(data);
+      } catch (err: any) {
+        setError(err.message || "Failed to fetch pilot data");
+      } finally {
+        setIsPilotLoading(false);
+      }
+    };
+
+    fetchPilotData();
+  }, []);
+
+  // Run survival analysis when demographics data changes
+  useEffect(() => {
+    const runSurvivalAnalysis = async () => {
+      if (!demographicsData || demographicsData.length === 0) {
+        setSurvivalResults(null);
+        return;
+      }
+
+      setIsAnalysisLoading(true);
+      setError(null);
+      try {
+        const result = await analyticsApi.comprehensiveSurvivalAnalysis({
+          demographics_data: demographicsData,
+          indication,
+          median_survival_active: medianSurvivalActive,
+          median_survival_placebo: medianSurvivalPlacebo,
+          seed: 42,
+        });
+        setSurvivalResults(result);
+      } catch (err: any) {
+        setError(err.message || "Failed to run survival analysis");
+      } finally {
+        setIsAnalysisLoading(false);
+      }
+    };
+
+    runSurvivalAnalysis();
+  }, [demographicsData, indication, medianSurvivalActive, medianSurvivalPlacebo]);
 
   const handleGenerateDemographics = () => {
     if (pilotData) {
@@ -172,7 +201,7 @@ export default function SurvivalAnalysis() {
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error.message}</AlertDescription>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
