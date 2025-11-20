@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import type {
   VitalsRecord,
@@ -7,6 +7,7 @@ import type {
   PCAComparisonResponse,
   ValidationResponse,
 } from "@/types";
+import { dataGenerationApi } from "@/services/api";
 
 interface DataContextType {
   // Generated Data
@@ -42,7 +43,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [generatedData, setGeneratedData] = useState<VitalsRecord[] | null>(null);
+  const [generatedData, setGeneratedDataState] = useState<VitalsRecord[] | null>(null);
   const [generationMethod, setGenerationMethod] = useState<string | null>(null);
   const [repairedData, setRepairedData] = useState<VitalsRecord[] | null>(null);
   const [pilotData, setPilotData] = useState<VitalsRecord[] | null>(null);
@@ -51,8 +52,43 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [pcaComparison, setPcaComparison] = useState<PCAComparisonResponse | null>(null);
   const [validationResults, setValidationResults] = useState<ValidationResponse | null>(null);
 
+  // Load persisted data on mount
+  useEffect(() => {
+    loadPersistedData();
+  }, []);
+
+  const loadPersistedData = async () => {
+    try {
+      const result = await dataGenerationApi.loadLatestData("vitals");
+      if (result && result.data) {
+        setGeneratedDataState(result.data);
+        if (result.metadata?.method) {
+          setGenerationMethod(result.metadata.method);
+        }
+        console.log("Loaded persisted data:", result.dataset_name);
+      }
+    } catch (err) {
+      console.log("No persisted data found or failed to load");
+    }
+  };
+
+  const setGeneratedData = (data: VitalsRecord[] | null) => {
+    setGeneratedDataState(data);
+
+    // Persist data when it's updated (and not null)
+    if (data && data.length > 0) {
+      const methodName = generationMethod || "unknown";
+      dataGenerationApi.saveGeneratedData(
+        `Generated ${methodName} ${new Date().toISOString()}`,
+        "vitals",
+        data,
+        { method: methodName, count: data.length }
+      ).catch((err: unknown) => console.error("Failed to persist data:", err));
+    }
+  };
+
   const clearAllData = () => {
-    setGeneratedData(null);
+    setGeneratedDataState(null);
     setGenerationMethod(null);
     setRepairedData(null);
     setPilotData(null);

@@ -464,6 +464,31 @@ export const dataGenerationApi = {
     });
     return handleResponse(response);
   },
+
+  // ============================================================================
+  // Data Persistence
+  // ============================================================================
+
+  async saveGeneratedData(datasetName: string, datasetType: string, data: any[], metadata?: any): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/save`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        dataset_name: datasetName,
+        dataset_type: datasetType,
+        data: data,
+        metadata: metadata
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async loadLatestData(datasetType: string): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/load/${datasetType}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
 };
 
 // ============================================================================

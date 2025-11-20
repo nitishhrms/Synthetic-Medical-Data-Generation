@@ -226,43 +226,52 @@ export function MethodComparison() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {benchmarkData.methods
-                      .sort((a, b) => b.overall_quality - a.overall_quality)
-                      .map((method, index) => (
-                        <TableRow key={method.method}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xl">{METHOD_INFO[method.method]?.icon}</span>
-                              <div>
-                                <div>{METHOD_INFO[method.method]?.name}</div>
-                                {index === 0 && (
-                                  <Badge variant="outline" className="bg-green-50 text-green-700 text-xs mt-1">
-                                    Best Overall
-                                  </Badge>
-                                )}
+                    {benchmarkData.methods && Array.isArray(benchmarkData.methods) && benchmarkData.methods.length > 0 ? (
+                      benchmarkData.methods
+                        .sort((a, b) => b.overall_quality - a.overall_quality)
+                        .map((method, index) => (
+                          <TableRow key={method.method}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xl">{METHOD_INFO[method.method]?.icon}</span>
+                                <div>
+                                  <div>{METHOD_INFO[method.method]?.name}</div>
+                                  {index === 0 && (
+                                    <Badge variant="outline" className="bg-green-50 text-green-700 text-xs mt-1">
+                                      Best Overall
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-lg">
-                                {(method.overall_quality * 100).toFixed(1)}%
-                              </span>
-                              {getQualityBadge(method.overall_quality)}
-                            </div>
-                          </TableCell>
-                          <TableCell>{(method.distribution_similarity * 100).toFixed(1)}%</TableCell>
-                          <TableCell>{(method.correlation_preservation * 100).toFixed(1)}%</TableCell>
-                          <TableCell>{(method.statistical_utility * 100).toFixed(1)}%</TableCell>
-                          <TableCell>{((1 - method.privacy_risk) * 100).toFixed(1)}%</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Zap className="h-4 w-4 text-yellow-500" />
-                              <span className="font-medium">{(method.performance * 100).toFixed(1)}%</span>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-lg">
+                                  {(method.overall_quality * 100).toFixed(1)}%
+                                </span>
+                                {getQualityBadge(method.overall_quality)}
+                              </div>
+                            </TableCell>
+                            <TableCell>{(method.distribution_similarity * 100).toFixed(1)}%</TableCell>
+                            <TableCell>{(method.correlation_preservation * 100).toFixed(1)}%</TableCell>
+                            <TableCell>{(method.statistical_utility * 100).toFixed(1)}%</TableCell>
+                            <TableCell>{((1 - method.privacy_risk) * 100).toFixed(1)}%</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-lg">
+                                  {(method.performance * 100).toFixed(1)}%
+                                </span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-4">
+                          No benchmark data available
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -293,10 +302,10 @@ export function MethodComparison() {
                       const metrics = benchmarkData.detailed_metrics[method.method];
                       const avgDist = metrics
                         ? (metrics.wasserstein_distances.SystolicBP +
-                            metrics.wasserstein_distances.DiastolicBP +
-                            metrics.wasserstein_distances.HeartRate +
-                            metrics.wasserstein_distances.Temperature) /
-                          4
+                          metrics.wasserstein_distances.DiastolicBP +
+                          metrics.wasserstein_distances.HeartRate +
+                          metrics.wasserstein_distances.Temperature) /
+                        4
                         : 0;
 
                       return (

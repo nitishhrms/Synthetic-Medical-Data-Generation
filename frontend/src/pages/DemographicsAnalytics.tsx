@@ -539,18 +539,26 @@ export function DemographicsAnalytics() {
                           </tr>
                         </thead>
                         <tbody>
-                          {balanceData.balance_tests?.map((test: any, idx: number) => (
-                            <tr key={idx}>
-                              <td className="border border-gray-200 px-4 py-2 font-medium">{test.variable}</td>
-                              <td className="border border-gray-200 px-4 py-2 text-center">{test.test_name}</td>
-                              <td className="border border-gray-200 px-4 py-2 text-center">{test.p_value?.toFixed(4)}</td>
-                              <td className="border border-gray-200 px-4 py-2 text-center">
-                                <Badge variant={test.balanced ? "default" : "destructive"}>
-                                  {test.balanced ? "Yes" : "No"}
-                                </Badge>
+                          {balanceData.balance_tests && Array.isArray(balanceData.balance_tests) ? (
+                            balanceData.balance_tests.map((test: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="border border-gray-200 px-4 py-2 font-medium">{test.variable}</td>
+                                <td className="border border-gray-200 px-4 py-2 text-center">{test.test_name}</td>
+                                <td className="border border-gray-200 px-4 py-2 text-center">{test.p_value?.toFixed(4)}</td>
+                                <td className="border border-gray-200 px-4 py-2 text-center">
+                                  <Badge variant={test.balanced ? "default" : "destructive"}>
+                                    {test.balanced ? "Yes" : "No"}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="border border-gray-200 px-4 py-2 text-center">
+                                No balance test data available
                               </td>
                             </tr>
-                          ))}
+                          )}
                         </tbody>
                       </table>
                     </div>

@@ -2420,3 +2420,44 @@ async def portfolio_analytics():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)
+# ============================================================================
+# Data Persistence Endpoints
+# ============================================================================
+
+from models import SaveDataRequest, LoadDataResponse
+
+@app.post("/data/save", response_model=Dict[str, Any])
+async def save_generated_data(request: SaveDataRequest):
+    """Save generated data to the database"""
+    try:
+        dataset_id = await db.save_dataset(
+            name=request.dataset_name,
+            dtype=request.dataset_type,
+            data=request.data,
+            metadata=request.metadata
+        )
+        return {"success": True, "id": dataset_id, "message": "Data saved successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save data: {str(e)}"
+        )
+
+@app.get("/data/load/{dataset_type}", response_model=LoadDataResponse)
+async def load_latest_data(dataset_type: str):
+    """Load the most recent data of a specific type"""
+    try:
+        dataset = await db.get_latest_dataset(dataset_type)
+        if not dataset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No data found for type: {dataset_type}"
+            )
+        return dataset
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load data: {str(e)}"
+        )
