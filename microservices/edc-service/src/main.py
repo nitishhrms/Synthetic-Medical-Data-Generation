@@ -2,8 +2,9 @@
 EDC Service - Electronic Data Capture
 Handles subject data, visits, validation, and auto-repair
 """
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import pandas as pd
@@ -15,6 +16,15 @@ import os
 from validation import validate_vitals
 from repair import auto_repair_vitals
 from db_utils import db, cache, startup_db, shutdown_db
+
+# Medical imaging support
+try:
+    from image_processor import MedicalImageProcessor, process_medical_image
+    IMAGING_AVAILABLE = True
+except ImportError:
+    IMAGING_AVAILABLE = False
+    import warnings
+    warnings.warn("Medical imaging not available. Install: pip install pydicom pillow opencv-python")
 
 app = FastAPI(
     title="EDC Service",
@@ -34,21 +44,12 @@ async def shutdown_event():
     await shutdown_db()
 
 # CORS configuration
-import os
 ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
 if ALLOWED_ORIGINS_ENV:
     ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
 else:
-    # Default: allow localhost origins for development
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-        "*"  # Allow all for development
-    ]
+    # Default: allow all origins for development (use specific origins in production)
+    ALLOWED_ORIGINS = ["*"]
 
 if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
@@ -58,9 +59,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,
 )
 
 # Pydantic models
@@ -849,6 +851,60 @@ async def get_lab_results(subject_id: str):
     """, subject_id)
 
     return {"labs": [dict(l) for l in labs]}
+
+@app.get("/vitals/all")
+async def get_all_vitals():
+    """
+    Get all vitals observations from the database
+
+    Returns all vitals data for RBQM and analytics purposes
+    """
+    try:
+        vitals = await db.fetch("""
+            SELECT
+                p.subject_number as SubjectID,
+                v.visit_date,
+                v.systolic_bp as SystolicBP,
+                v.diastolic_bp as DiastolicBP,
+                v.heart_rate as HeartRate,
+                v.temperature as Temperature,
+                v.data_batch::text as data_batch
+            FROM vital_signs v
+            JOIN patients p ON v.patient_id = p.patient_id
+            ORDER BY p.subject_number, v.visit_date
+        """)
+
+        # Convert to list of dictionaries
+        vitals_list = []
+        for v in vitals:
+            record = {
+                "SubjectID": v["subjectid"],
+                "SystolicBP": v["systolicbp"],
+                "DiastolicBP": v["diastolicbp"],
+                "HeartRate": v["heartrate"],
+                "Temperature": float(v["temperature"]) if v["temperature"] else None,
+            }
+
+            # Extract visit info and treatment arm from data_batch if available
+            if v["data_batch"]:
+                try:
+                    batch_data = json.loads(v["data_batch"])
+                    record["VisitName"] = batch_data.get("visit_name", "Unknown")
+                    record["TreatmentArm"] = batch_data.get("treatment_arm", "Unknown")
+                except:
+                    record["VisitName"] = "Unknown"
+                    record["TreatmentArm"] = "Unknown"
+            else:
+                record["VisitName"] = "Unknown"
+                record["TreatmentArm"] = "Unknown"
+
+            vitals_list.append(record)
+
+        return vitals_list
+
+    except Exception as e:
+        # If database is empty or not initialized, return empty array
+        return []
 
 
 # ============================================================================

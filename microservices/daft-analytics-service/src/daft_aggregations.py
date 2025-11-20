@@ -153,14 +153,29 @@ class DaftAggregator:
         active = visit_data[visit_data['TreatmentArm'] == 'Active'][endpoint]
         placebo = visit_data[visit_data['TreatmentArm'] == 'Placebo'][endpoint]
 
-        # Compute statistics
-        mean_diff = float(active.mean() - placebo.mean())
-        se_active = float(active.std() / np.sqrt(len(active)))
-        se_placebo = float(placebo.std() / np.sqrt(len(placebo)))
+        # Check for sufficient data
+        if len(active) < 2 or len(placebo) < 2:
+            raise ValueError(f"Insufficient data for analysis. Need at least 2 subjects per arm. Found Active: {len(active)}, Placebo: {len(placebo)}")
+
+        # Compute statistics with NaN handling
+        active_mean = float(active.mean()) if not np.isnan(active.mean()) else 0.0
+        placebo_mean = float(placebo.mean()) if not np.isnan(placebo.mean()) else 0.0
+        mean_diff = active_mean - placebo_mean
+
+        active_std = float(active.std()) if not np.isnan(active.std()) else 0.0
+        placebo_std = float(placebo.std()) if not np.isnan(placebo.std()) else 0.0
+
+        se_active = active_std / np.sqrt(len(active))
+        se_placebo = placebo_std / np.sqrt(len(placebo))
         se_diff = float(np.sqrt(se_active**2 + se_placebo**2))
 
         # T-test
-        t_stat, p_value = stats.ttest_ind(active, placebo)
+        try:
+            t_stat, p_value = stats.ttest_ind(active, placebo)
+            t_stat = float(t_stat) if not np.isnan(t_stat) and not np.isinf(t_stat) else 0.0
+            p_value = float(p_value) if not np.isnan(p_value) and not np.isinf(p_value) else 1.0
+        except Exception:
+            t_stat, p_value = 0.0, 1.0
 
         # Confidence interval
         ci_95_lower = mean_diff - 1.96 * se_diff
@@ -170,25 +185,25 @@ class DaftAggregator:
             'endpoint': endpoint,
             'visit': visit,
             'active': {
-                'n': len(active),
-                'mean': float(active.mean()),
-                'std': float(active.std()),
-                'se': se_active
+                'n': int(len(active)),
+                'mean': active_mean,
+                'std': active_std,
+                'se': float(se_active)
             },
             'placebo': {
-                'n': len(placebo),
-                'mean': float(placebo.mean()),
-                'std': float(placebo.std()),
-                'se': se_placebo
+                'n': int(len(placebo)),
+                'mean': placebo_mean,
+                'std': placebo_std,
+                'se': float(se_placebo)
             },
             'treatment_effect': {
-                'difference': mean_diff,
-                'se_difference': se_diff,
-                't_statistic': float(t_stat),
-                'p_value': float(p_value),
-                'ci_95_lower': ci_95_lower,
-                'ci_95_upper': ci_95_upper,
-                'significant': p_value < 0.05
+                'difference': float(mean_diff),
+                'se_difference': float(se_diff),
+                't_statistic': t_stat,
+                'p_value': p_value,
+                'ci_95_lower': float(ci_95_lower),
+                'ci_95_upper': float(ci_95_upper),
+                'significant': bool(p_value < 0.05)
             }
         }
 

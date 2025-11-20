@@ -44,7 +44,7 @@ export function QueryManagement() {
       if (statusFilter !== 'all') params.append('status_filter', statusFilter);
       if (severityFilter !== 'all') params.append('severity', severityFilter);
 
-      const url = `http://localhost:8004/queries${params.toString() ? `?${params.toString()}` : ''}`;
+      const url = `http://localhost:8001/queries${params.toString() ? `?${params.toString()}` : ''}`;
       const res = await fetch(url);
 
       if (res.ok) {
