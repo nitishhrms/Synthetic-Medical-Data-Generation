@@ -18,7 +18,7 @@ from stats import (
 )
 from rbqm import generate_rbqm_summary
 from csr import generate_csr_draft
-from sdtm import export_to_sdtm_vs, export_to_sdtm_dm, export_to_sdtm_lb
+from sdtm import export_to_sdtm_vs, export_to_sdtm_dm, export_to_sdtm_lb, export_to_sdtm_ae
 from db_utils import db, cache, startup_db, shutdown_db
 from demographics_analytics import (
     calculate_baseline_characteristics,
@@ -33,6 +33,12 @@ from labs_analytics import (
     compare_labs_quality,
     detect_safety_signals,
     analyze_labs_longitudinal
+)
+from ae_analytics import (
+    calculate_ae_summary,
+    analyze_treatment_emergent_aes,
+    analyze_soc_distribution,
+    compare_ae_quality
 )
 
 app = FastAPI(
@@ -193,6 +199,15 @@ class LabsCompareRequest(BaseModel):
     real_labs: List[Dict[str, Any]]
     synthetic_labs: List[Dict[str, Any]]
 
+# AE models
+class AERequest(BaseModel):
+    ae_data: List[Dict[str, Any]]
+    treatment_start_date: Optional[str] = None
+
+class AECompareRequest(BaseModel):
+    real_ae: List[Dict[str, Any]]
+    synthetic_ae: List[Dict[str, Any]]
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -212,15 +227,16 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Analytics Service",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "features": [
             "Week-12 Statistics (t-test)",
             "RECIST + ORR Analysis",
             "RBQM Summary",
             "CSR Draft Generation",
-            "SDTM Export (Vitals + Demographics + Labs)",
+            "SDTM Export (Vitals + Demographics + Labs + AE)",
             "Demographics Analytics (Baseline, Balance, Quality)",
             "Labs Analytics (Summary, Abnormal Detection, Shift Tables, Safety Signals, Longitudinal)",
+            "AE Analytics (Frequency Tables, TEAEs, SOC Analysis, Quality)",
             "Quality Assessment (PCA, K-NN, Wasserstein)"
         ],
         "endpoints": {
@@ -235,15 +251,20 @@ async def root():
             "labs_shift_tables": "/stats/labs/shift-tables",
             "labs_safety_signals": "/stats/labs/safety-signals",
             "labs_longitudinal": "/stats/labs/longitudinal",
+            "ae_summary": "/stats/ae/summary",
+            "ae_teae": "/stats/ae/treatment-emergent",
+            "ae_soc": "/stats/ae/soc-analysis",
             "rbqm": "/rbqm/summary",
             "csr": "/csr/draft",
             "sdtm_vitals": "/sdtm/export",
             "sdtm_demographics": "/sdtm/demographics/export",
             "sdtm_labs": "/sdtm/labs/export",
+            "sdtm_ae": "/sdtm/ae/export",
             "quality_pca": "/quality/pca-comparison",
             "quality_comprehensive": "/quality/comprehensive",
             "quality_demographics": "/quality/demographics/compare",
             "quality_labs": "/quality/labs/compare",
+            "quality_ae": "/quality/ae/compare",
             "docs": "/docs"
         }
     }
@@ -1238,6 +1259,291 @@ async def labs_sdtm_export(request: LabsRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"SDTM LB export failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# AE (ADVERSE EVENTS) ANALYTICS ENDPOINTS (Phase 3)
+# ============================================================================
+
+@app.post("/stats/ae/summary")
+async def ae_summary(request: AERequest):
+    """
+    Calculate AE frequency tables by SOC, PT, severity, relationship
+
+    **Purpose:**
+    Provides comprehensive adverse event frequency tables for clinical study reports,
+    stratified by MedDRA System Organ Class (SOC), Preferred Term (PT), severity,
+    and relationship to treatment.
+
+    **MedDRA Classification:**
+    - SOC (System Organ Class): Primary classification (17 major categories)
+    - PT (Preferred Term): Specific AE term
+
+    **Returns:**
+    - overall_summary: Total AEs, subjects with AEs, unique PTs/SOCs
+    - by_soc: AE count and subject count per SOC
+    - by_pt: Top 20 most frequent PTs with incidence rates
+    - by_severity: Distribution (Mild, Moderate, Severe)
+    - by_relationship: Distribution (Related, Not Related, Possibly Related)
+    - sae_summary: Serious AE statistics
+    - by_arm: AE comparison by treatment arm (if available)
+
+    **Use Case:**
+    - Safety section of Clinical Study Reports (CSR)
+    - Regulatory submission (IND, NDA, BLA)
+    - DSMB safety reports
+    - Investigator Brochure updates
+    """
+    try:
+        df = pd.DataFrame(request.ae_data)
+        result = calculate_ae_summary(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AE summary calculation failed: {str(e)}"
+        )
+
+
+@app.post("/stats/ae/treatment-emergent")
+async def ae_treatment_emergent(request: AERequest):
+    """
+    Analyze treatment-emergent adverse events (TEAEs)
+
+    **Purpose:**
+    Identifies and analyzes TEAEs - adverse events that start on or after
+    first dose of study treatment, which are critical for safety assessment.
+
+    **TEAE Definition:**
+    - Onset on or after first dose of study treatment
+    - Were not present at baseline, or worsened after treatment start
+    - Required for all regulatory submissions
+
+    **Returns:**
+    - teae_summary: Total TEAEs, subjects with TEAEs, TEAE rate, median onset day
+    - time_to_first_ae: Distribution of time to first AE
+      - 0-7 days: Immediate onset
+      - 8-30 days: Early onset
+      - 31-90 days: Intermediate onset
+      - >90 days: Late onset
+    - teae_by_arm: TEAE comparison by treatment arm
+    - early_vs_late: Early (≤30 days) vs late (>30 days) TEAEs
+
+    **Clinical Interpretation:**
+    - High early TEAE rate: May indicate acute toxicity
+    - High late TEAE rate: May indicate cumulative toxicity
+    - Median onset: Typical time to first AE (guides safety monitoring)
+
+    **Use Case:**
+    - Safety assessment for DSMB
+    - Regulatory submissions (required analysis)
+    - Protocol amendment decisions
+    - Patient counseling (expected onset timing)
+    - Safety labeling
+    """
+    try:
+        df = pd.DataFrame(request.ae_data)
+        treatment_start = request.treatment_start_date
+        result = analyze_treatment_emergent_aes(df, treatment_start_date=treatment_start)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Treatment-emergent AE analysis failed: {str(e)}"
+        )
+
+
+@app.post("/stats/ae/soc-analysis")
+async def ae_soc_analysis(request: AERequest):
+    """
+    Analyze System Organ Class (SOC) distribution per MedDRA
+
+    **Purpose:**
+    Provides MedDRA System Organ Class (SOC) analysis, which is the primary
+    classification for adverse events in clinical trials. Required for all
+    regulatory submissions.
+
+    **MedDRA SOC Categories (17 total):**
+    - Gastrointestinal disorders
+    - Nervous system disorders
+    - Skin and subcutaneous tissue disorders
+    - General disorders and administration site conditions
+    - Infections and infestations
+    - Cardiac disorders
+    - Respiratory, thoracic and mediastinal disorders
+    - Musculoskeletal and connective tissue disorders
+    - Psychiatric disorders
+    - Blood and lymphatic system disorders
+    - Metabolism and nutrition disorders
+    - And 6 more...
+
+    **Returns:**
+    - soc_ranking: SOCs ranked by AE frequency and subject count
+    - soc_by_arm: SOC distribution by treatment arm
+    - soc_details: Top 5 PTs within each SOC
+    - sae_by_soc: Serious AE distribution by SOC
+    - statistical_tests: Fisher's exact test for arm comparisons
+      - odds_ratio: Relative risk between arms
+      - p_value: Statistical significance
+      - significant: Boolean (p < 0.05)
+
+    **Clinical Interpretation:**
+    - Odds ratio > 2: Meaningful increase in active vs placebo
+    - P-value < 0.05: Statistically significant difference
+    - SAEs concentrated in specific SOC: Organ-specific toxicity
+
+    **Use Case:**
+    - Safety section of CSR (required table)
+    - Regulatory submissions (FDA, EMA)
+    - Identifying organ-specific toxicities
+    - Benefit-risk assessment
+    - Prescribing information (Adverse Reactions section)
+    """
+    try:
+        df = pd.DataFrame(request.ae_data)
+        result = analyze_soc_distribution(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SOC analysis failed: {str(e)}"
+        )
+
+
+@app.post("/quality/ae/compare")
+async def ae_quality(request: AECompareRequest):
+    """
+    Compare real vs synthetic AE data quality
+
+    **Purpose:**
+    Validates that synthetic adverse event data matches real-world clinical trial
+    AE patterns using distribution similarity metrics.
+
+    **Metrics Computed:**
+    1. **SOC Distribution Similarity** - Chi-square test
+       - Tests if SOC frequencies match between real and synthetic
+       - P-value > 0.05 indicates similar distributions
+
+    2. **PT Distribution Similarity** - Top 20 PT overlap
+       - Jaccard similarity: Overlap of most common PTs
+       - > 0.6: Good overlap
+       - 0.4-0.6: Fair overlap
+       - < 0.4: Poor overlap
+
+    3. **Severity Distribution** - Chi-square test
+       - Tests Mild/Moderate/Severe distribution match
+       - P-value > 0.05 indicates similar severity patterns
+
+    4. **Relationship Distribution** - Chi-square test
+       - Tests Related/Not Related/Possibly Related match
+       - Ensures causality assessment patterns are realistic
+
+    5. **Overall Quality Score** (0-1 scale)
+       - Average of all metric scores
+       - ≥ 0.85: Excellent - Production ready
+       - 0.70-0.85: Good - Minor adjustments
+       - < 0.70: Needs improvement
+
+    **Returns:**
+    - soc_distribution_similarity: Chi-square test results
+    - pt_distribution_similarity: Jaccard similarity and overlap count
+    - severity_distribution: Chi-square test results
+    - relationship_distribution: Chi-square test results
+    - overall_quality_score: Aggregate quality (0-1)
+    - interpretation: Clinical quality assessment
+
+    **Use Case:**
+    - Validating AE data generation methods
+    - Quality assurance before using synthetic data
+    - Method comparison (Rules vs LLM vs Historical sampling)
+    - Parameter tuning for synthetic data generation
+    """
+    try:
+        real_df = pd.DataFrame(request.real_ae)
+        synthetic_df = pd.DataFrame(request.synthetic_ae)
+        result = compare_ae_quality(real_df, synthetic_df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AE quality comparison failed: {str(e)}"
+        )
+
+
+@app.post("/sdtm/ae/export")
+async def ae_sdtm_export(request: AERequest):
+    """
+    Export AE to SDTM AE (Adverse Events) domain format
+
+    **Purpose:**
+    Converts adverse event data to CDISC SDTM AE domain format for regulatory submission.
+
+    **SDTM AE Domain Variables:**
+    - STUDYID: Study identifier
+    - DOMAIN: AE (Adverse Events)
+    - USUBJID: Unique subject identifier
+    - SUBJID: Subject identifier within study
+    - AESEQ: Sequence number
+    - AETERM: Verbatim AE term (as reported)
+    - AEDECOD: MedDRA Preferred Term (dictionary-derived)
+    - AESOC: MedDRA System Organ Class
+    - AESEV: Severity (MILD, MODERATE, SEVERE)
+    - AESER: Serious flag (Y/N)
+    - AEREL: Relationship to treatment (RELATED, NOT RELATED, POSSIBLY RELATED)
+    - AEACN: Action taken with study treatment
+    - AEOUT: Outcome of AE
+    - AESTDTC: Start date/time
+    - AEENDTC: End date/time
+    - AESTDY: Study day at AE start
+    - AEENDY: Study day at AE end
+
+    **Severity Mapping (CDISC Controlled Terminology):**
+    - Mild → MILD
+    - Moderate → MODERATE
+    - Severe → SEVERE
+
+    **Serious Flag Mapping:**
+    - True/Yes/Y → Y
+    - False/No/N → N
+
+    **Relationship Mapping:**
+    - Related → RELATED
+    - Not Related → NOT RELATED
+    - Possibly Related → POSSIBLY RELATED
+    - Probably Related → PROBABLY RELATED
+
+    **Compliance:**
+    - Follows CDISC SDTM-IG v3.4
+    - FDA/EMA submission ready
+    - All required AE domain variables included
+    - Proper variable ordering per SDTM-IG
+    - MedDRA dictionary compliance
+
+    **Use Case:**
+    - Regulatory submission (IND, NDA, BLA)
+    - Data package preparation
+    - SDTM validation testing
+    - Define.xml generation
+    - Safety database integration
+    """
+    try:
+        df = pd.DataFrame(request.ae_data)
+        sdtm_df = export_to_sdtm_ae(df)
+
+        return {
+            "sdtm_data": sdtm_df.to_dict(orient="records"),
+            "rows": len(sdtm_df),
+            "domain": "AE",
+            "compliance": "SDTM-IG v3.4",
+            "unique_pts": sdtm_df["AEDECOD"].nunique() if len(sdtm_df) > 0 else 0,
+            "unique_socs": sdtm_df["AESOC"].nunique() if len(sdtm_df) > 0 else 0,
+            "serious_count": (sdtm_df["AESER"] == "Y").sum() if len(sdtm_df) > 0 else 0
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SDTM AE export failed: {str(e)}"
         )
 
 

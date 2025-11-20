@@ -235,3 +235,128 @@ def export_to_sdtm_lb(df: pd.DataFrame) -> pd.DataFrame:
     sdtm_df["LBSEQ"] = range(1, len(sdtm_df) + 1)
 
     return sdtm_df
+
+
+def export_to_sdtm_ae(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Export adverse events to SDTM AE (Adverse Events) domain
+
+    Converts AE data to CDISC SDTM AE domain format following SDTM-IG v3.4.
+
+    Args:
+        df: Adverse Events DataFrame with columns:
+            - SubjectID: Unique subject identifier
+            - PreferredTerm: MedDRA Preferred Term
+            - SystemOrganClass: MedDRA System Organ Class
+            - OnsetDate: AE onset date (YYYY-MM-DD)
+            - EndDate: AE end/resolution date (optional)
+            - Severity: "Mild", "Moderate", or "Severe"
+            - Serious: Boolean (SAE flag)
+            - RelatedToTreatment: "Related", "Not Related", "Possibly Related"
+            - TreatmentArm (optional): Treatment arm assignment
+
+    Returns:
+        SDTM AE DataFrame with standard variables
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # Initialize result list
+    rows = []
+
+    # Severity mapping to CDISC controlled terminology
+    severity_mapping = {
+        "Mild": "MILD",
+        "Moderate": "MODERATE",
+        "Severe": "SEVERE",
+        "mild": "MILD",
+        "moderate": "MODERATE",
+        "severe": "SEVERE"
+    }
+
+    # Relationship mapping
+    relationship_mapping = {
+        "Related": "RELATED",
+        "Not Related": "NOT RELATED",
+        "Possibly Related": "POSSIBLY RELATED",
+        "Probably Related": "PROBABLY RELATED",
+        "Definitely Related": "RELATED"
+    }
+
+    # Serious flag mapping
+    serious_mapping = {
+        True: "Y",
+        False: "N",
+        "Yes": "Y",
+        "No": "N",
+        "Y": "Y",
+        "N": "N"
+    }
+
+    for idx, r in df.iterrows():
+        # Convert SubjectID to USUBJID format
+        usubjid = str(r["SubjectID"]).replace("RA001", "RASTUDY")
+        subjid = str(r["SubjectID"]).split("-")[-1] if "-" in str(r["SubjectID"]) else str(r["SubjectID"])
+
+        # Get dates
+        onset_date = r.get("OnsetDate", "")
+        if pd.notna(onset_date):
+            onset_date = str(onset_date).split(" ")[0]  # Remove time component if present
+        else:
+            onset_date = ""
+
+        end_date = r.get("EndDate", "")
+        if pd.notna(end_date):
+            end_date = str(end_date).split(" ")[0]
+        else:
+            end_date = ""
+
+        # Get severity
+        severity = r.get("Severity", "")
+        aesev = severity_mapping.get(severity, severity.upper() if severity else "")
+
+        # Get serious flag
+        serious = r.get("Serious", False)
+        aeser = serious_mapping.get(serious, "N")
+
+        # Get relationship
+        relationship = r.get("RelatedToTreatment", "")
+        aerel = relationship_mapping.get(relationship, relationship.upper() if relationship else "")
+
+        # Build SDTM AE record
+        ae_record = {
+            "STUDYID": "RASTUDY",
+            "DOMAIN": "AE",
+            "USUBJID": usubjid,
+            "SUBJID": subjid,
+            "AESEQ": None,  # Sequence number (assigned below)
+            "AETERM": r.get("PreferredTerm", ""),  # Verbatim term
+            "AEDECOD": r.get("PreferredTerm", ""),  # MedDRA Preferred Term (dictionary-derived)
+            "AESOC": r.get("SystemOrganClass", ""),  # MedDRA System Organ Class
+            "AESEV": aesev,  # Severity (MILD, MODERATE, SEVERE)
+            "AESER": aeser,  # Serious (Y/N)
+            "AEREL": aerel,  # Relationship to treatment
+            "AEACN": "",  # Action taken (would be additional column)
+            "AEOUT": "",  # Outcome (would be additional column)
+            "AESTDTC": onset_date,  # Start date
+            "AEENDTC": end_date,  # End date
+            "AESTDY": None,  # Study day at start (would be calculated from RFSTDTC)
+            "AEENDY": None  # Study day at end
+        }
+
+        rows.append(ae_record)
+
+    # Create DataFrame with proper column order per SDTM-IG
+    columns = [
+        "STUDYID", "DOMAIN", "USUBJID", "SUBJID", "AESEQ",
+        "AETERM", "AEDECOD", "AESOC",
+        "AESEV", "AESER", "AEREL", "AEACN", "AEOUT",
+        "AESTDTC", "AEENDTC", "AESTDY", "AEENDY"
+    ]
+
+    sdtm_df = pd.DataFrame(rows, columns=columns)
+
+    # Assign sequence numbers
+    sdtm_df["AESEQ"] = range(1, len(sdtm_df) + 1)
+
+    return sdtm_df
