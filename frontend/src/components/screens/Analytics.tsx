@@ -130,11 +130,7 @@ export function Analytics() {
         errorMessage = err.message;
       }
 
-      // Provide helpful guidance for common errors
-      if (errorMessage.includes("Week 12")) {
-        errorMessage = "Generated data is missing 'Week 12' visits. Please generate data using standard visit schedule.";
-      }
-
+      // Backend provides helpful error messages with available visits
       setError(errorMessage);
     } finally {
       setIsLoading(false);
