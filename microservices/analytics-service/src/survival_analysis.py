@@ -130,6 +130,7 @@ def calculate_kaplan_meier(
     km_estimates = []
     n_at_risk = len(df)
     survival_prob = 1.0
+    cumulative_variance_terms = []  # For Greenwood's formula - accumulate across all time points
 
     for time in event_times:
         # Events at this time
@@ -144,14 +145,16 @@ def calculate_kaplan_meier(
             # KM formula: S(t) = S(t-1) * (1 - d_t / n_t)
             survival_prob *= (1 - n_events / n_at_risk)
 
-        # Standard error using Greenwood's formula
-        if survival_prob > 0 and n_at_risk > 0:
-            variance = survival_prob ** 2 * sum([
-                d / (n * (n - d))
-                for d, n in zip([n_events], [n_at_risk])
-                if n > d > 0
-            ])
-            se = np.sqrt(variance) if variance > 0 else 0
+        # Standard error using Greenwood's formula (cumulative across all time points)
+        # Var[S(t)] = S(t)² × Σ[d_j / (n_j × (n_j - d_j))] for all j where t_j ≤ t
+        if n_at_risk > 0 and n_events > 0 and n_at_risk > n_events:
+            cumulative_variance_terms.append(
+                n_events / (n_at_risk * (n_at_risk - n_events))
+            )
+
+        if survival_prob > 0 and cumulative_variance_terms:
+            variance = survival_prob ** 2 * sum(cumulative_variance_terms)
+            se = np.sqrt(variance)
         else:
             se = 0
 
