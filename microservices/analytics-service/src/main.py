@@ -7,9 +7,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import pandas as pd
+import numpy as np
 from datetime import datetime
 import uvicorn
 import os
+import json
+
+def convert_numpy_types(obj: Any) -> Any:
+    """
+    Recursively convert numpy types to native Python types for JSON serialization.
+    Handles dicts, lists, numpy arrays, and individual numpy values.
+    """
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, np.ndarray):
+        return convert_numpy_types(obj.tolist())
+    elif isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.bool_)):
+        return bool(obj)
+    elif isinstance(obj, np.void):
+        return None
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
 
 from stats import (
     calculate_week12_statistics,
@@ -838,7 +864,7 @@ async def demographics_baseline(request: DemographicsRequest):
     try:
         df = pd.DataFrame(request.demographics_data)
         result = calculate_baseline_characteristics(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -869,7 +895,7 @@ async def demographics_summary(request: DemographicsRequest):
     try:
         df = pd.DataFrame(request.demographics_data)
         result = calculate_demographic_summary(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -911,7 +937,7 @@ async def demographics_balance(request: DemographicsRequest):
     try:
         df = pd.DataFrame(request.demographics_data)
         result = assess_treatment_arm_balance(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -962,7 +988,7 @@ async def demographics_quality(request: DemographicsCompareRequest):
         real_df = pd.DataFrame(request.real_demographics)
         synthetic_df = pd.DataFrame(request.synthetic_demographics)
         result = compare_demographics_quality(real_df, synthetic_df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1056,7 +1082,7 @@ async def labs_summary(request: LabsRequest):
     try:
         df = pd.DataFrame(request.labs_data)
         result = calculate_labs_summary(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1102,7 +1128,7 @@ async def labs_abnormal(request: LabsRequest):
     try:
         df = pd.DataFrame(request.labs_data)
         result = detect_abnormal_labs(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1152,7 +1178,7 @@ async def labs_shift_tables(request: LabsRequest):
     try:
         df = pd.DataFrame(request.labs_data)
         result = generate_shift_tables(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1205,7 +1231,7 @@ async def labs_quality(request: LabsCompareRequest):
         real_df = pd.DataFrame(request.real_labs)
         synthetic_df = pd.DataFrame(request.synthetic_labs)
         result = compare_labs_quality(real_df, synthetic_df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1262,7 +1288,7 @@ async def labs_safety_signals(request: LabsRequest):
     try:
         df = pd.DataFrame(request.labs_data)
         result = detect_safety_signals(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1314,7 +1340,7 @@ async def labs_longitudinal(request: LabsRequest):
     try:
         df = pd.DataFrame(request.labs_data)
         result = analyze_labs_longitudinal(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1431,7 +1457,7 @@ async def ae_summary(request: AERequest):
     try:
         df = pd.DataFrame(request.ae_data)
         result = calculate_ae_summary(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1479,7 +1505,7 @@ async def ae_treatment_emergent(request: AERequest):
         df = pd.DataFrame(request.ae_data)
         treatment_start = request.treatment_start_date
         result = analyze_treatment_emergent_aes(df, treatment_start_date=treatment_start)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1536,7 +1562,7 @@ async def ae_soc_analysis(request: AERequest):
     try:
         df = pd.DataFrame(request.ae_data)
         result = analyze_soc_distribution(df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1596,7 +1622,7 @@ async def ae_quality(request: AECompareRequest):
         real_df = pd.DataFrame(request.real_ae)
         synthetic_df = pd.DataFrame(request.synthetic_ae)
         result = compare_ae_quality(real_df, synthetic_df)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1744,7 +1770,7 @@ async def aact_compare_study(request: AACTCompareStudyRequest):
             treatment_effect=request.treatment_effect,
             vitals_data=request.vitals_data
         )
-        return result
+        return convert_numpy_types(result)
     except FileNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1809,7 +1835,7 @@ async def aact_benchmark_demographics(request: AACTBenchmarkDemographicsRequest)
             indication=request.indication,
             phase=request.phase
         )
-        return result
+        return convert_numpy_types(result)
     except FileNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1880,7 +1906,7 @@ async def aact_benchmark_ae(request: AACTBenchmarkAERequest):
             indication=request.indication,
             phase=request.phase
         )
-        return result
+        return convert_numpy_types(result)
     except FileNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1962,7 +1988,7 @@ async def study_comprehensive_summary(request: ComprehensiveStudyRequest):
             indication=request.indication,
             phase=request.phase
         )
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2048,7 +2074,7 @@ async def study_cross_domain_correlations(request: CrossDomainRequest):
             labs_data=labs_df,
             ae_data=ae_df
         )
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2150,7 +2176,7 @@ async def study_trial_dashboard(request: TrialDashboardRequest):
             indication=request.indication,
             phase=request.phase
         )
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2238,7 +2264,7 @@ async def benchmark_performance(request: MethodComparisonRequest):
     """
     try:
         result = compare_generation_methods(request.methods_data)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2335,7 +2361,7 @@ async def benchmark_quality_scores(request: AggregateQualityRequest):
             ae_quality=request.ae_quality,
             aact_similarity=request.aact_similarity
         )
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2451,7 +2477,7 @@ async def study_recommendations(request: RecommendationsRequest):
             indication=request.indication,
             phase=request.phase
         )
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2489,7 +2515,7 @@ async def analyze_survival_comprehensive(request: SurvivalAnalysisRequest):
             median_survival_placebo=request.median_survival_placebo,
             seed=request.seed
         )
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2516,7 +2542,7 @@ async def calculate_km_curves(request: Dict[str, Any]):
         treatment_arm = request.get("treatment_arm")
 
         result = calculate_kaplan_meier(survival_data, treatment_arm)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2546,7 +2572,7 @@ async def perform_log_rank_test(request: Dict[str, Any]):
         arm2 = request.get("arm2", "Placebo")
 
         result = log_rank_test(survival_data, arm1, arm2)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2579,7 +2605,7 @@ async def calculate_hr(request: Dict[str, Any]):
         treatment_arm = request.get("treatment_arm", "Active")
 
         result = calculate_hazard_ratio(survival_data, reference_arm, treatment_arm)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2624,7 +2650,7 @@ async def generate_all_adam(request: AdamGenerationRequest):
             survival_data=request.survival_data,
             study_id=request.study_id
         )
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2655,7 +2681,7 @@ async def generate_adsl_dataset(request: AdamGenerationRequest):
             ae_data=request.ae_data,
             study_id=request.study_id
         )
-        return {"ADSL": adsl, "n_subjects": len(adsl)}
+        return convert_numpy_types({"ADSL": adsl, "n_subjects": len(adsl)})
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2701,7 +2727,7 @@ async def generate_all_tlf(request: TLFRequest):
             vitals_data=request.vitals_data,
             survival_data=request.survival_data
         )
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2737,7 +2763,7 @@ async def generate_table1(request: Dict[str, Any]):
         include_stats = request.get("include_stats", True)
 
         result = generate_table1_demographics(demographics_data, include_stats)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2771,7 +2797,7 @@ async def generate_table2_ae(request: Dict[str, Any]):
         min_incidence = request.get("min_incidence", 5.0)
 
         result = generate_ae_summary_table(ae_data, by_soc, min_incidence)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2807,7 +2833,7 @@ async def generate_table3_efficacy(request: Dict[str, Any]):
         endpoint_type = request.get("endpoint_type", "vitals")
 
         result = generate_efficacy_table(vitals_data, survival_data, endpoint_type)
-        return result
+        return convert_numpy_types(result)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
