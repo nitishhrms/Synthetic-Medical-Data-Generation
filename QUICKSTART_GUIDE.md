@@ -322,6 +322,103 @@ cat generated_data.json | python -m json.tool | head -50
 
 ---
 
+### Demo 2b: Generate AACT-Enhanced Data (Recommended)
+
+#### Why Use AACT-Enhanced Generation?
+
+AACT-enhanced endpoints use **real data from 557,805 clinical trials** on ClinicalTrials.gov to make synthetic data indistinguishable from real trials:
+
+**Benefits**:
+- ✅ Real baseline vitals (e.g., 152/92 mmHg for hypertension vs generic 140/85)
+- ✅ Real dropout rates (e.g., 13.4% actual vs 15% estimated)
+- ✅ Real adverse event patterns from actual trials
+- ✅ Real demographics and visit schedules
+- ✅ Real geographic distributions
+
+#### Generate AACT-Enhanced Hypertension Trial Data
+
+```bash
+curl -X POST http://localhost:8002/generate/mvn-aact \
+  -H "Content-Type: application/json" \
+  -d '{
+    "indication": "Hypertension",
+    "phase": "Phase 3",
+    "n_per_arm": 10,
+    "target_effect": -5.0,
+    "use_duration": true
+  }' > aact_generated_data.json
+```
+
+**What makes this more realistic:**
+- Baseline SBP/DBP from actual hypertension Phase 3 trials
+- Real dropout rate (13.4% from AACT data)
+- Visit schedules based on actual trial durations (18 months median)
+- Demographics match real hypertension trial populations
+
+**View the AACT-enhanced data:**
+```bash
+cat aact_generated_data.json | python -m json.tool | head -50
+```
+
+**Expected output** (notice more realistic baseline values):
+```json
+[
+  {
+    "SubjectID": "RA001-001",
+    "VisitName": "Screening",
+    "TreatmentArm": "Active",
+    "SystolicBP": 152,    // Real hypertension baseline (not generic 140)
+    "DiastolicBP": 92,    // Real hypertension baseline (not generic 85)
+    "HeartRate": 74,      // From actual trial data
+    "Temperature": 36.6
+  },
+  ...
+]
+```
+
+#### Generate Complete Study with AACT
+
+Generate all data types (Vitals, Demographics, Labs, AEs) with consistent Subject IDs:
+
+```bash
+curl -X POST http://localhost:8002/generate/complete-study \
+  -H "Content-Type: application/json" \
+  -d '{
+    "indication": "Hypertension",
+    "phase": "Phase 3",
+    "n_per_arm": 10,
+    "target_effect": -5.0,
+    "use_aact": true
+  }' > complete_study.json
+```
+
+**Response includes**:
+- `vitals`: Vital signs for all visits
+- `demographics`: Age, gender, race, ethnicity, country
+- `labs`: Glucose, creatinine, electrolytes
+- `adverse_events`: Headache, fatigue, dizziness (real AE patterns)
+
+#### Available Indications
+
+Check what indications are available in AACT:
+
+```bash
+curl http://localhost:8002/aact/indications
+```
+
+**Common indications** with AACT data:
+- Hypertension
+- Diabetes
+- Cancer (various types)
+- Heart Failure
+- COPD
+- Asthma
+- Depression
+- Alzheimer's Disease
+- Rheumatoid Arthritis
+
+---
+
 ### Demo 3: Validate Clinical Data
 
 #### Validate Generated Data Against Clinical Constraints
