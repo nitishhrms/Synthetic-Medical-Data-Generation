@@ -14,7 +14,7 @@ export interface VitalsRecord {
 }
 
 // Generation Methods
-export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm" | "bayesian" | "mice";
+export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm" | "bayesian" | "mice" | "diffusion";
 
 // Generation Request
 export interface GenerationRequest {
@@ -29,6 +29,7 @@ export interface GenerationRequest {
   missing_rate?: number; // for MICE
   estimator?: string; // for MICE - "bayesian_ridge" or "random_forest"
   n_imputations?: number; // for MICE
+  n_steps?: number; // for diffusion - number of diffusion steps (10-200)
 }
 
 // Generation Response
@@ -464,7 +465,7 @@ export interface ComprehensiveStudyRequest {
   n_per_arm?: number;
   target_effect?: number;
   seed?: number;
-  method?: "mvn" | "bootstrap" | "rules";
+  method?: "mvn" | "bootstrap" | "rules" | "diffusion";
   use_duration?: boolean;
 }
 

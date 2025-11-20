@@ -244,7 +244,23 @@ def generate_vitals_mvn(n_per_arm=50, target_effect=-5.0, seed=123,
     if train_source == "current" and isinstance(current_df, pd.DataFrame) and not current_df.empty:
         train_df = current_df.copy()
     else:
-        train_df = load_pilot_vitals()
+        # Create synthetic baseline from default statistics (no pilot CSV needed)
+        baseline_rows = []
+        baseline_subjects = 50
+        for i in range(baseline_subjects):
+            sid = f"BASE-{i+1:03d}"
+            arm = "Active" if i < baseline_subjects // 2 else "Placebo"
+            for visit in VISITS[:4]:
+                sbp = int(np.clip(rng.normal(140, 15), 95, 200))
+                dbp = int(np.clip(rng.normal(85, 10), 55, 130))
+                hr = int(np.clip(rng.normal(72, 10), 50, 120))
+                temp = float(np.clip(rng.normal(36.7, 0.3), 35.0, 40.0))
+                baseline_rows.append([sid, visit, arm, sbp, dbp, hr, temp])
+
+        train_df = pd.DataFrame(
+            baseline_rows,
+            columns=["SubjectID", "VisitName", "TreatmentArm", "SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
+        )
 
     models = fit_mvn_models(train_df)
 
@@ -954,19 +970,31 @@ def generate_vitals_mvn_aact(
         baseline_vitals = get_baseline_vitals(indication, phase)
         demographics = get_demographics(indication, phase)
 
-        # Extract baseline statistics
-        sbp_mean = baseline_vitals.get('systolic', {}).get('mean', 140.0)
-        sbp_std = baseline_vitals.get('systolic', {}).get('std', 15.0)
-        dbp_mean = baseline_vitals.get('diastolic', {}).get('mean', 85.0)
-        dbp_std = baseline_vitals.get('diastolic', {}).get('std', 10.0)
-        hr_mean = baseline_vitals.get('heart_rate', {}).get('mean', 72.0)
-        hr_std = baseline_vitals.get('heart_rate', {}).get('std', 10.0)
-        temp_mean = baseline_vitals.get('temperature', {}).get('mean', 36.7) if 'temperature' in baseline_vitals else 36.7
-        temp_std = baseline_vitals.get('temperature', {}).get('std', 0.3) if 'temperature' in baseline_vitals else 0.3
+        # Extract baseline statistics with NaN protection
+        def safe_get(d, key1, key2, default):
+            """Safely get nested dict value, returning default if missing or NaN"""
+            val = d.get(key1, {}).get(key2, default) if d else default
+            # Check for NaN/None and use default
+            if val is None or (isinstance(val, (float, int)) and not np.isfinite(val)):
+                return default
+            return val
 
-        # Get realistic study duration
-        if use_duration and 'actual_duration' in demographics:
-            duration_months = int(demographics['actual_duration'].get('median_months', 12))
+        sbp_mean = safe_get(baseline_vitals, 'systolic', 'mean', 140.0)
+        sbp_std = safe_get(baseline_vitals, 'systolic', 'std', 15.0)
+        dbp_mean = safe_get(baseline_vitals, 'diastolic', 'mean', 85.0)
+        dbp_std = safe_get(baseline_vitals, 'diastolic', 'std', 10.0)
+        hr_mean = safe_get(baseline_vitals, 'heart_rate', 'mean', 72.0)
+        hr_std = safe_get(baseline_vitals, 'heart_rate', 'std', 10.0)
+        temp_mean = safe_get(baseline_vitals, 'temperature', 'mean', 36.7)
+        temp_std = safe_get(baseline_vitals, 'temperature', 'std', 0.3)
+
+        # Get realistic study duration with NaN protection
+        if use_duration and demographics and 'actual_duration' in demographics:
+            duration_val = demographics['actual_duration'].get('median_months', 12)
+            if duration_val is None or not np.isfinite(duration_val):
+                duration_months = 12
+            else:
+                duration_months = int(duration_val)
         else:
             duration_months = 12  # Default
     else:
@@ -1082,7 +1110,7 @@ def generate_vitals_bootstrap_aact(
     Generate vitals using Bootstrap with AACT real-world data (v4.0)
 
     Enhancements over base Bootstrap generator:
-    - Uses pilot data enriched with AACT baseline patterns
+    - Creates synthetic baseline from AACT statistics (no pilot CSV needed)
     - Uses real study duration for visit schedule
     - Maintains all original Bootstrap quality
 
@@ -1098,31 +1126,73 @@ def generate_vitals_bootstrap_aact(
     Returns:
         DataFrame with synthetic vitals
     """
-    # Load pilot data
-    pilot_df = load_pilot_vitals(use_cleaned=True)
+    rng = np.random.default_rng(seed)
 
-    # Get AACT data for visit schedule
-    if AACT_AVAILABLE and use_duration:
-        demographics = get_demographics(indication, phase)
-        if 'actual_duration' in demographics:
-            duration_months = int(demographics['actual_duration'].get('median_months', 12))
-            visit_names, _ = generate_visit_schedule(duration_months, n_visits=4)
+    # Get AACT baseline vitals for this indication/phase with NaN protection
+    if AACT_AVAILABLE:
+        vitals_stats = get_baseline_vitals(indication, phase)
 
-            # Map pilot visits to new visit names
-            visit_mapping = {old: new for old, new in zip(VISITS, visit_names)}
-            pilot_df["VisitName"] = pilot_df["VisitName"].map(visit_mapping).fillna(pilot_df["VisitName"])
+        def safe_get(d, key1, key2, default):
+            """Safely get nested dict value, returning default if missing or NaN"""
+            val = d.get(key1, {}).get(key2, default) if d else default
+            if val is None or (isinstance(val, (float, int)) and not np.isfinite(val)):
+                return default
+            return val
 
-    # Use provided visit schedule or get from AACT
-    if visit_schedule is None and AACT_AVAILABLE and use_duration:
-        demographics = get_demographics(indication, phase)
-        if 'actual_duration' in demographics:
-            duration_months = int(demographics['actual_duration'].get('median_months', 12))
-            visit_names, _ = generate_visit_schedule(duration_months, n_visits=4)
-            visit_schedule = visit_names
+        sbp_mean = safe_get(vitals_stats, 'systolic', 'mean', 140)
+        sbp_std = safe_get(vitals_stats, 'systolic', 'std', 15)
+        dbp_mean = safe_get(vitals_stats, 'diastolic', 'mean', 85)
+        dbp_std = safe_get(vitals_stats, 'diastolic', 'std', 10)
+        hr_mean = safe_get(vitals_stats, 'heart_rate', 'mean', 72)
+        hr_std = safe_get(vitals_stats, 'heart_rate', 'std', 10)
+        temp_mean = safe_get(vitals_stats, 'temperature', 'mean', 36.7)
+        temp_std = safe_get(vitals_stats, 'temperature', 'std', 0.3)
+    else:
+        # Fallback defaults
+        sbp_mean, sbp_std = 140, 15
+        dbp_mean, dbp_std = 85, 10
+        hr_mean, hr_std = 72, 10
+        temp_mean, temp_std = 36.7, 0.3
 
-    # Use standard bootstrap generator with modified pilot data and coordination parameters
+    # Get visit schedule from AACT with NaN protection
+    if visit_schedule is None:
+        if AACT_AVAILABLE and use_duration:
+            demographics = get_demographics(indication, phase)
+            if demographics and 'actual_duration' in demographics:
+                duration_val = demographics['actual_duration'].get('median_months', 12)
+                if duration_val is not None and np.isfinite(duration_val):
+                    duration_months = int(duration_val)
+                    visit_names, _ = generate_visit_schedule(duration_months, n_visits=4)
+                    visit_schedule = visit_names
+
+        if visit_schedule is None:
+            visit_schedule = VISITS  # Fallback to standard visits
+
+    # Create synthetic baseline dataset from AACT statistics (instead of loading pilot CSV)
+    # Generate a small baseline dataset (50 subjects, 4 visits = 200 rows)
+    baseline_rows = []
+    baseline_subjects = 50
+    for i in range(baseline_subjects):
+        sid = f"BASE-{i+1:03d}"
+        arm = "Active" if i < baseline_subjects // 2 else "Placebo"
+
+        for visit in visit_schedule[:4]:  # Use first 4 visits
+            # Generate realistic vitals from AACT distributions
+            sbp = int(np.clip(rng.normal(sbp_mean, sbp_std), 95, 200))
+            dbp = int(np.clip(rng.normal(dbp_mean, dbp_std), 55, 130))
+            hr = int(np.clip(rng.normal(hr_mean, hr_std), 50, 120))
+            temp = float(np.clip(rng.normal(temp_mean, temp_std), 35.0, 40.0))
+
+            baseline_rows.append([sid, visit, arm, sbp, dbp, hr, temp])
+
+    baseline_df = pd.DataFrame(
+        baseline_rows,
+        columns=["SubjectID", "VisitName", "TreatmentArm", "SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
+    )
+
+    # Use standard bootstrap generator with AACT-generated baseline and coordination parameters
     result = generate_vitals_bootstrap(
-        training_df=pilot_df,
+        training_df=baseline_df,  # Use AACT-based baseline instead of pilot CSV
         n_per_arm=n_per_arm,
         target_effect=target_effect,
         jitter_frac=jitter_frac,
@@ -1171,18 +1241,29 @@ def generate_vitals_rules_aact(
     """
     rng = np.random.default_rng(seed)
 
-    # Get AACT baseline statistics
+    # Get AACT baseline statistics with NaN protection
     if AACT_AVAILABLE:
         baseline_vitals = get_baseline_vitals(indication, phase)
         demographics = get_demographics(indication, phase)
 
-        base_sbp = baseline_vitals.get('systolic', {}).get('mean', 130.0)
-        sbp_std = baseline_vitals.get('systolic', {}).get('std', 10.0)
-        base_dbp = baseline_vitals.get('diastolic', {}).get('mean', 80.0)
-        dbp_std = baseline_vitals.get('diastolic', {}).get('std', 8.0)
+        def safe_get(d, key1, key2, default):
+            """Safely get nested dict value, returning default if missing or NaN"""
+            val = d.get(key1, {}).get(key2, default) if d else default
+            if val is None or (isinstance(val, (float, int)) and not np.isfinite(val)):
+                return default
+            return val
 
-        if visit_schedule is None and use_duration and 'actual_duration' in demographics:
-            duration_months = int(demographics['actual_duration'].get('median_months', 12))
+        base_sbp = safe_get(baseline_vitals, 'systolic', 'mean', 130.0)
+        sbp_std = safe_get(baseline_vitals, 'systolic', 'std', 10.0)
+        base_dbp = safe_get(baseline_vitals, 'diastolic', 'mean', 80.0)
+        dbp_std = safe_get(baseline_vitals, 'diastolic', 'std', 8.0)
+
+        if visit_schedule is None and use_duration and demographics and 'actual_duration' in demographics:
+            duration_val = demographics['actual_duration'].get('median_months', 12)
+            if duration_val is None or not np.isfinite(duration_val):
+                duration_months = 12
+            else:
+                duration_months = int(duration_val)
             visit_names, _ = generate_visit_schedule(duration_months, n_visits=4)
         else:
             visit_names = visit_schedule if visit_schedule is not None else VISITS
@@ -1435,19 +1516,30 @@ def generate_vitals_bayesian_aact(
     except ImportError:
         raise ImportError("Bayesian generator not available. Install: pip install pgmpy")
 
-    # Get AACT baseline vitals and demographics
+    # Get AACT baseline vitals and demographics with NaN protection
     if AACT_AVAILABLE:
         baseline_vitals = get_baseline_vitals(indication, phase)
         demographics = get_demographics(indication, phase)
 
+        def safe_get(d, key1, key2, default):
+            """Safely get nested dict value, returning default if missing or NaN"""
+            val = d.get(key1, {}).get(key2, default) if d else default
+            if val is None or (isinstance(val, (float, int)) and not np.isfinite(val)):
+                return default
+            return val
+
         # Extract AACT parameters (will use defaults if not available)
-        sbp_mean = baseline_vitals.get('systolic', {}).get('mean', 140.0)
-        sbp_std = baseline_vitals.get('systolic', {}).get('std', 15.0)
+        sbp_mean = safe_get(baseline_vitals, 'systolic', 'mean', 140.0)
+        sbp_std = safe_get(baseline_vitals, 'systolic', 'std', 15.0)
 
         # Get study duration
         duration_months = 12  # default
-        if use_duration and 'actual_duration' in demographics:
-            duration_months = int(demographics['actual_duration'].get('median_months', 12))
+        if use_duration and demographics and 'actual_duration' in demographics:
+            duration_val = demographics['actual_duration'].get('median_months', 12)
+            if duration_val is None or not np.isfinite(duration_val):
+                duration_months = 12
+            else:
+                duration_months = int(duration_val)
 
         print(f"✓ Using AACT data for {indication} {phase}")
         print(f"  Baseline SBP: {sbp_mean:.1f} ± {sbp_std:.1f} mmHg")
@@ -1554,19 +1646,30 @@ def generate_vitals_mice_aact(
     except ImportError:
         raise ImportError("MICE generator not available. Install: pip install scikit-learn")
 
-    # Get AACT baseline vitals and demographics
+    # Get AACT baseline vitals and demographics with NaN protection
     if AACT_AVAILABLE:
         baseline_vitals = get_baseline_vitals(indication, phase)
         demographics = get_demographics(indication, phase)
 
+        def safe_get(d, key1, key2, default):
+            """Safely get nested dict value, returning default if missing or NaN"""
+            val = d.get(key1, {}).get(key2, default) if d else default
+            if val is None or (isinstance(val, (float, int)) and not np.isfinite(val)):
+                return default
+            return val
+
         # Extract AACT parameters
-        sbp_mean = baseline_vitals.get('systolic', {}).get('mean', 140.0)
-        sbp_std = baseline_vitals.get('systolic', {}).get('std', 15.0)
+        sbp_mean = safe_get(baseline_vitals, 'systolic', 'mean', 140.0)
+        sbp_std = safe_get(baseline_vitals, 'systolic', 'std', 15.0)
 
         # Get study duration
         duration_months = 12  # default
-        if use_duration and 'actual_duration' in demographics:
-            duration_months = int(demographics['actual_duration'].get('median_months', 12))
+        if use_duration and demographics and 'actual_duration' in demographics:
+            duration_val = demographics['actual_duration'].get('median_months', 12)
+            if duration_val is None or not np.isfinite(duration_val):
+                duration_months = 12
+            else:
+                duration_months = int(duration_val)
 
         print(f"✓ Using AACT data for {indication} {phase}")
         print(f"  Baseline SBP: {sbp_mean:.1f} ± {sbp_std:.1f} mmHg")
@@ -1667,9 +1770,13 @@ def generate_labs_aact(
     duration_months = 12  # default
     if AACT_AVAILABLE and use_duration:
         demographics = get_demographics(indication, phase)
-        if 'actual_duration' in demographics:
-            duration_months = int(demographics['actual_duration'].get('median_months', 12))
-            print(f"✓ Using AACT duration: {duration_months} months for {indication} {phase}")
+        if demographics and 'actual_duration' in demographics:
+            duration_val = demographics['actual_duration'].get('median_months', 12)
+            if duration_val is not None and np.isfinite(duration_val):
+                duration_months = int(duration_val)
+                print(f"✓ Using AACT duration: {duration_months} months for {indication} {phase}")
+            else:
+                print(f"⚠️  AACT duration data invalid (NaN), using default: 12 months")
     else:
         if use_duration:
             print("⚠️  AACT data not available, using default duration: 12 months")

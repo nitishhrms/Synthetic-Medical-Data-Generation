@@ -56,6 +56,7 @@ export function DataGeneration() {
     { id: "rules", name: "Rules", speed: "~80K records/sec" },
     { id: "bayesian", name: "Bayesian", speed: "~5K records/sec" },
     { id: "mice", name: "MICE", speed: "~3K records/sec" },
+    { id: "diffusion", name: "Diffusion", speed: "~10K records/sec" },
   ];
 
   const handleGenerateVitals = async () => {
@@ -88,6 +89,12 @@ export function DataGeneration() {
           break;
         case "mice":
           response = await dataGenerationApi.generateMICE(params);
+          break;
+        case "diffusion":
+          response = await dataGenerationApi.generateDiffusion({
+            ...params,
+            n_steps: 50, // Default diffusion steps
+          });
           break;
         default:
           throw new Error("Unknown method");
@@ -770,6 +777,7 @@ export function DataGeneration() {
                     <option value="mvn">MVN (Fastest)</option>
                     <option value="bootstrap">Bootstrap</option>
                     <option value="rules">Rules-based</option>
+                    <option value="diffusion">Diffusion (Advanced)</option>
                   </select>
                 </div>
               </div>

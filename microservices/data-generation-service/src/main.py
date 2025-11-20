@@ -1401,9 +1401,9 @@ class GenerateLabsRequest(BaseModel):
 
 class ComprehensiveStudyRequest(BaseModel):
     """Request model for comprehensive study data generation with AACT enhancements"""
-    n_per_arm: int = Field(default=50, ge=10, le=200, description="Number of subjects per treatment arm")
+    n_per_arm: int = Field(default=50, ge=10, le=500, description="Number of subjects per treatment arm")
     target_effect: float = Field(default=-5.0, description="Target treatment effect for vitals (mmHg)")
-    method: str = Field(default="mvn", description="Generation method: 'mvn', 'rules', or 'bootstrap'")
+    method: str = Field(default="mvn", description="Generation method: 'mvn', 'rules', 'bootstrap', or 'diffusion'")
     indication: str = Field(default="hypertension", description="Disease indication for AACT-enhanced generation")
     phase: str = Field(default="Phase 3", description="Trial phase for AACT-enhanced generation")
     include_vitals: bool = Field(default=True, description="Generate vitals data")
@@ -1411,6 +1411,7 @@ class ComprehensiveStudyRequest(BaseModel):
     include_ae: bool = Field(default=True, description="Generate adverse events data")
     include_labs: bool = Field(default=True, description="Generate lab results data")
     use_aact: bool = Field(default=True, description="Use AACT-enhanced generators (recommended)")
+    use_duration: bool = Field(default=True, description="Use AACT actual duration for visit scheduling")
     seed: int = Field(default=42, description="Random seed for reproducibility")
 
 class ComprehensiveStudyResponse(BaseModel):
@@ -1915,7 +1916,7 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         visit_schedule=visit_schedule,     # 🔑 Coordinated
                         treatment_arms=treatment_arms      # 🔑 Coordinated
                     )
-                else:  # bootstrap
+                elif request.method == "bootstrap":
                     vitals_df = generate_vitals_bootstrap_aact(
                         indication=request.indication,
                         phase=request.phase,
@@ -1926,8 +1927,15 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         visit_schedule=visit_schedule,     # 🔑 Coordinated
                         treatment_arms=treatment_arms      # 🔑 Coordinated
                     )
+                else:  # diffusion
+                    vitals_df = generate_with_simple_diffusion(
+                        n_per_arm=request.n_per_arm,
+                        target_effect=request.target_effect,
+                        seed=request.seed,
+                        n_steps=50  # Default diffusion steps
+                    )
             else:
-                # Use original generators
+                # Use original generators (fallback when AACT disabled)
                 if request.method == "mvn":
                     vitals_df = generate_vitals_mvn(
                         n_per_arm=request.n_per_arm,
@@ -1940,8 +1948,36 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         target_effect=request.target_effect,
                         seed=request.seed
                     )
-                else:  # bootstrap
-                    vitals_df = generate_vitals_mvn(
+                elif request.method == "diffusion":
+                    vitals_df = generate_with_simple_diffusion(
+                        n_per_arm=request.n_per_arm,
+                        target_effect=request.target_effect,
+                        seed=request.seed,
+                        n_steps=50
+                    )
+                else:  # bootstrap (fallback without AACT - create synthetic baseline)
+                    # Create synthetic baseline from default statistics
+                    import pandas as pd
+                    rng = np.random.default_rng(request.seed)
+                    baseline_rows = []
+                    baseline_subjects = 50
+                    for i in range(baseline_subjects):
+                        sid = f"BASE-{i+1:03d}"
+                        arm = "Active" if i < baseline_subjects // 2 else "Placebo"
+                        for visit in VISITS[:4]:
+                            sbp = int(np.clip(rng.normal(140, 15), 95, 200))
+                            dbp = int(np.clip(rng.normal(85, 10), 55, 130))
+                            hr = int(np.clip(rng.normal(72, 10), 50, 120))
+                            temp = float(np.clip(rng.normal(36.7, 0.3), 35.0, 40.0))
+                            baseline_rows.append([sid, visit, arm, sbp, dbp, hr, temp])
+
+                    baseline_df = pd.DataFrame(
+                        baseline_rows,
+                        columns=["SubjectID", "VisitName", "TreatmentArm", "SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
+                    )
+
+                    vitals_df = generate_vitals_bootstrap(
+                        training_df=baseline_df,
                         n_per_arm=request.n_per_arm,
                         target_effect=request.target_effect,
                         seed=request.seed
@@ -2253,99 +2289,7 @@ async def get_indication_stats(indication: str, phase: str = "Phase 3"):
         )
 
 
-# ============================================================================
-# Scalability Features for College Project
-# ============================================================================
 
-class ComprehensiveStudyRequest(BaseModel):
-    """Request model for comprehensive study generation using AACT data"""
-    indication: str = Field(default="hypertension", description="Disease indication")
-    phase: str = Field(default="Phase 3", description="Trial phase")
-    n_per_arm: int = Field(default=50, ge=1, le=500, description="Subjects per arm")
-    target_effect: float = Field(default=-5.0, description="Target treatment effect")
-    seed: int = Field(default=42, description="Random seed")
-    method: str = Field(default="mvn", description="Generation method: mvn, bootstrap, or rules")
-    use_duration: bool = Field(default=True, description="Use AACT duration for visits")
-
-class ComprehensiveStudyResponse(BaseModel):
-    """Response model for comprehensive study generation"""
-    vitals: List[Dict[str, Any]]
-    demographics: List[Dict[str, Any]]
-    labs: List[Dict[str, Any]]
-    adverse_events: List[Dict[str, Any]]
-    metadata: Dict[str, Any]
-
-@app.post("/generate/comprehensive-study", response_model=ComprehensiveStudyResponse)
-async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
-    """
-    Generate complete clinical trial with all domains coordinated
-
-    **AACT-Enhanced**: Uses real-world statistics from 557K+ trials
-    **Coordinated**: Same subject IDs, visit schedules, treatment arms across all domains
-    **Complete**: Returns vitals, demographics, labs, and adverse events in one call
-    """
-    try:
-        import time
-        start_time = time.time()
-
-        # Generate coordinated study components
-        n_total = request.n_per_arm * 2
-        subject_ids = [f"RA001-{i:03d}" for i in range(1, n_total + 1)]
-        treatment_arms = {sid: "Active" if i < request.n_per_arm else "Placebo"
-                         for i, sid in enumerate(subject_ids)}
-
-        # Get visit schedule
-        try:
-            from aact_utils import get_demographics as aact_get_demographics
-            demographics_data = aact_get_demographics(request.indication, request.phase)
-            duration_months = int(demographics_data.get('actual_duration', {}).get('median_months', 12))
-        except:
-            duration_months = 12
-        visit_schedule, _ = generate_visit_schedule(duration_months, n_visits=4) if request.use_duration else (["Screening", "Day 1", "Week 4", "Week 12"], [])
-
-        # Generate vitals
-        if request.method == "mvn":
-            vitals_df = generate_vitals_mvn_aact(
-                indication=request.indication, phase=request.phase, n_per_arm=request.n_per_arm,
-                target_effect=request.target_effect, seed=request.seed,
-                subject_ids=subject_ids, visit_schedule=visit_schedule, treatment_arms=treatment_arms
-            )
-        elif request.method == "bootstrap":
-            vitals_df = generate_vitals_bootstrap_aact(
-                indication=request.indication, phase=request.phase, n_per_arm=request.n_per_arm,
-                target_effect=request.target_effect, seed=request.seed,
-                subject_ids=subject_ids, visit_schedule=visit_schedule, treatment_arms=treatment_arms
-            )
-        else:
-            vitals_df = generate_vitals_rules_aact(
-                indication=request.indication, phase=request.phase, n_per_arm=request.n_per_arm,
-                target_effect=request.target_effect, seed=request.seed,
-                subject_ids=subject_ids, visit_schedule=visit_schedule, treatment_arms=treatment_arms
-            )
-
-        # Generate other domains
-        demographics_df = generate_demographics_aact(request.indication, request.phase, n_total, request.seed + 1, subject_ids, treatment_arms)
-        labs_df = generate_labs_aact(request.indication, request.phase, n_total, request.seed + 2, request.use_duration, subject_ids, visit_schedule, treatment_arms)
-        ae_df = generate_oncology_ae_aact(request.indication, request.phase, n_total, request.seed + 3, subject_ids, visit_schedule, treatment_arms)
-
-        total_time = time.time() - start_time
-
-        return ComprehensiveStudyResponse(
-            vitals=vitals_df.to_dict(orient="records"),
-            demographics=demographics_df.to_dict(orient="records"),
-            labs=labs_df.to_dict(orient="records"),
-            adverse_events=ae_df.to_dict(orient="records"),
-            metadata={
-                "indication": request.indication,
-                "phase": request.phase,
-                "n_subjects": n_total,
-                "total_records": len(vitals_df) + len(demographics_df) + len(labs_df) + len(ae_df),
-                "generation_time_ms": round(total_time * 1000, 2),
-                "aact_enhanced": True
-            }
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Comprehensive study generation failed: {str(e)}")
 
 
 @app.get("/benchmark/performance")

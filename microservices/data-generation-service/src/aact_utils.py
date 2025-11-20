@@ -78,7 +78,11 @@ class AACTStatisticsLoader:
 
         try:
             with open(self.cache_path, 'r') as f:
-                self.statistics = json.load(f)
+                # Load JSON with NaN handling (converts nan to None)
+                content = f.read()
+                # Replace JSON nan with null for proper parsing
+                content = content.replace(': nan,', ': null,').replace(': nan}', ': null}')
+                self.statistics = json.loads(content)
         except Exception as e:
             warnings.warn(
                 f"Error loading AACT cache: {e}. Using fallback values.",

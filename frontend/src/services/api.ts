@@ -179,6 +179,30 @@ export const dataGenerationApi = {
     };
   },
 
+  async generateDiffusion(params: GenerationRequest & { n_steps?: number }): Promise<GenerationResponse> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/diffusion`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_per_arm: params.n_per_arm ?? 50,
+        target_effect: params.target_effect ?? -5.0,
+        seed: params.seed ?? 42,
+        n_steps: params.n_steps ?? 50,
+      }),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "diffusion",
+        generation_time_ms: 0,
+      },
+    };
+  },
+
   async generateLLM(params: GenerationRequest): Promise<GenerationResponse> {
     const response = await fetch(`${DATA_GEN_SERVICE}/generate/llm`, {
       method: "POST",
