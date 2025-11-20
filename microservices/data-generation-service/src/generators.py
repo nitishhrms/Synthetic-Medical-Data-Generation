@@ -532,6 +532,16 @@ def generate_vitals_bootstrap(
         noise = rng.normal(0.0, scale, size=len(s))
         s_noisy = pd.to_numeric(s, errors="coerce") + noise
 
+        # Handle any NaN values that might have appeared
+        if s_noisy.isna().any():
+            # Fill NaN with column mean from base data
+            col_mean = base.mean()
+            if pd.isna(col_mean):
+                # Use default fallback values
+                defaults = {"SystolicBP": 140, "DiastolicBP": 85, "HeartRate": 72, "Temperature": 36.7}
+                col_mean = defaults.get(col, 0)
+            s_noisy = s_noisy.fillna(col_mean)
+
         # Clip to clinical constraints
         col_min, col_max = constraints[col]
         s_noisy = np.clip(s_noisy, col_min, col_max)
@@ -613,25 +623,40 @@ def generate_vitals_bootstrap(
 
         out["SubjectID"] = out["SubjectID"].map(subject_mapping)
 
-    # ===== Apply Treatment Effect at Week 12 =====
-    week12 = out["VisitName"] == "Week 12"
+    # ===== Apply Treatment Effect at Final Visit =====
+    # Use provided visit_schedule or default to standard visits
+    if visit_schedule is not None and len(visit_schedule) > 0:
+        final_visit = visit_schedule[-1]  # Use last visit from coordinated schedule
+    else:
+        final_visit = "Week 12"  # Default fallback
+
+    final_visit_mask = out["VisitName"] == final_visit
     active = out["TreatmentArm"] == "Active"
     placebo = out["TreatmentArm"] == "Placebo"
 
-    # Calculate current effect
-    active_week12_mean = out[week12 & active]["SystolicBP"].mean()
-    placebo_week12_mean = out[week12 & placebo]["SystolicBP"].mean()
-    current_effect = active_week12_mean - placebo_week12_mean
+    # Calculate current effect with NaN protection
+    active_final_mean = out[final_visit_mask & active]["SystolicBP"].mean()
+    placebo_final_mean = out[final_visit_mask & placebo]["SystolicBP"].mean()
 
-    # Adjust to target effect
-    adjustment = target_effect - current_effect
+    # Check for NaN values before calculating effect
+    if pd.isna(active_final_mean) or pd.isna(placebo_final_mean):
+        # If we don't have data for final visit, skip adjustment
+        print(f"⚠️  Warning: Cannot calculate treatment effect - missing data for {final_visit}")
+        adjustment = 0
+    else:
+        current_effect = active_final_mean - placebo_final_mean
+        adjustment = target_effect - current_effect
 
-    # Apply adjustment to Active arm at Week 12
-    mask = week12 & active
-    out.loc[mask, "SystolicBP"] = out.loc[mask, "SystolicBP"] + adjustment
-
-    # Re-clip after adjustment
-    out.loc[mask, "SystolicBP"] = np.clip(out.loc[mask, "SystolicBP"], 95, 200).astype(int)
+    # Apply adjustment to Active arm at final visit (only if we have valid adjustment)
+    if adjustment != 0:
+        mask = final_visit_mask & active
+        if mask.any():
+            # Add adjustment and ensure no NaN values
+            adjusted_values = out.loc[mask, "SystolicBP"] + adjustment
+            # Remove any NaN values that might have appeared
+            adjusted_values = adjusted_values.fillna(140)  # Use default if NaN
+            # Re-clip after adjustment and convert to int
+            out.loc[mask, "SystolicBP"] = np.clip(adjusted_values, 95, 200).round().astype(int)
 
     # ===== Sample to exact target size =====
     # Group by treatment arm and ensure balanced
