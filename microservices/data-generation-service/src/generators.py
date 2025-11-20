@@ -2023,6 +2023,17 @@ def generate_oncology_ae_aact(
         "AEOUT": "Outcome"
     })
 
+    # Add TreatmentArm column (required for TLF table generation)
+    if treatment_arms is not None:
+        # Use provided mapping
+        df["TreatmentArm"] = df["SubjectID"].map(treatment_arms)
+    else:
+        # Default: assign first half to Active, second half to Placebo
+        subject_to_arm = {}
+        for idx, subj in enumerate(subjects):
+            subject_to_arm[subj] = "Active" if idx < len(subjects) // 2 else "Placebo"
+        df["TreatmentArm"] = df["SubjectID"].map(subject_to_arm)
+
     if AACT_AVAILABLE:
         print(f"✓ Generated {len(df)} AEs for {indication} {phase} using AACT patterns")
     else:

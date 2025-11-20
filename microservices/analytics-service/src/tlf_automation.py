@@ -209,7 +209,11 @@ def generate_ae_summary_table(
     })
 
     # Serious AEs
-    serious_df = df[df["Serious"] == "Yes"]
+    # Handle both "Y"/"N" format (AACT) and True/False format (realistic_trial)
+    if df["Serious"].dtype == bool:
+        serious_df = df[df["Serious"] == True]
+    else:
+        serious_df = df[df["Serious"].isin(["Y", "Yes", True])]
     serious_counts = {arm: serious_df[serious_df["TreatmentArm"] == arm]["SubjectID"].nunique() for arm in arms}
     total_serious = serious_df["SubjectID"].nunique()
 
@@ -220,9 +224,26 @@ def generate_ae_summary_table(
     })
 
     # Related AEs
-    related_df = df[df["Relationship"].str.contains("Related", na=False)]
-    related_counts = {arm: related_df[related_df["TreatmentArm"] == arm]["SubjectID"].nunique() for arm in arms}
-    total_related = related_df["SubjectID"].nunique()
+    # Check for both "Related" and "Relationship" column names
+    if "Related" in df.columns:
+        related_col = "Related"
+    elif "Relationship" in df.columns:
+        related_col = "Relationship"
+    else:
+        # Fallback: assume no related AEs if column doesn't exist
+        related_df = pd.DataFrame()
+
+    if "Related" in df.columns or "Relationship" in df.columns:
+        # Handle both "Y"/"N" format and string formats
+        if df[related_col].dtype == bool:
+            related_df = df[df[related_col] == True]
+        else:
+            related_df = df[df[related_col].astype(str).str.contains("Y|Yes|Related", na=False, case=False)]
+    else:
+        related_df = pd.DataFrame()
+
+    related_counts = {arm: related_df[related_df["TreatmentArm"] == arm]["SubjectID"].nunique() if not related_df.empty else 0 for arm in arms}
+    total_related = related_df["SubjectID"].nunique() if not related_df.empty else 0
 
     table_rows.append({
         "ae_term": "Any Related Adverse Event",
@@ -232,10 +253,19 @@ def generate_ae_summary_table(
 
     # By SOC and PT
     if by_soc:
-        socs = df["SOC"].unique()
+        # Check for both "BodySystem" (AACT) and "SOC" column names
+        soc_col = "BodySystem" if "BodySystem" in df.columns else "SOC"
+        if soc_col not in df.columns:
+            # No SOC/BodySystem column, skip SOC analysis
+            return {
+                "table_data": table_rows,
+                "n_subjects": len(df),
+                "treatment_arms": list(arms)
+            }
+        socs = df[soc_col].unique()
 
         for soc in sorted(socs):
-            soc_df = df[df["SOC"] == soc]
+            soc_df = df[df[soc_col] == soc]
 
             # Calculate SOC-level incidence
             soc_counts = {arm: soc_df[soc_df["TreatmentArm"] == arm]["SubjectID"].nunique() for arm in arms}
@@ -253,9 +283,13 @@ def generate_ae_summary_table(
                 })
 
                 # Preferred Terms within this SOC
-                pts = soc_df["PT"].unique()
+                # Check for both "AETerm" (AACT) and "PT" column names
+                pt_col = "AETerm" if "AETerm" in soc_df.columns else "PT"
+                if pt_col not in soc_df.columns:
+                    continue  # Skip PT analysis if column doesn't exist
+                pts = soc_df[pt_col].unique()
                 for pt in sorted(pts):
-                    pt_df = soc_df[soc_df["PT"] == pt]
+                    pt_df = soc_df[soc_df[pt_col] == pt]
 
                     pt_counts = {arm: pt_df[pt_df["TreatmentArm"] == arm]["SubjectID"].nunique() for arm in arms}
                     total_pt = pt_df["SubjectID"].nunique()

@@ -41,6 +41,7 @@ export function Analytics() {
   const [pcaData, setPcaData] = useState<PCAComparisonResponse | null>(null);
   const [mvnData, setMvnData] = useState<VitalsRecord[] | null>(null);
   const [bootstrapData, setBootstrapData] = useState<VitalsRecord[] | null>(null);
+  const [detectedFinalVisit, setDetectedFinalVisit] = useState<string>("Week 12"); // Track the auto-detected final visit
 
   // Load pilot data on mount
   useEffect(() => {
@@ -85,10 +86,20 @@ export function Analytics() {
     const sortedVisits = uniqueVisits.sort((a, b) => visitToDays(a) - visitToDays(b));
     const finalVisit = sortedVisits[sortedVisits.length - 1];
 
+    // Fallback: if no match found in visitOrder, use the last unique visit
+    if (!finalVisit && uniqueVisits.length > 0) {
+      finalVisit = uniqueVisits[uniqueVisits.length - 1];
+    }
+
     if (!finalVisit) {
-      setError("Could not determine final visit in the data. Available visits: " + uniqueVisits.join(", "));
+      setError(`Could not determine final visit in the data. Available visits: ${uniqueVisits.join(", ")}`);
       return;
     }
+
+    console.log(`Analytics: Auto-detected final visit as "${finalVisit}" from available visits:`, uniqueVisits);
+
+    // Store detected final visit for UI display
+    setDetectedFinalVisit(finalVisit);
 
     setIsLoading(true);
     setError("");
@@ -156,7 +167,12 @@ export function Analytics() {
   // BP Trend across visits
   const bpTrendData = useMemo(() => {
     if (!generatedData) return [];
-    const visitOrder = ["Screening", "Day 1", "Week 4", "Week 12"];
+    // Get unique visits in data, sorted
+    const uniqueVisits = [...new Set(generatedData.map(r => r.VisitName))];
+    const visitOrder = ["Screening", "Day 1", "Week 2", "Week 4", "Week 8", "Week 12", "Week 16", "Week 24",
+                       "Month 3", "Month 4", "Month 6", "Month 9", "Month 12", "Month 18", "Month 24"];
+    // Filter to only visits that exist in data, maintaining order
+    const dataVisits = visitOrder.filter(v => uniqueVisits.includes(v));
     const visitMap = new Map<string, { active: number[], placebo: number[] }>();
 
     generatedData.forEach(record => {
@@ -171,7 +187,7 @@ export function Analytics() {
       }
     });
 
-    return visitOrder.map(visitName => {
+    return dataVisits.map(visitName => {
       const visit = visitMap.get(visitName);
       if (!visit) return null;
 
@@ -296,8 +312,20 @@ export function Analytics() {
   const boxPlotData = useMemo(() => {
     if (!generatedData || generatedData.length === 0) return [];
 
-    const week12Data = generatedData.filter(r => r.VisitName === "Week 12");
-    if (week12Data.length === 0) return [];
+    // Get the last visit in the data
+    const uniqueVisits = [...new Set(generatedData.map(r => r.VisitName))];
+    const visitOrder = ["Screening", "Day 1", "Week 2", "Week 4", "Week 8", "Week 12", "Week 16", "Week 24",
+                       "Month 3", "Month 4", "Month 6", "Month 9", "Month 12", "Month 18", "Month 24"];
+    let finalVisit = uniqueVisits[uniqueVisits.length - 1];
+    for (let i = visitOrder.length - 1; i >= 0; i--) {
+      if (uniqueVisits.includes(visitOrder[i])) {
+        finalVisit = visitOrder[i];
+        break;
+      }
+    }
+
+    const finalVisitData = generatedData.filter(r => r.VisitName === finalVisit);
+    if (finalVisitData.length === 0) return [];
 
     const vitals = ['SystolicBP', 'DiastolicBP', 'HeartRate', 'Temperature'] as const;
 
@@ -315,8 +343,8 @@ export function Analytics() {
     };
 
     return vitals.map(vital => {
-      const activeValues = week12Data.filter(r => r.TreatmentArm === "Active").map(r => r[vital]).filter(v => v != null);
-      const placeboValues = week12Data.filter(r => r.TreatmentArm === "Placebo").map(r => r[vital]).filter(v => v != null);
+      const activeValues = finalVisitData.filter(r => r.TreatmentArm === "Active").map(r => r[vital]).filter(v => v != null);
+      const placeboValues = finalVisitData.filter(r => r.TreatmentArm === "Placebo").map(r => r[vital]).filter(v => v != null);
 
       const activeStats = calculateBoxPlotStats(activeValues);
       const placeboStats = calculateBoxPlotStats(placeboValues);
@@ -336,13 +364,26 @@ export function Analytics() {
   // BP Scatter (SBP vs DBP)
   const bpScatterData = useMemo(() => {
     if (!generatedData || generatedData.length === 0) return { active: [], placebo: [] };
-    const week12Data = generatedData.filter(r => r.VisitName === "Week 12");
+
+    // Get the last visit in the data
+    const uniqueVisits = [...new Set(generatedData.map(r => r.VisitName))];
+    const visitOrder = ["Screening", "Day 1", "Week 2", "Week 4", "Week 8", "Week 12", "Week 16", "Week 24",
+                       "Month 3", "Month 4", "Month 6", "Month 9", "Month 12", "Month 18", "Month 24"];
+    let finalVisit = uniqueVisits[uniqueVisits.length - 1];
+    for (let i = visitOrder.length - 1; i >= 0; i--) {
+      if (uniqueVisits.includes(visitOrder[i])) {
+        finalVisit = visitOrder[i];
+        break;
+      }
+    }
+
+    const finalVisitData = generatedData.filter(r => r.VisitName === finalVisit);
 
     return {
-      active: week12Data
+      active: finalVisitData
         .filter(r => r.TreatmentArm === "Active")
         .map(r => ({ x: r.SystolicBP, y: r.DiastolicBP })),
-      placebo: week12Data
+      placebo: finalVisitData
         .filter(r => r.TreatmentArm === "Placebo")
         .map(r => ({ x: r.SystolicBP, y: r.DiastolicBP })),
     };
@@ -355,9 +396,14 @@ export function Analytics() {
     const subjects = [...new Set(generatedData.map(r => r.SubjectID))].slice(0, 5);
     if (subjects.length === 0) return [];
 
-    const visitOrder = ["Screening", "Day 1", "Week 4", "Week 12"];
+    // Get unique visits in data, sorted
+    const uniqueVisits = [...new Set(generatedData.map(r => r.VisitName))];
+    const visitOrder = ["Screening", "Day 1", "Week 2", "Week 4", "Week 8", "Week 12", "Week 16", "Week 24",
+                       "Month 3", "Month 4", "Month 6", "Month 9", "Month 12", "Month 18", "Month 24"];
+    // Filter to only visits that exist in data, maintaining order
+    const dataVisits = visitOrder.filter(v => uniqueVisits.includes(v));
 
-    return visitOrder.map(visit => {
+    return dataVisits.map(visit => {
       const dataPoint: any = { visit };
 
       subjects.forEach(subjectId => {
@@ -460,8 +506,8 @@ export function Analytics() {
             <div className="grid gap-6 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Treatment Groups (Week 12)</CardTitle>
-                  <CardDescription>Primary Endpoint: Systolic BP</CardDescription>
+                  <CardTitle>Treatment Groups ({detectedFinalVisit})</CardTitle>
+                  <CardDescription>Primary Endpoint: Systolic BP at final visit</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -612,9 +658,9 @@ export function Analytics() {
             {/* BP Scatter Plot */}
             <Card>
               <CardHeader>
-                <CardTitle>Systolic vs Diastolic BP Correlation (Week 12)</CardTitle>
+                <CardTitle>Systolic vs Diastolic BP Correlation ({detectedFinalVisit})</CardTitle>
                 <CardDescription>
-                  Relationship between blood pressure components by treatment arm
+                  Relationship between blood pressure components by treatment arm at final visit
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -720,9 +766,9 @@ export function Analytics() {
             {/* Box Plot Comparison */}
             <Card>
               <CardHeader>
-                <CardTitle>Week 12 Vital Signs: Range & Variability Analysis</CardTitle>
+                <CardTitle>{detectedFinalVisit} Vital Signs: Range & Variability Analysis</CardTitle>
                 <CardDescription>
-                  Quartile distributions showing median, IQR, and range for each vital sign
+                  Quartile distributions showing median, IQR, and range for each vital sign at final visit
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -749,7 +795,7 @@ export function Analytics() {
                   </>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
-                    No Week 12 data available for box plot analysis.
+                    No data available for box plot analysis at final visit.
                   </div>
                 )}
               </CardContent>
