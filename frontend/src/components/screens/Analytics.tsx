@@ -64,6 +64,13 @@ export function Analytics() {
       return;
     }
 
+    // Check if data contains Week 12 visits
+    const hasWeek12 = generatedData.some(r => r.VisitName === "Week 12");
+    if (!hasWeek12) {
+      setError("Generated data does not contain 'Week 12' visits. Please generate new data with standard visit schedule (Screening, Day 1, Week 4, Week 12).");
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
@@ -100,8 +107,21 @@ export function Analytics() {
         setQualityMetrics(qualityResponse);
         setPcaData(pcaResponse);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Analysis failed");
+    } catch (err: any) {
+      // Extract error message from API response or use default
+      let errorMessage = "Analysis failed";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+
+      // Provide helpful guidance for common errors
+      if (errorMessage.includes("Week 12")) {
+        errorMessage = "Generated data is missing 'Week 12' visits. Please generate data using standard visit schedule.";
+      }
+
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
