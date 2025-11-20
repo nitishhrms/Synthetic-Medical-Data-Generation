@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { analyticsApi, dataGenerationApi } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +9,15 @@ import { FileText, Download, CheckCircle2, AlertCircle, Table as TableIcon } fro
 
 export default function TLFAutomation() {
   const [generatedTables, setGeneratedTables] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Generate all TLF tables
-  const generateTLFMutation = useMutation({
-    mutationFn: async () => {
+  const handleGenerateTLFTables = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
       // First generate sample data
       const pilotData = await dataGenerationApi.getPilotData();
 
@@ -68,17 +72,20 @@ export default function TLFAutomation() {
       });
 
       // Generate all TLF tables
-      return analyticsApi.generateAllTLFTables({
+      const result = await analyticsApi.generateAllTLFTables({
         demographics_data: uniqueSubjects,
         ae_data: aeData,
         vitals_data: vitalsData,
         survival_data: survivalAnalysis.survival_data,
       });
-    },
-    onSuccess: (data) => {
-      setGeneratedTables(data);
-    },
-  });
+
+      setGeneratedTables(result);
+    } catch (err: any) {
+      setError(err.message || "Failed to generate TLF tables");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleDownloadMarkdown = (tableName: string, markdown: string) => {
     const blob = new Blob([markdown], { type: "text/markdown" });
@@ -145,11 +152,11 @@ export default function TLFAutomation() {
         <CardContent className="space-y-4">
           <div className="flex gap-4">
             <Button
-              onClick={() => generateTLFMutation.mutate()}
-              disabled={generateTLFMutation.isPending}
+              onClick={handleGenerateTLFTables}
+              disabled={isLoading}
               className="w-full md:w-auto"
             >
-              {generateTLFMutation.isPending ? "Generating..." : "Generate All Tables"}
+              {isLoading ? "Generating..." : "Generate All Tables"}
             </Button>
           </div>
 
@@ -163,11 +170,11 @@ export default function TLFAutomation() {
             </Alert>
           )}
 
-          {generateTLFMutation.isError && (
+          {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                {generateTLFMutation.error?.message || "Failed to generate TLF tables"}
+                {error}
               </AlertDescription>
             </Alert>
           )}
