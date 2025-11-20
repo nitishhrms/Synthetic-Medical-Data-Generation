@@ -40,6 +40,11 @@ from ae_analytics import (
     analyze_soc_distribution,
     compare_ae_quality
 )
+from aact_integration import (
+    compare_study_to_aact,
+    benchmark_demographics,
+    benchmark_adverse_events
+)
 
 app = FastAPI(
     title="Analytics Service",
@@ -208,6 +213,24 @@ class AECompareRequest(BaseModel):
     real_ae: List[Dict[str, Any]]
     synthetic_ae: List[Dict[str, Any]]
 
+# AACT Integration models
+class AACTCompareStudyRequest(BaseModel):
+    n_subjects: int = Field(..., description="Total number of subjects enrolled")
+    indication: str = Field(..., description="Disease indication (e.g., 'hypertension', 'diabetes')")
+    phase: str = Field(..., description="Trial phase (e.g., 'Phase 3')")
+    treatment_effect: float = Field(..., description="Primary endpoint treatment effect")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Optional vitals data")
+
+class AACTBenchmarkDemographicsRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]] = Field(..., description="Demographics with Age, Gender, Race, TreatmentArm")
+    indication: str = Field(..., description="Disease indication")
+    phase: str = Field(..., description="Trial phase")
+
+class AACTBenchmarkAERequest(BaseModel):
+    ae_data: List[Dict[str, Any]] = Field(..., description="AE data with PreferredTerm, Severity, Serious")
+    indication: str = Field(..., description="Disease indication")
+    phase: str = Field(..., description="Trial phase")
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -227,7 +250,7 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Analytics Service",
-        "version": "1.3.0",
+        "version": "1.4.0",
         "features": [
             "Week-12 Statistics (t-test)",
             "RECIST + ORR Analysis",
@@ -237,7 +260,8 @@ async def root():
             "Demographics Analytics (Baseline, Balance, Quality)",
             "Labs Analytics (Summary, Abnormal Detection, Shift Tables, Safety Signals, Longitudinal)",
             "AE Analytics (Frequency Tables, TEAEs, SOC Analysis, Quality)",
-            "Quality Assessment (PCA, K-NN, Wasserstein)"
+            "Quality Assessment (PCA, K-NN, Wasserstein)",
+            "AACT Integration (Compare Study, Benchmark Demographics, Benchmark AEs)"
         ],
         "endpoints": {
             "health": "/health",
@@ -1544,6 +1568,219 @@ async def ae_sdtm_export(request: AERequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"SDTM AE export failed: {str(e)}"
+        )
+
+
+# ===== AACT INTEGRATION ENDPOINTS =====
+
+@app.post("/aact/compare-study")
+async def aact_compare_study(request: AACTCompareStudyRequest):
+    """
+    Compare synthetic trial characteristics with AACT real-world benchmarks
+
+    **Purpose:**
+    Validates that synthetic trial structure (enrollment, treatment effect)
+    matches real-world patterns from ClinicalTrials.gov (AACT database).
+
+    **AACT Database:**
+    - 557,805+ studies from ClinicalTrials.gov
+    - Processed and cached using daft
+    - Statistics by indication and phase
+    - Enrollment, treatment effects, demographics, AEs
+
+    **Comparison Metrics:**
+    - **Enrollment Benchmark**: How trial size compares to real trials
+      - Percentile within AACT distribution
+      - Z-score relative to mean
+      - Interpretation (Small/Median/Large)
+    - **Treatment Effect Benchmark**: How effect size compares
+      - Percentile within AACT distribution
+      - Z-score relative to mean
+      - Clinical interpretation
+    - **Similarity Score**: Overall realism (0-1, higher = more realistic)
+      - 0.8+: Highly realistic
+      - 0.6-0.8: Realistic
+      - 0.4-0.6: Moderately realistic
+      - <0.4: Low realism
+
+    **Request Parameters:**
+    - n_subjects: Total enrolled (e.g., 100)
+    - indication: "hypertension", "diabetes", "cancer", etc.
+    - phase: "Phase 1", "Phase 2", "Phase 3", "Phase 4"
+    - treatment_effect: Primary endpoint value (e.g., -5.0 mmHg SBP reduction)
+    - vitals_data: Optional vitals for additional analysis
+
+    **Response:**
+    - enrollment_benchmark: Statistics comparing trial size
+    - treatment_effect_benchmark: Statistics comparing effect size
+    - aact_reference: Reference data from AACT
+    - similarity_score: 0-1 realism score
+    - interpretation: Human-readable assessment + recommendations
+
+    **Available Indications:**
+    hypertension, diabetes, cancer, oncology, cardiovascular,
+    heart failure, asthma, copd
+
+    **Use Case:**
+    - Validate synthetic trial parameters before generation
+    - Justify sample size and effect size choices
+    - Benchmark against industry standards
+    - Support regulatory discussions with real-world context
+    """
+    try:
+        result = compare_study_to_aact(
+            n_subjects=request.n_subjects,
+            indication=request.indication,
+            phase=request.phase,
+            treatment_effect=request.treatment_effect,
+            vitals_data=request.vitals_data
+        )
+        return result
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AACT cache not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT comparison failed: {str(e)}"
+        )
+
+
+@app.post("/aact/benchmark-demographics")
+async def aact_benchmark_demographics(request: AACTBenchmarkDemographicsRequest):
+    """
+    Benchmark demographics against AACT real-world trial patterns
+
+    **Purpose:**
+    Compares synthetic demographics (age, gender, race) distributions
+    against typical patterns from real-world ClinicalTrials.gov trials.
+
+    **Demographics Analysis:**
+    - **Age Distribution**: Mean, median, range
+    - **Gender Split**: Male/Female percentages
+    - **Race Distribution**: Racial/ethnic composition
+    - **Treatment Arms**: Arm balance and sizes
+
+    **Current Limitations:**
+    - AACT cache provides limited demographic distributions
+    - Full age/gender/race distributions require additional AACT processing
+    - Qualitative assessment provided based on clinical trial knowledge
+
+    **Qualitative Benchmarks (by Indication):**
+
+    **Hypertension:**
+    - Typical age: 45-65 years
+    - Gender: 55-60% male
+    - Common in diverse racial groups
+
+    **Diabetes (Type 2):**
+    - Typical age: 50-65 years
+    - Gender: 50-55% male
+    - Higher prevalence in certain ethnic groups
+
+    **Response:**
+    - demographics_summary: Statistics from synthetic data
+    - aact_benchmarks: Available AACT data (study duration)
+    - qualitative_assessment: Expert-based assessment
+    - limitations: What's not available in current cache
+    - future_enhancements: Planned improvements
+
+    **Use Case:**
+    - Validate demographic realism
+    - Ensure trial population is representative
+    - Identify potential bias in synthetic data
+    - Support diversity and inclusion goals
+    """
+    try:
+        demographics_df = pd.DataFrame(request.demographics_data)
+        result = benchmark_demographics(
+            demographics_df=demographics_df,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return result
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AACT cache not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demographics benchmarking failed: {str(e)}"
+        )
+
+
+@app.post("/aact/benchmark-ae")
+async def aact_benchmark_ae(request: AACTBenchmarkAERequest):
+    """
+    Benchmark adverse events patterns against AACT real-world trials
+
+    **Purpose:**
+    Compares synthetic AE patterns (frequency, top events) against
+    real-world AE patterns from ClinicalTrials.gov trials.
+
+    **AE Pattern Analysis:**
+    - **Top Events Overlap**: Jaccard similarity of top AE terms
+    - **Frequency Matching**: How well synthetic AE rates match real trials
+    - **Event Coverage**: Which common events are present/missing
+    - **Overall Similarity**: 0-1 score combining overlap + frequency
+
+    **AACT AE Benchmarks (by Indication/Phase):**
+    - Top 15 most common adverse events
+    - Event frequencies (% of subjects affected)
+    - Number of trials contributing data
+    - Subjects affected per event
+
+    **Similarity Scoring:**
+    - **0.7+**: Highly realistic - Patterns closely match real trials
+    - **0.5-0.7**: Realistic - Within expected range
+    - **0.3-0.5**: Moderately realistic - Some deviations
+    - **<0.3**: Low realism - Significant differences
+
+    **Comparison Components:**
+    - **Jaccard Similarity (70%)**: Overlap of top events
+    - **Frequency Matching (30%)**: How well rates match
+
+    **Example - Hypertension Phase 3 Top AEs:**
+    1. Headache (23% of subjects)
+    2. Dizziness (3.8%)
+    3. Nausea (6.0%)
+    4. Fatigue (3.5%)
+    5. Back pain (3.5%)
+
+    **Response:**
+    - ae_summary: Statistics from synthetic AEs
+    - aact_benchmarks: Top events from AACT
+    - comparison: Matching events, unique events, frequency diffs
+    - similarity_score: 0-1 overall realism score
+    - interpretation: Assessment + recommendations
+
+    **Use Case:**
+    - Validate AE generation algorithms
+    - Ensure realistic safety profiles
+    - Compare different generation methods
+    - Support regulatory readiness
+    """
+    try:
+        ae_df = pd.DataFrame(request.ae_data)
+        result = benchmark_adverse_events(
+            ae_df=ae_df,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return result
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AACT cache not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AE benchmarking failed: {str(e)}"
         )
 
 
