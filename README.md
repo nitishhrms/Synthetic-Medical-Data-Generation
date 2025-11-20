@@ -6,7 +6,7 @@ Enterprise-grade microservices platform for clinical trial management with Kuber
 
 This project transforms the monolithic Streamlit application into a scalable microservices architecture:
 
-### Microservices (6 Core Services)
+### Microservices (7 Core Services)
 
 1. **API Gateway** (Port 8000) - Central Routing
    - Request routing to all services
@@ -23,7 +23,13 @@ This project transforms the monolithic Streamlit application into a scalable mic
 3. **Data Generation Service** (Port 8002) - Synthetic Data
    - Rules-based generation
    - MVN (Multivariate Normal) generation
+   - Bootstrap resampling
+   - Bayesian Network generation
+   - MICE (Multiple Imputation by Chained Equations)
+   - Diffusion model generation
    - LLM-based generation with auto-repair
+   - **AACT-enhanced versions** (uses real data from 557K+ ClinicalTrials.gov trials)
+   - Complete Study generation (coordinates Vitals, Demographics, Labs, AEs)
    - Oncology AE generation
 
 4. **Analytics Service** (Port 8003) - Statistics & Reporting
@@ -46,6 +52,13 @@ This project transforms the monolithic Streamlit application into a scalable mic
    - PHI detection
    - HIPAA audit logging
 
+7. **Daft Analytics Service** (Port 8007) - Distributed Data Analysis
+   - High-performance distributed DataFrame processing
+   - Treatment effect analysis
+   - Responder analysis
+   - Outlier detection
+   - SQL-like queries on clinical data
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -67,17 +80,17 @@ python3 -m uvicorn main:app --reload --port 8002
 cd microservices/analytics-service/src
 python3 -m uvicorn main:app --reload --port 8003
 
-# EDC Service (Port 8004)
+# EDC Service (Port 8001)
 cd microservices/edc-service/src
-python3 -m uvicorn main:app --reload --port 8004
+python3 -m uvicorn main:app --reload --port 8001
 
 # Security Service (Port 8005)
 cd microservices/security-service/src
 python3 -m uvicorn main:app --reload --port 8005
 
-# Quality Service (Port 8006)
+# Quality Service (Port 8004)
 cd microservices/quality-service/src
-python3 -m uvicorn main:app --reload --port 8006
+python3 -m uvicorn main:app --reload --port 8004
 ```
 
 **Frontend Application**:
@@ -93,9 +106,10 @@ npm run dev
 - **Frontend UI**: http://localhost:3000
 - **Data Generation**: http://localhost:8002
 - **Analytics**: http://localhost:8003
-- **EDC Service**: http://localhost:8004
+- **EDC Service**: http://localhost:8001
 - **Security**: http://localhost:8005
-- **Quality**: http://localhost:8006
+- **Quality**: http://localhost:8004
+- **Daft Analytics**: http://localhost:8007
 
 ### Docker Compose Deployment (Alternative)
 

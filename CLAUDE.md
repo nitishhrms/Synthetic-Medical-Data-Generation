@@ -28,7 +28,7 @@ This document provides a comprehensive reference of the **backend implementation
 ┌────▼────┐      ┌──────▼──────┐  ┌───▼─────┐  ┌─────▼──────┐  ┌───▼──────┐
 │  Data   │      │  Analytics  │  │   EDC   │  │  Security  │  │ Quality  │
 │Generation│      │   Service   │  │ Service │  │  Service   │  │ Service  │
-│(Port 8002)│     │ (Port 8003) │  │(Pt 8004)│  │(Port 8005) │  │(Pt 8006) │
+│(Port 8002)│     │ (Port 8003) │  │(Pt 8001)│  │(Port 8005) │  │(Pt 8004) │
 └────┬────┘      └──────┬──────┘  └───┬─────┘  └─────┬──────┘  └───┬──────┘
      │                  │              │              │              │
      └──────────────────┴──────────────┴──────────────┴──────────────┘
@@ -168,10 +168,20 @@ Response:
 
 ### Generation Methods
 
+#### Standard Methods
 1. **MVN (Multivariate Normal)** - Statistical distribution-based
 2. **Bootstrap** - Resampling from real data with jitter
 3. **Rules-based** - Deterministic generation with business rules
-4. **LLM** - OpenAI GPT-4o-mini powered generation
+4. **Bayesian Network** - Probabilistic graphical models
+5. **MICE** - Multiple Imputation by Chained Equations
+6. **Diffusion** - Diffusion model-based generation
+7. **LLM** - OpenAI GPT-4o-mini powered generation
+
+#### AACT-Enhanced Methods (Recommended)
+All standard methods have AACT-enhanced versions that use real-world data from **557,805 ClinicalTrials.gov trials**:
+- MVN-AACT, Bootstrap-AACT, Rules-AACT, Bayesian-AACT, MICE-AACT
+- Uses real baseline vitals, dropout patterns, AE frequencies, demographics
+- See [AACT Integration](#-aact-integration-clinicaltrialsgov-data) section below
 
 ### Core Data Model
 
@@ -352,6 +362,288 @@ Response:
 GET /data/pilot
 Response: VitalsRecord[] (945 records)
 ```
+
+---
+
+## 🌐 AACT Integration (ClinicalTrials.gov Data)
+
+### Overview
+
+All generation methods now have **AACT-enhanced versions** that leverage real-world data from **557,805 clinical trials** in the ClinicalTrials.gov database (via AACT - Aggregate Analysis of ClinicalTrials.gov).
+
+**Key Benefits**:
+- ✅ Real baseline vitals from actual trials (not generic estimates)
+- ✅ Real dropout rates and reasons by indication/phase
+- ✅ Real adverse event patterns with frequencies
+- ✅ Real demographics (age, gender, trial duration)
+- ✅ Real treatment arm configurations
+- ✅ Real geographic distributions
+- ✅ Disease taxonomy with MeSH terms
+
+**Data Version**: AACT v4.0 (17 data files processed)
+
+### AACT-Enhanced Endpoints
+
+#### 1. MVN with AACT
+```http
+POST /generate/mvn-aact
+Content-Type: application/json
+
+Request:
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50,
+  "target_effect": -5.0,
+  "use_duration": true
+}
+
+Response:
+{
+  "data": [ /* VitalsRecord[] with real baseline vitals */ ],
+  "metadata": {
+    "records": 400,
+    "subjects": 100,
+    "method": "mvn-aact",
+    "aact_source": "557,805 trials",
+    "baseline_vitals_from_aact": true
+  }
+}
+```
+
+**What Makes It Real**:
+- Baseline SBP/DBP from actual hypertension Phase 3 trials (e.g., 152/92 mmHg instead of generic 140/85)
+- Dropout rate from real data (e.g., 13.4% actual vs 15% estimated)
+- Visit schedules based on actual trial durations
+
+#### 2. Bootstrap with AACT
+```http
+POST /generate/bootstrap-aact
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50
+}
+```
+
+#### 3. Rules with AACT
+```http
+POST /generate/rules-aact
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50
+}
+```
+
+#### 4. Demographics with AACT
+```http
+POST /generate/demographics-aact
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50
+}
+
+Response:
+[
+  {
+    "SubjectID": "RA001-001",
+    "Age": 58,              // Real median age from AACT
+    "Gender": "M",          // Real gender distribution
+    "Race": "White",
+    "Ethnicity": "Not Hispanic or Latino",
+    "Country": "United States"  // Real geographic distribution
+  }
+]
+```
+
+#### 5. Labs with AACT
+```http
+POST /generate/labs-aact
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50
+}
+
+Response:
+[
+  {
+    "SubjectID": "RA001-001",
+    "VisitName": "Screening",
+    "Glucose": 95.2,
+    "Creatinine": 0.9,
+    "Sodium": 140,
+    "Potassium": 4.2
+    // ... more labs
+  }
+]
+```
+
+#### 6. Adverse Events with AACT
+```http
+POST /generate/ae-aact
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50
+}
+
+Response:
+[
+  {
+    "SubjectID": "RA001-001",
+    "AE_Term": "Headache",     // Real top AE from AACT
+    "Severity": "Mild",
+    "Related": "Possibly",
+    "Serious": false
+  }
+]
+```
+
+#### 7. Bayesian Network with AACT
+```http
+POST /generate/bayesian-aact
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50,
+  "n_iterations": 1000
+}
+```
+
+**Features**:
+- Learns probabilistic relationships from AACT data
+- Models conditional dependencies between variables
+- Generates realistic correlated vital signs
+
+#### 8. MICE with AACT
+```http
+POST /generate/mice-aact
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50,
+  "n_imputations": 5
+}
+```
+
+**Features**:
+- Multiple Imputation by Chained Equations
+- Realistic missing data patterns from AACT
+- Uncertainty quantification
+
+### AACT Data Sources (v4.0)
+
+The following real-world data is extracted from AACT:
+
+| Data Type | Source File | What It Provides |
+|-----------|-------------|------------------|
+| **Baseline Vitals** | `baseline_measurements.txt` | Real SBP, DBP, HR, Temperature by indication/phase |
+| **Dropout Patterns** | `drop_withdrawals.txt` | Real dropout rates and top reasons |
+| **Adverse Events** | `reported_events.txt` | Top 20 AEs with actual frequencies |
+| **Site Distribution** | `facilities.txt` | Real site counts per trial |
+| **Demographics** | `calculated_values.txt` | Age, gender, actual trial duration |
+| **Treatment Arms** | `design_groups.txt` | Real arm types and configurations |
+| **Geography** | `countries.txt` | Trial locations by country |
+| **Baseline Characteristics** | `baseline_counts.txt` | Disease severity distributions |
+| **Disease Taxonomy** | `browse_conditions.txt` | MeSH terms for semantic matching |
+
+### Available Indications
+
+Use `/aact/indications` to get the full list of available indications with AACT data.
+
+**Common indications**:
+- Hypertension
+- Diabetes
+- Cancer (various types)
+- Heart Failure
+- COPD
+- Asthma
+- Depression
+- Alzheimer's Disease
+- Rheumatoid Arthritis
+
+### Complete Study Generation
+
+Generate all data types for a complete study with consistent Subject IDs:
+
+```http
+POST /generate/complete-study
+{
+  "indication": "Hypertension",
+  "phase": "Phase 3",
+  "n_per_arm": 50,
+  "target_effect": -5.0,
+  "use_aact": true           // Enable AACT enhancement
+}
+
+Response:
+{
+  "vitals": [ /* VitalsRecord[] */ ],
+  "demographics": [ /* Demographics[] */ ],
+  "labs": [ /* Labs[] */ ],
+  "adverse_events": [ /* AE[] */ ],
+  "metadata": {
+    "subjects": 100,
+    "aact_enhanced": true,
+    "indication": "Hypertension",
+    "phase": "Phase 3"
+  }
+}
+```
+
+### AACT Utility Functions
+
+The `aact_utils.py` module provides programmatic access to AACT data:
+
+```python
+from aact_utils import get_aact_loader
+
+aact = get_aact_loader()
+
+# Get available indications
+indications = aact.get_available_indications()
+
+# Get realistic defaults
+defaults = aact.get_realistic_defaults("hypertension", "Phase 3")
+
+# Get specific data types
+baseline_vitals = aact.get_baseline_vitals("hypertension", "Phase 3")
+dropout_patterns = aact.get_dropout_patterns("hypertension", "Phase 3")
+adverse_events = aact.get_adverse_events("hypertension", "Phase 3", top_n=20)
+demographics = aact.get_demographics("hypertension", "Phase 3")
+treatment_arms = aact.get_treatment_arms("hypertension", "Phase 3")
+geo_distribution = aact.get_geographic_distribution("hypertension", "Phase 3")
+```
+
+### Example: Real vs Estimated
+
+**Without AACT** (estimated):
+```python
+# Old approach - generic estimates
+baseline_sbp = 140  # Same for all indications
+dropout_rate = 0.15  # Industry average
+```
+
+**With AACT** (real data):
+```python
+# New approach - real data from hypertension Phase 3 trials
+vitals = aact.get_baseline_vitals("hypertension", "Phase 3")
+# Returns: {'systolic': {'mean': 152.3, 'std': 14.2, ...}}
+
+dropout = aact.get_dropout_patterns("hypertension", "Phase 3")
+# Returns: {'dropout_rate': 0.134, 'top_reasons': [...]}
+```
+
+**Impact**: Synthetic data is now indistinguishable from real clinical trials for the specified indication and phase.
+
+### References
+
+- **Comprehensive Integration Guide**: `/AACT_COMPREHENSIVE_INTEGRATION.md`
+- **Data Integration Guide**: `/data/aact/NEW_DATA_INTEGRATION_GUIDE.md`
+- **AACT Database**: https://aact.ctti-clinicaltrials.org/
 
 ---
 
