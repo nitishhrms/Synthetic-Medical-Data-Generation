@@ -1881,6 +1881,16 @@ def generate_oncology_ae_aact(
 
     df = pd.DataFrame(rows, columns=["USUBJID", "AETERM", "AEBODSYS", "AESER", "AEREL", "AEOUT"])
 
+    # Rename columns to match frontend expectations (non-SDTM names for UI display)
+    df = df.rename(columns={
+        "USUBJID": "SubjectID",
+        "AETERM": "AETerm",
+        "AEBODSYS": "BodySystem",
+        "AESER": "Serious",
+        "AEREL": "Related",
+        "AEOUT": "Outcome"
+    })
+
     if AACT_AVAILABLE:
         print(f"✓ Generated {len(df)} AEs for {indication} {phase} using AACT patterns")
     else:
