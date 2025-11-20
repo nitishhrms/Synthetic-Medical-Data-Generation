@@ -242,4 +242,5 @@ async def generate_unconditional(
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8008)
+    # Port 8010 (changed from 8008 to avoid conflict with Linkup Integration Service)
+    uvicorn.run(app, host="0.0.0.0", port=8010)

@@ -5,13 +5,17 @@ import { Login } from "@/components/screens/Login";
 import { Dashboard } from "@/components/screens/Dashboard";
 import { DataGeneration } from "@/components/screens/DataGeneration";
 import { Analytics } from "@/components/screens/Analytics";
-import { Quality } from "@/components/screens/Quality";
+import { QualityDashboard } from "@/components/screens/QualityDashboard";
+import { TrialPlanning } from "@/components/screens/TrialPlanning";
 import { Studies } from "@/components/screens/Studies";
 import { Settings } from "@/components/screens/Settings";
 import { SystemCheck } from "@/components/screens/SystemCheck";
 import { RBQMDashboard } from "@/components/screens/RBQMDashboard";
 import { QueryManagement } from "@/components/screens/QueryManagement";
 import { DataEntry } from "@/components/screens/DataEntry";
+import { DaftAnalytics } from "@/components/screens/DaftAnalytics";
+import { LinkupIntegration } from "@/components/screens/LinkupIntegration";
+import { MedicalImaging } from "@/components/screens/MedicalImaging";
 import { TopAppBar } from "@/components/layout/TopAppBar";
 import { NavigationRail, type Screen } from "@/components/layout/NavigationRail";
 
@@ -61,10 +65,18 @@ function AppContent() {
         return <DataGeneration />;
       case "analytics":
         return <Analytics />;
+      case "daft":
+        return <DaftAnalytics />;
       case "quality":
-        return <Quality />;
+        return <QualityDashboard />;
+      case "trial-planning":
+        return <TrialPlanning />;
       case "rbqm":
         return <RBQMDashboard />;
+      case "linkup":
+        return <LinkupIntegration />;
+      case "medical-imaging":
+        return <MedicalImaging />;
       case "queries":
         return <QueryManagement />;
       case "data-entry":
