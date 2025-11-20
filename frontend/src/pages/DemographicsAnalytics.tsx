@@ -1,19 +1,45 @@
-import { useState } from "react";
-import { analyticsApi } from "../services/api";
+import { useState, useEffect } from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Upload, Download, Users, BarChart3, Scale } from "lucide-react";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
+import { Upload, Download, Users, BarChart3, Scale, RefreshCw, FileUp, AlertCircle } from "lucide-react";
+import { api } from "@/api";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d"];
+
+interface DemographicRecord {
+  SubjectID: string;
+  Age: number;
+  Gender: string;
+  Race: string;
+  Ethnicity: string;
+  Weight: number;
+  Height: number;
+  BMI: number;
+  TreatmentArm: string;
+}
 
 export function DemographicsAnalytics() {
   const [activeTab, setActiveTab] = useState("baseline");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // State for demographics data
+  const [demographicsData, setDemographicsData] = useState<DemographicRecord[]>([]);
+  const [syntheticData, setSyntheticData] = useState<DemographicRecord[]>([]);
 
   // State for each analysis type
   const [baselineData, setBaselineData] = useState<any>(null);
@@ -21,124 +47,279 @@ export function DemographicsAnalytics() {
   const [balanceData, setBalanceData] = useState<any>(null);
   const [qualityData, setQualityData] = useState<any>(null);
 
-  // Sample demographics data for testing
-  const sampleDemographics = [
-    {
-      SubjectID: "S001", Age: 45, Gender: "Male", Race: "White", Ethnicity: "Not Hispanic",
-      Weight: 75.0, Height: 175.0, BMI: 24.5, TreatmentArm: "Active"
-    },
-    {
-      SubjectID: "S002", Age: 52, Gender: "Female", Race: "Asian", Ethnicity: "Not Hispanic",
-      Weight: 68.0, Height: 165.0, BMI: 25.0, TreatmentArm: "Placebo"
-    },
-    {
-      SubjectID: "S003", Age: 38, Gender: "Male", Race: "Black", Ethnicity: "Hispanic",
-      Weight: 82.0, Height: 180.0, BMI: 25.3, TreatmentArm: "Active"
-    },
-    {
-      SubjectID: "S004", Age: 61, Gender: "Female", Race: "White", Ethnicity: "Not Hispanic",
-      Weight: 71.0, Height: 168.0, BMI: 25.1, TreatmentArm: "Placebo"
-    },
-  ];
+  // Generate sample demographics data on mount
+  useEffect(() => {
+    generateSampleData();
+  }, []);
+
+  const generateSampleData = () => {
+    const sampleData: DemographicRecord[] = [];
+    const genders = ["Male", "Female"];
+    const races = ["White", "Black", "Asian", "Other"];
+    const ethnicities = ["Hispanic or Latino", "Not Hispanic or Latino"];
+    const arms = ["Active", "Placebo"];
+
+    for (let i = 1; i <= 100; i++) {
+      const height = 150 + Math.random() * 40; // 150-190 cm
+      const weight = 50 + Math.random() * 50; // 50-100 kg
+      const bmi = weight / Math.pow(height / 100, 2);
+
+      sampleData.push({
+        SubjectID: `S${String(i).padStart(3, "0")}`,
+        Age: Math.floor(18 + Math.random() * 62), // 18-80 years
+        Gender: genders[Math.floor(Math.random() * genders.length)],
+        Race: races[Math.floor(Math.random() * races.length)],
+        Ethnicity: ethnicities[Math.floor(Math.random() * ethnicities.length)],
+        Weight: Math.round(weight * 10) / 10,
+        Height: Math.round(height * 10) / 10,
+        BMI: Math.round(bmi * 10) / 10,
+        TreatmentArm: arms[i % 2], // Alternate between Active and Placebo
+      });
+    }
+
+    setDemographicsData(sampleData);
+  };
 
   const loadBaselineCharacteristics = async () => {
+    if (demographicsData.length === 0) {
+      setError("No demographics data available. Please load data first.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const result = await analyticsApi.getBaselineCharacteristics(sampleDemographics);
-      setBaselineData(result);
+      const response = await api.post("/demographics/baseline-characteristics", {
+        demographics_data: demographicsData,
+      });
+      setBaselineData(response.data);
     } catch (err: any) {
-      setError(err.message || "Failed to load baseline characteristics");
+      setError(err.response?.data?.detail || "Failed to load baseline characteristics");
     } finally {
       setLoading(false);
     }
   };
 
   const loadSummaryStatistics = async () => {
+    if (demographicsData.length === 0) {
+      setError("No demographics data available. Please load data first.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const result = await analyticsApi.getDemographicSummary(sampleDemographics);
-      setSummaryData(result);
+      const response = await api.post("/demographics/summary-statistics", {
+        demographics_data: demographicsData,
+      });
+      setSummaryData(response.data);
     } catch (err: any) {
-      setError(err.message || "Failed to load summary statistics");
+      setError(err.response?.data?.detail || "Failed to load summary statistics");
     } finally {
       setLoading(false);
     }
   };
 
   const loadBalanceAssessment = async () => {
+    if (demographicsData.length === 0) {
+      setError("No demographics data available. Please load data first.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const result = await analyticsApi.assessDemographicBalance(sampleDemographics);
-      setBalanceData(result);
+      const response = await api.post("/demographics/balance-assessment", {
+        demographics_data: demographicsData,
+      });
+      setBalanceData(response.data);
     } catch (err: any) {
-      setError(err.message || "Failed to load balance assessment");
+      setError(err.response?.data?.detail || "Failed to load balance assessment");
     } finally {
       setLoading(false);
     }
   };
 
   const loadQualityComparison = async () => {
+    if (demographicsData.length === 0 || syntheticData.length === 0) {
+      setError("Both real and synthetic data required for quality comparison.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const result = await analyticsApi.compareDemographicsQuality(
-        sampleDemographics,
-        sampleDemographics // Using same data for demo
-      );
-      setQualityData(result);
+      const response = await api.post("/demographics/quality-comparison", {
+        real_data: demographicsData,
+        synthetic_data: syntheticData,
+      });
+      setQualityData(response.data);
     } catch (err: any) {
-      setError(err.message || "Failed to load quality comparison");
+      setError(err.response?.data?.detail || "Failed to load quality comparison");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateSyntheticData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Generate synthetic demographics using MVN method
+      const response = await api.post("/demographics/generate-synthetic", {
+        n_subjects: demographicsData.length,
+        seed: 42,
+      });
+      setSyntheticData(response.data.demographics);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to generate synthetic data");
     } finally {
       setLoading(false);
     }
   };
 
   const exportSDTM = async () => {
+    if (demographicsData.length === 0) {
+      setError("No demographics data available to export.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const result = await analyticsApi.exportDemographicsSDTM(sampleDemographics);
+      const response = await api.post("/demographics/export-sdtm", {
+        demographics_data: demographicsData,
+      });
+
       // Download as JSON file
-      const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "demographics_sdtm.json";
+      a.download = `demographics_sdtm_${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      setError(err.message || "Failed to export SDTM data");
+      setError(err.response?.data?.detail || "Failed to export SDTM data");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target?.result as string);
+        if (Array.isArray(json)) {
+          setDemographicsData(json);
+          setError(null);
+        } else {
+          setError("Invalid file format. Expected JSON array.");
+        }
+      } catch (err) {
+        setError("Failed to parse JSON file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Demographics Analytics</h1>
-          <p className="text-muted-foreground mt-2">
-            Analyze baseline characteristics, treatment balance, and data quality
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <Users className="h-8 w-8 text-blue-600" />
+            Demographics Analytics
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Analyze baseline characteristics, treatment balance, and data quality ({demographicsData.length} subjects)
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportSDTM} disabled={loading}>
-            <Download className="mr-2 h-4 w-4" />
+          <div>
+            <Input
+              id="file-upload"
+              type="file"
+              accept=".json"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <Button variant="outline" onClick={() => document.getElementById("file-upload")?.click()} disabled={loading}>
+              <FileUp className="h-4 w-4 mr-2" />
+              Upload Data
+            </Button>
+          </div>
+          <Button variant="outline" onClick={generateSampleData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Generate Sample
+          </Button>
+          <Button variant="outline" onClick={generateSyntheticData} disabled={loading || demographicsData.length === 0}>
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Generate Synthetic
+          </Button>
+          <Button variant="outline" onClick={exportSDTM} disabled={loading || demographicsData.length === 0}>
+            <Download className="h-4 w-4 mr-2" />
             Export SDTM
           </Button>
         </div>
       </div>
 
+      {/* Data Status Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">Real Data</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{demographicsData.length}</div>
+            <p className="text-xs text-gray-500 mt-1">subjects loaded</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">Synthetic Data</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{syntheticData.length}</div>
+            <p className="text-xs text-gray-500 mt-1">synthetic subjects</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">Treatment Arms</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {demographicsData.filter((d) => d.TreatmentArm === "Active").length} / {demographicsData.filter((d) => d.TreatmentArm === "Placebo").length}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Active / Placebo</p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      )}
+
+      {/* Loading State */}
+      {loading && (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className="text-gray-600">Processing demographics analysis...</p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Tabs */}

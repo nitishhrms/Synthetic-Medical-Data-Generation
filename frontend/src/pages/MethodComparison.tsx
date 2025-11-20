@@ -1,611 +1,556 @@
-import { useState } from "react";
-import { analyticsApi } from "../services/api";
+import { useState, useEffect } from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
-import { ScatterChart, Scatter, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Zap, Award, Lightbulb } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { ScatterChart, Scatter, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { Zap, Award, Lightbulb, BarChart3, Download, RefreshCw, AlertCircle, CheckCircle2, TrendingUp } from "lucide-react";
+import { api } from "@/api";
+import MethodComparisonRadar, { type MethodMetrics } from "@/components/analytics/MethodComparisonRadar";
+
+interface BenchmarkResult {
+  methods: MethodMetrics[];
+  recommendations: {
+    best_overall: string;
+    best_for_speed: string;
+    best_for_quality: string;
+    best_for_privacy: string;
+  };
+  detailed_metrics: {
+    [method: string]: {
+      wasserstein_distances: {
+        SystolicBP: number;
+        DiastolicBP: number;
+        HeartRate: number;
+        Temperature: number;
+      };
+      generation_time_ms: number;
+      records_per_second: number;
+      correlation_matrix_diff: number;
+    };
+  };
+}
+
+const METHOD_INFO: Record<string, { name: string; description: string; icon: string }> = {
+  mvn: {
+    name: "MVN (Multivariate Normal)",
+    description: "Statistical distribution-based generation preserving mean and covariance",
+    icon: "📊",
+  },
+  bootstrap: {
+    name: "Bootstrap",
+    description: "Resampling from real data with Gaussian jitter",
+    icon: "🔄",
+  },
+  rules: {
+    name: "Rules-Based",
+    description: "Deterministic generation using business rules",
+    icon: "📋",
+  },
+  llm: {
+    name: "LLM (GPT-4o-mini)",
+    description: "AI-powered generation with context awareness",
+    icon: "🤖",
+  },
+  bayesian: {
+    name: "Bayesian Network",
+    description: "Probabilistic graphical model capturing dependencies",
+    icon: "🔗",
+  },
+  mice: {
+    name: "MICE (Multiple Imputation)",
+    description: "Chained equations with uncertainty quantification",
+    icon: "🎲",
+  },
+};
 
 export function MethodComparison() {
-  const [activeTab, setActiveTab] = useState("performance");
+  const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [benchmarkData, setBenchmarkData] = useState<BenchmarkResult | null>(null);
 
-  // State for each analysis type
-  const [performanceData, setPerformanceData] = useState<any>(null);
-  const [qualityData, setQualityData] = useState<any>(null);
-  const [recommendationsData, setRecommendationsData] = useState<any>(null);
-
-  // Sample method performance data
-  const sampleMethodsData = {
-    mvn: {
-      generation_time_ms: 14,
-      records_generated: 400,
-      quality_score: 0.87,
-      aact_similarity: 0.91
-    },
-    bootstrap: {
-      generation_time_ms: 3,
-      records_generated: 400,
-      quality_score: 0.92,
-      aact_similarity: 0.88
-    },
-    rules: {
-      generation_time_ms: 5,
-      records_generated: 400,
-      quality_score: 0.83,
-      aact_similarity: 0.85
-    },
-    llm: {
-      generation_time_ms: 2500,
-      records_generated: 200,
-      quality_score: 0.89,
-      aact_similarity: 0.93
-    }
-  };
-
-  const loadPerformanceComparison = async () => {
+  // Run benchmark comparison
+  const runBenchmark = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const result = await analyticsApi.compareMethodPerformance(sampleMethodsData);
-      setPerformanceData(result);
-    } catch (err: any) {
-      setError(err.message || "Failed to load performance comparison");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const loadQualityAggregation = async () => {
-    setLoading(true);
-    setError(null);
     try {
-      const result = await analyticsApi.aggregateQualityScores({
-        demographics_quality: 0.89,
-        vitals_quality: 0.92,
-        labs_quality: 0.88,
-        ae_quality: 0.85,
-        aact_similarity: 0.91
+      // Call the benchmark/performance endpoint
+      const response = await api.post("/benchmark/performance", {
+        n_per_arm: 50, // 100 subjects total
+        target_effect: -5.0,
+        seed: 42,
       });
-      setQualityData(result);
+
+      setBenchmarkData(response.data);
     } catch (err: any) {
-      setError(err.message || "Failed to aggregate quality scores");
+      console.error("Benchmark error:", err);
+      setError(err.response?.data?.detail || "Failed to run benchmark comparison");
     } finally {
       setLoading(false);
     }
   };
 
-  const loadRecommendations = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await analyticsApi.getRecommendations({
-        current_quality: 0.72,
-        aact_similarity: 0.65,
-        generation_method: "mvn",
-        n_subjects: 50,
-        indication: "hypertension",
-        phase: "Phase 3"
-      });
-      setRecommendationsData(result);
-    } catch (err: any) {
-      setError(err.message || "Failed to load recommendations");
-    } finally {
-      setLoading(false);
-    }
+  // Auto-run on mount
+  useEffect(() => {
+    runBenchmark();
+  }, []);
+
+  // Export results
+  const exportResults = () => {
+    if (!benchmarkData) return;
+
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      methods: benchmarkData.methods,
+      recommendations: benchmarkData.recommendations,
+      detailed_metrics: benchmarkData.detailed_metrics,
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `method-comparison-${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Get quality badge
+  const getQualityBadge = (score: number) => {
+    if (score >= 0.85) return <Badge className="bg-green-500 text-white">Excellent</Badge>;
+    if (score >= 0.70) return <Badge className="bg-blue-500 text-white">Good</Badge>;
+    if (score >= 0.50) return <Badge className="bg-yellow-500 text-white">Fair</Badge>;
+    return <Badge className="bg-red-500 text-white">Poor</Badge>;
+  };
+
+  // Get performance badge
+  const getPerformanceBadge = (recordsPerSec: number) => {
+    if (recordsPerSec >= 50000) return <Badge className="bg-green-500 text-white">Ultra Fast</Badge>;
+    if (recordsPerSec >= 10000) return <Badge className="bg-blue-500 text-white">Fast</Badge>;
+    if (recordsPerSec >= 1000) return <Badge className="bg-yellow-500 text-white">Moderate</Badge>;
+    return <Badge className="bg-orange-500 text-white">Slow</Badge>;
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Method Comparison & Optimization</h1>
-          <p className="text-muted-foreground mt-2">
-            Compare generation methods, analyze quality scores, and get optimization recommendations
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <BarChart3 className="h-8 w-8 text-purple-600" />
+            Method Comparison & Benchmarking
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Compare all 6 synthetic data generation methods across quality, performance, and utility dimensions
           </p>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={runBenchmark} disabled={loading} variant="outline">
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Re-run Benchmark
+          </Button>
+          <Button onClick={exportResults} disabled={!benchmarkData || loading}>
+            <Download className="h-4 w-4 mr-2" />
+            Export Results
+          </Button>
         </div>
       </div>
 
       {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="performance">
-            <Zap className="mr-2 h-4 w-4" />
-            Performance
-          </TabsTrigger>
-          <TabsTrigger value="quality">
-            <Award className="mr-2 h-4 w-4" />
-            Quality
-          </TabsTrigger>
-          <TabsTrigger value="recommendations">
-            <Lightbulb className="mr-2 h-4 w-4" />
-            Recommendations
-          </TabsTrigger>
-        </TabsList>
+      {/* Loading State */}
+      {loading && (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <RefreshCw className="h-8 w-8 animate-spin text-purple-600 mx-auto mb-4" />
+            <p className="text-gray-600">Running comprehensive benchmark comparison...</p>
+            <p className="text-sm text-gray-500 mt-2">This may take up to 30 seconds</p>
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Performance Comparison Tab */}
-        <TabsContent value="performance" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Generation Method Performance Comparison</CardTitle>
-              <CardDescription>
-                Compare MVN, Bootstrap, Rules, and LLM methods across quality, speed, and AACT similarity
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!performanceData ? (
-                <div className="text-center py-12">
-                  <Zap className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                  <Button onClick={loadPerformanceComparison} disabled={loading}>
-                    {loading ? "Loading..." : "Load Performance Comparison"}
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Winner and Ranking */}
-                  <div className="bg-gradient-to-r from-yellow-50 to-orange-50 p-6 rounded-lg border-2 border-yellow-200">
-                    <h3 className="text-xl font-bold mb-2">🏆 Recommended Method</h3>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-2xl font-bold uppercase">{performanceData.recommended_method}</p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Overall weighted score: {(performanceData.recommended_score * 100).toFixed(1)}%
-                        </p>
-                      </div>
-                      <Badge className="text-lg px-4 py-2">Best Overall</Badge>
-                    </div>
-                  </div>
+      {/* Main Content */}
+      {!loading && benchmarkData && (
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="quality">Quality Metrics</TabsTrigger>
+            <TabsTrigger value="performance">Performance</TabsTrigger>
+            <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
+          </TabsList>
 
-                  {/* Method Rankings */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Method Rankings</h3>
-                    <div className="space-y-2">
-                      {performanceData.ranking?.map((method: any, idx: number) => (
-                        <Card key={idx} className={idx === 0 ? "border-2 border-yellow-400" : ""}>
-                          <CardContent className="pt-6">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <span className="text-3xl font-bold text-muted-foreground">#{idx + 1}</span>
-                                <div>
-                                  <p className="text-lg font-bold uppercase">{method.method}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    Weighted Score: {(method.weighted_score * 100).toFixed(1)}%
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="flex gap-2 mb-2">
-                                  <Badge variant="outline">Q: {(method.quality_score * 100).toFixed(0)}%</Badge>
-                                  <Badge variant="outline">S: {method.speed_rank}</Badge>
-                                  <Badge variant="outline">A: {(method.aact_similarity * 100).toFixed(0)}%</Badge>
-                                </div>
-                                <p className="text-xs text-muted-foreground">{method.records_per_second?.toFixed(0)} rec/sec</p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-6">
+            {/* Radar Chart */}
+            <MethodComparisonRadar methods={benchmarkData.methods} />
 
-                  {/* Performance Metrics Comparison */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Performance Metrics Comparison</h3>
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse border border-gray-200">
-                        <thead>
-                          <tr className="bg-gray-50">
-                            <th className="border border-gray-200 px-4 py-2 text-left">Method</th>
-                            <th className="border border-gray-200 px-4 py-2 text-center">Generation Time</th>
-                            <th className="border border-gray-200 px-4 py-2 text-center">Records/sec</th>
-                            <th className="border border-gray-200 px-4 py-2 text-center">Quality Score</th>
-                            <th className="border border-gray-200 px-4 py-2 text-center">AACT Similarity</th>
-                            <th className="border border-gray-200 px-4 py-2 text-center">Weighted Score</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {performanceData.method_comparison?.map((method: any, idx: number) => (
-                            <tr key={idx} className={method.method === performanceData.recommended_method ? "bg-yellow-50" : ""}>
-                              <td className="border border-gray-200 px-4 py-2 font-semibold uppercase">{method.method}</td>
-                              <td className="border border-gray-200 px-4 py-2 text-center">{method.generation_time_ms}ms</td>
-                              <td className="border border-gray-200 px-4 py-2 text-center">{method.records_per_second?.toFixed(0)}</td>
-                              <td className="border border-gray-200 px-4 py-2 text-center">
-                                <Badge variant={method.quality_score >= 0.85 ? "default" : "secondary"}>
-                                  {(method.quality_score * 100).toFixed(1)}%
-                                </Badge>
-                              </td>
-                              <td className="border border-gray-200 px-4 py-2 text-center">
-                                {(method.aact_similarity * 100).toFixed(1)}%
-                              </td>
-                              <td className="border border-gray-200 px-4 py-2 text-center font-bold">
-                                {(method.weighted_score * 100).toFixed(1)}%
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Quality vs Speed Scatter Plot */}
-                  {performanceData.method_comparison && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">Quality vs. Speed Tradeoff</h3>
-                      <ResponsiveContainer width="100%" height={400}>
-                        <ScatterChart>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis
-                            dataKey="records_per_second"
-                            name="Speed"
-                            label={{ value: "Records/Second", position: "insideBottom", offset: -5 }}
-                            scale="log"
-                            domain={['auto', 'auto']}
-                          />
-                          <YAxis
-                            dataKey="quality_score"
-                            name="Quality"
-                            label={{ value: "Quality Score", angle: -90, position: "insideLeft" }}
-                            domain={[0.8, 1.0]}
-                          />
-                          <Tooltip cursor={{ strokeDasharray: "3 3" }} />
-                          <Legend />
-                          <Scatter name="Methods" data={performanceData.method_comparison} fill="#8884d8" />
-                        </ScatterChart>
-                      </ResponsiveContainer>
-                      <p className="text-sm text-muted-foreground text-center mt-2">
-                        Top-right corner represents ideal balance of high quality and high speed
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Radar Chart for Multi-Dimensional Comparison */}
-                  {performanceData.radar_data && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">Multi-Dimensional Comparison</h3>
-                      <ResponsiveContainer width="100%" height={400}>
-                        <RadarChart data={performanceData.radar_data}>
-                          <PolarGrid />
-                          <PolarAngleAxis dataKey="metric" />
-                          <PolarRadiusAxis angle={90} domain={[0, 1]} />
-                          <Radar name="MVN" dataKey="mvn" stroke="#8884d8" fill="#8884d8" fillOpacity={0.3} />
-                          <Radar name="Bootstrap" dataKey="bootstrap" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.3} />
-                          <Radar name="Rules" dataKey="rules" stroke="#ffc658" fill="#ffc658" fillOpacity={0.3} />
-                          <Radar name="LLM" dataKey="llm" stroke="#ff8042" fill="#ff8042" fillOpacity={0.3} />
-                          <Tooltip />
-                          <Legend />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-
-                  {/* Tradeoffs Summary */}
-                  {performanceData.tradeoffs && (
-                    <Alert>
-                      <AlertDescription>
-                        <h4 className="font-semibold mb-2">Key Tradeoffs</h4>
-                        <ul className="list-disc list-inside space-y-1">
-                          {performanceData.tradeoffs.map((tradeoff: string, idx: number) => (
-                            <li key={idx}>{tradeoff}</li>
-                          ))}
-                        </ul>
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Quality Aggregation Tab */}
-        <TabsContent value="quality" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quality Score Aggregation</CardTitle>
-              <CardDescription>
-                Aggregate quality scores across demographics, vitals, labs, AEs, and AACT similarity
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!qualityData ? (
-                <div className="text-center py-12">
-                  <Award className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                  <Button onClick={loadQualityAggregation} disabled={loading}>
-                    {loading ? "Loading..." : "Load Quality Scores"}
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Overall Quality Score */}
-                  <div className="bg-gradient-to-r from-blue-50 to-cyan-50 p-8 rounded-lg border-2 border-blue-200 text-center">
-                    <p className="text-sm text-muted-foreground mb-2">Overall Quality Score</p>
-                    <p className="text-6xl font-bold">{(qualityData.overall_quality * 100).toFixed(1)}%</p>
-                    <Badge className="mt-4 text-lg px-4 py-2" variant={qualityData.overall_quality >= 0.85 ? "default" : "secondary"}>
-                      Grade {qualityData.quality_grade}
-                    </Badge>
-                    <p className="text-sm text-muted-foreground mt-2">{qualityData.interpretation}</p>
-                  </div>
-
-                  {/* Domain Scores Breakdown */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Domain Quality Scores</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                      {qualityData.domain_scores?.map((domain: any, idx: number) => (
-                        <Card key={idx}>
-                          <CardHeader>
-                            <CardTitle className="text-md">{domain.domain}</CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="text-3xl font-bold">{(domain.score * 100).toFixed(1)}%</div>
-                            <p className="text-xs text-muted-foreground mt-2">Weight: {(domain.weight * 100).toFixed(0)}%</p>
-                            <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full ${domain.score >= 0.85 ? "bg-green-500" : domain.score >= 0.7 ? "bg-yellow-500" : "bg-red-500"}`}
-                                style={{ width: `${domain.score * 100}%` }}
-                              />
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Quality Scores Bar Chart */}
-                  {qualityData.domain_scores && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">Domain Quality Comparison</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={qualityData.domain_scores}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="domain" />
-                          <YAxis domain={[0, 1]} />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="score" fill="#82ca9d" name="Quality Score" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-
-                  {/* Strengths and Weaknesses */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {qualityData.strengths && qualityData.strengths.length > 0 && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-lg text-green-600">✓ Strengths</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <ul className="space-y-2">
-                            {qualityData.strengths.map((strength: string, idx: number) => (
-                              <li key={idx} className="flex items-start">
-                                <span className="text-green-600 mr-2">•</span>
-                                <span className="text-sm">{strength}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {qualityData.weaknesses && qualityData.weaknesses.length > 0 && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-lg text-orange-600">⚠ Areas for Improvement</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <ul className="space-y-2">
-                            {qualityData.weaknesses.map((weakness: string, idx: number) => (
-                              <li key={idx} className="flex items-start">
-                                <span className="text-orange-600 mr-2">•</span>
-                                <span className="text-sm">{weakness}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-
-                  {/* Summary */}
-                  {qualityData.summary && (
-                    <Alert>
-                      <AlertDescription>{qualityData.summary}</AlertDescription>
-                    </Alert>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Recommendations Tab */}
-        <TabsContent value="recommendations" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Parameter Optimization Recommendations</CardTitle>
-              <CardDescription>
-                Get actionable recommendations to improve data quality and AACT similarity
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!recommendationsData ? (
-                <div className="text-center py-12">
-                  <Lightbulb className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                  <Button onClick={loadRecommendations} disabled={loading}>
-                    {loading ? "Loading..." : "Load Recommendations"}
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Current Status */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Current Status</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-md">Current Quality</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-3xl font-bold">{(recommendationsData.current_quality * 100).toFixed(1)}%</div>
-                          <Badge className="mt-2" variant={recommendationsData.current_quality >= 0.85 ? "default" : "secondary"}>
-                            {recommendationsData.current_quality >= 0.85 ? "Good" : "Needs Improvement"}
-                          </Badge>
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-md">AACT Similarity</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-3xl font-bold">{(recommendationsData.aact_similarity * 100).toFixed(1)}%</div>
-                          <Badge className="mt-2" variant={recommendationsData.aact_similarity >= 0.90 ? "default" : "secondary"}>
-                            {recommendationsData.aact_similarity >= 0.90 ? "Excellent" : "Can Improve"}
-                          </Badge>
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-md">Current Method</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-2xl font-bold uppercase">{recommendationsData.current_method}</p>
-                          <p className="text-sm text-muted-foreground mt-2">Generation method</p>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  </div>
-
-                  {/* Improvement Opportunities */}
-                  {recommendationsData.improvement_opportunities && recommendationsData.improvement_opportunities.length > 0 && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">💡 Improvement Opportunities</h3>
-                      <div className="space-y-3">
-                        {recommendationsData.improvement_opportunities.map((opp: any, idx: number) => (
-                          <Card key={idx} className="border-l-4 border-l-blue-500">
-                            <CardContent className="pt-6">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <h4 className="font-semibold mb-2">{opp.area}</h4>
-                                  <p className="text-sm text-muted-foreground mb-3">{opp.recommendation}</p>
-                                  {opp.expected_improvement && (
-                                    <Badge variant="outline">
-                                      Expected improvement: +{(opp.expected_improvement * 100).toFixed(0)}%
-                                    </Badge>
-                                  )}
-                                </div>
-                                <Badge className="ml-4" variant={opp.priority === "high" ? "destructive" : opp.priority === "medium" ? "secondary" : "outline"}>
-                                  {opp.priority} priority
-                                </Badge>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Parameter Recommendations */}
-                  {recommendationsData.parameter_recommendations && (
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">🔧 Recommended Parameter Changes</h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse border border-gray-200">
-                          <thead>
-                            <tr className="bg-gray-50">
-                              <th className="border border-gray-200 px-4 py-2 text-left">Parameter</th>
-                              <th className="border border-gray-200 px-4 py-2 text-center">Current Value</th>
-                              <th className="border border-gray-200 px-4 py-2 text-center">Recommended Value</th>
-                              <th className="border border-gray-200 px-4 py-2 text-left">Rationale</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {recommendationsData.parameter_recommendations.map((param: any, idx: number) => (
-                              <tr key={idx}>
-                                <td className="border border-gray-200 px-4 py-2 font-medium">{param.parameter}</td>
-                                <td className="border border-gray-200 px-4 py-2 text-center">{param.current_value}</td>
-                                <td className="border border-gray-200 px-4 py-2 text-center">
-                                  <Badge variant="default">{param.recommended_value}</Badge>
-                                </td>
-                                <td className="border border-gray-200 px-4 py-2 text-sm">{param.rationale}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Expected Outcomes */}
-                  {recommendationsData.expected_outcomes && (
-                    <Card className="bg-green-50 border-green-200">
-                      <CardHeader>
-                        <CardTitle className="text-lg">📈 Expected Outcomes</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium">Projected Quality Score:</span>
+            {/* Quick Comparison Matrix */}
+            <Card>
+              <CardHeader>
+                <CardTitle>6-Method Comparison Matrix</CardTitle>
+                <CardDescription>Overall quality scores and key characteristics</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Overall Quality</TableHead>
+                      <TableHead>Distribution</TableHead>
+                      <TableHead>Correlation</TableHead>
+                      <TableHead>Utility</TableHead>
+                      <TableHead>Privacy</TableHead>
+                      <TableHead>Speed</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {benchmarkData.methods
+                      .sort((a, b) => b.overall_quality - a.overall_quality)
+                      .map((method, index) => (
+                        <TableRow key={method.method}>
+                          <TableCell className="font-medium">
                             <div className="flex items-center gap-2">
-                              <span className="text-muted-foreground">{(recommendationsData.current_quality * 100).toFixed(1)}%</span>
-                              <span className="text-xl">→</span>
-                              <span className="text-xl font-bold text-green-600">
-                                {(recommendationsData.expected_outcomes.projected_quality * 100).toFixed(1)}%
+                              <span className="text-xl">{METHOD_INFO[method.method]?.icon}</span>
+                              <div>
+                                <div>{METHOD_INFO[method.method]?.name}</div>
+                                {index === 0 && (
+                                  <Badge variant="outline" className="bg-green-50 text-green-700 text-xs mt-1">
+                                    Best Overall
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-lg">
+                                {(method.overall_quality * 100).toFixed(1)}%
                               </span>
+                              {getQualityBadge(method.overall_quality)}
+                            </div>
+                          </TableCell>
+                          <TableCell>{(method.distribution_similarity * 100).toFixed(1)}%</TableCell>
+                          <TableCell>{(method.correlation_preservation * 100).toFixed(1)}%</TableCell>
+                          <TableCell>{(method.statistical_utility * 100).toFixed(1)}%</TableCell>
+                          <TableCell>{((1 - method.privacy_risk) * 100).toFixed(1)}%</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Zap className="h-4 w-4 text-yellow-500" />
+                              <span className="font-medium">{(method.performance * 100).toFixed(1)}%</span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Quality Metrics Tab */}
+          <TabsContent value="quality" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Distribution Similarity (Wasserstein Distance)</CardTitle>
+                <CardDescription>Lower values indicate better distribution matching</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Systolic BP</TableHead>
+                      <TableHead>Diastolic BP</TableHead>
+                      <TableHead>Heart Rate</TableHead>
+                      <TableHead>Temperature</TableHead>
+                      <TableHead>Average</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {benchmarkData.methods.map((method) => {
+                      const metrics = benchmarkData.detailed_metrics[method.method];
+                      const avgDist = metrics
+                        ? (metrics.wasserstein_distances.SystolicBP +
+                            metrics.wasserstein_distances.DiastolicBP +
+                            metrics.wasserstein_distances.HeartRate +
+                            metrics.wasserstein_distances.Temperature) /
+                          4
+                        : 0;
+
+                      return (
+                        <TableRow key={method.method}>
+                          <TableCell className="font-medium">{METHOD_INFO[method.method]?.name}</TableCell>
+                          <TableCell>{metrics?.wasserstein_distances.SystolicBP.toFixed(2) || "N/A"}</TableCell>
+                          <TableCell>{metrics?.wasserstein_distances.DiastolicBP.toFixed(2) || "N/A"}</TableCell>
+                          <TableCell>{metrics?.wasserstein_distances.HeartRate.toFixed(2) || "N/A"}</TableCell>
+                          <TableCell>{metrics?.wasserstein_distances.Temperature.toFixed(3) || "N/A"}</TableCell>
+                          <TableCell className="font-bold">{avgDist.toFixed(2)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Correlation Preservation</CardTitle>
+                <CardDescription>How well each method preserves variable relationships</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {benchmarkData.methods
+                    .sort((a, b) => b.correlation_preservation - a.correlation_preservation)
+                    .map((method) => (
+                      <div key={method.method} className="flex items-center gap-4">
+                        <div className="w-48 font-medium">{METHOD_INFO[method.method]?.name}</div>
+                        <div className="flex-1">
+                          <div className="bg-gray-200 rounded-full h-6 overflow-hidden">
+                            <div
+                              className="bg-gradient-to-r from-blue-500 to-purple-600 h-full flex items-center justify-end px-2 text-white text-xs font-medium"
+                              style={{ width: `${method.correlation_preservation * 100}%` }}
+                            >
+                              {(method.correlation_preservation * 100).toFixed(1)}%
                             </div>
                           </div>
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium">Projected AACT Similarity:</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-muted-foreground">{(recommendationsData.aact_similarity * 100).toFixed(1)}%</span>
-                              <span className="text-xl">→</span>
-                              <span className="text-xl font-bold text-green-600">
-                                {(recommendationsData.expected_outcomes.projected_aact_similarity * 100).toFixed(1)}%
-                              </span>
-                            </div>
-                          </div>
-                          {recommendationsData.expected_outcomes.estimated_improvement_time && (
-                            <div className="flex justify-between items-center">
-                              <span className="font-medium">Estimated Implementation Time:</span>
-                              <Badge variant="outline">{recommendationsData.expected_outcomes.estimated_improvement_time}</Badge>
-                            </div>
-                          )}
                         </div>
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Next Steps */}
-                  {recommendationsData.next_steps && (
-                    <Alert>
-                      <AlertDescription>
-                        <h4 className="font-semibold mb-2">🚀 Next Steps</h4>
-                        <ol className="list-decimal list-inside space-y-1">
-                          {recommendationsData.next_steps.map((step: string, idx: number) => (
-                            <li key={idx}>{step}</li>
-                          ))}
-                        </ol>
-                      </AlertDescription>
-                    </Alert>
-                  )}
+                        {method.correlation_preservation >= 0.9 && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+                      </div>
+                    ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Performance Tab */}
+          <TabsContent value="performance" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Generation Performance Metrics</CardTitle>
+                <CardDescription>Speed and efficiency comparison</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Generation Time</TableHead>
+                      <TableHead>Records/Second</TableHead>
+                      <TableHead>Performance Rating</TableHead>
+                      <TableHead>Best Use Case</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {benchmarkData.methods
+                      .sort((a, b) => {
+                        const aSpeed = benchmarkData.detailed_metrics[a.method]?.records_per_second || 0;
+                        const bSpeed = benchmarkData.detailed_metrics[b.method]?.records_per_second || 0;
+                        return bSpeed - aSpeed;
+                      })
+                      .map((method) => {
+                        const metrics = benchmarkData.detailed_metrics[method.method];
+                        return (
+                          <TableRow key={method.method}>
+                            <TableCell className="font-medium">{METHOD_INFO[method.method]?.name}</TableCell>
+                            <TableCell>{metrics?.generation_time_ms.toFixed(0) || "N/A"} ms</TableCell>
+                            <TableCell className="font-bold">
+                              {metrics?.records_per_second.toLocaleString() || "N/A"}
+                            </TableCell>
+                            <TableCell>
+                              {metrics?.records_per_second
+                                ? getPerformanceBadge(metrics.records_per_second)
+                                : "N/A"}
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-600">
+                              {method.method === "bootstrap" && "Large-scale generation"}
+                              {method.method === "mvn" && "Fast statistical analysis"}
+                              {method.method === "rules" && "Deterministic scenarios"}
+                              {method.method === "llm" && "Creative small datasets"}
+                              {method.method === "bayesian" && "Complex dependencies"}
+                              {method.method === "mice" && "Missing data scenarios"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Recommendations Tab */}
+          <TabsContent value="recommendations" className="space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              {/* Best Overall */}
+              <Card className="border-2 border-green-200">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    Best Overall Quality
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-4xl mb-2">
+                      {METHOD_INFO[benchmarkData.recommendations.best_overall]?.icon}
+                    </div>
+                    <div className="font-bold text-xl text-green-700">
+                      {METHOD_INFO[benchmarkData.recommendations.best_overall]?.name}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">
+                      {METHOD_INFO[benchmarkData.recommendations.best_overall]?.description}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Best for Speed */}
+              <Card className="border-2 border-blue-200">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-blue-600" />
+                    Best for Speed
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-4xl mb-2">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_speed]?.icon}
+                    </div>
+                    <div className="font-bold text-xl text-blue-700">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_speed]?.name}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_speed]?.description}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Best for Quality */}
+              <Card className="border-2 border-purple-200">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-purple-600" />
+                    Best for Quality
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-4xl mb-2">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_quality]?.icon}
+                    </div>
+                    <div className="font-bold text-xl text-purple-700">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_quality]?.name}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_quality]?.description}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Best for Privacy */}
+              <Card className="border-2 border-pink-200">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-pink-600" />
+                    Best for Privacy
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-4xl mb-2">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_privacy]?.icon}
+                    </div>
+                    <div className="font-bold text-xl text-pink-700">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_privacy]?.name}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">
+                      {METHOD_INFO[benchmarkData.recommendations.best_for_privacy]?.description}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Selection Guide */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Method Selection Guide</CardTitle>
+                <CardDescription>Choose the right method for your use case</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
+                    <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-green-800">For Production Use:</div>
+                      <div className="text-sm text-gray-700">
+                        Choose <strong>{METHOD_INFO[benchmarkData.recommendations.best_overall]?.name}</strong> - Best
+                        balance of quality, speed, and reliability
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
+                    <Zap className="h-5 w-5 text-blue-600 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-blue-800">For Large-Scale Generation:</div>
+                      <div className="text-sm text-gray-700">
+                        Choose <strong>{METHOD_INFO[benchmarkData.recommendations.best_for_speed]?.name}</strong> -
+                        Fastest generation for million-scale datasets
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-purple-50 rounded-lg">
+                    <TrendingUp className="h-5 w-5 text-purple-600 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-purple-800">For Statistical Analysis:</div>
+                      <div className="text-sm text-gray-700">
+                        Choose <strong>{METHOD_INFO[benchmarkData.recommendations.best_for_quality]?.name}</strong> -
+                        Highest statistical fidelity
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-pink-50 rounded-lg">
+                    <AlertCircle className="h-5 w-5 text-pink-600 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-pink-800">For Privacy-Sensitive Data:</div>
+                      <div className="text-sm text-gray-700">
+                        Choose <strong>{METHOD_INFO[benchmarkData.recommendations.best_for_privacy]?.name}</strong> -
+                        Lowest re-identification risk
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }

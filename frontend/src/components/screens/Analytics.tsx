@@ -24,6 +24,9 @@ import {
   ComposedChart,
   ReferenceLine,
 } from "recharts";
+import ModelSelector, { type GenerationMethod } from "@/components/analytics/ModelSelector";
+import DistributionChart from "@/components/analytics/DistributionChart";
+import QQPlot from "@/components/analytics/QQPlot";
 
 export function Analytics() {
   const {
@@ -42,6 +45,11 @@ export function Analytics() {
   const [mvnData, setMvnData] = useState<VitalsRecord[] | null>(null);
   const [bootstrapData, setBootstrapData] = useState<VitalsRecord[] | null>(null);
   const [detectedFinalVisit, setDetectedFinalVisit] = useState<string>("Week 12"); // Track the auto-detected final visit
+
+  // New state for enhanced distribution comparison
+  const [selectedMethod, setSelectedMethod] = useState<GenerationMethod>("mvn");
+  const [selectedMethodData, setSelectedMethodData] = useState<VitalsRecord[] | null>(null);
+  const [isGeneratingComparison, setIsGeneratingComparison] = useState(false);
 
   // Load pilot data on mount
   useEffect(() => {
@@ -153,6 +161,58 @@ export function Analytics() {
       setIsLoading(false);
     }
   };
+
+  // Generate data for selected comparison method
+  const generateComparisonData = async (method: GenerationMethod) => {
+    if (!generatedData) return;
+
+    setIsGeneratingComparison(true);
+    try {
+      const nPerArm = Math.floor(new Set(generatedData.map(r => r.SubjectID)).size / 2);
+      const params = { n_per_arm: nPerArm, target_effect: -5.0, seed: 42 };
+
+      let response;
+      switch (method) {
+        case "mvn":
+          response = await dataGenerationApi.generateMVN(params);
+          break;
+        case "bootstrap":
+          response = await dataGenerationApi.generateBootstrap(params);
+          break;
+        case "rules":
+          response = await dataGenerationApi.generateRules(params);
+          break;
+        case "llm":
+          // LLM requires API key - use a default or skip if not available
+          setSelectedMethodData(null);
+          setError("LLM generation requires OpenAI API key. Please use other methods for comparison.");
+          return;
+        case "bayesian":
+        case "mice":
+          // These methods may not be available in the current API
+          setSelectedMethodData(null);
+          setError(`${method.toUpperCase()} method comparison not yet available. Please select MVN, Bootstrap, or Rules.`);
+          return;
+        default:
+          throw new Error(`Unsupported method: ${method}`);
+      }
+
+      setSelectedMethodData(response.data);
+      setError("");
+    } catch (err: any) {
+      setError(err.message || `Failed to generate ${method.toUpperCase()} data for comparison`);
+      setSelectedMethodData(null);
+    } finally {
+      setIsGeneratingComparison(false);
+    }
+  };
+
+  // Effect to regenerate comparison data when method changes
+  useEffect(() => {
+    if (generatedData) {
+      generateComparisonData(selectedMethod);
+    }
+  }, [selectedMethod, generatedData]);
 
   const getQualityBadge = (score: number) => {
     if (score >= 0.85) return { variant: "default" as const, label: "Excellent", color: "bg-green-500" };
@@ -801,118 +861,153 @@ export function Analytics() {
               </CardContent>
             </Card>
 
-            {/* Distribution Visualizations - Dynamic Charts */}
-            {mvnData && bootstrapData && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Field Distribution Comparisons</CardTitle>
-                  <CardDescription>
-                    Dynamic comparison of vital sign distributions across real pilot data and synthetic generation methods
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-8">
-                  {/* Three-way comparison */}
-                  <div>
-                    <h4 className="font-medium mb-3">Three-Way Comparison: Real vs MVN vs Bootstrap</h4>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Complete distribution comparison showing how different generation methods (MVN and Bootstrap)
-                      preserve the statistical characteristics of real pilot data across all vital signs.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {Object.keys(threeWayDistributionData).map((vital) => (
-                        <div key={vital} className="border rounded-lg p-4">
-                          <h5 className="text-sm font-medium mb-3">{vital.replace(/([A-Z])/g, ' $1').trim()}</h5>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <ComposedChart data={(threeWayDistributionData as any)[vital]}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis
-                                dataKey="bin"
-                                tick={{ fontSize: 11 }}
-                                label={{ value: vital.replace(/([A-Z])/g, ' $1').trim(), position: 'insideBottom', offset: -5, fontSize: 12 }}
-                              />
-                              <YAxis tick={{ fontSize: 11 }} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 12 }} />
-                              <Tooltip />
-                              <Legend wrapperStyle={{ fontSize: '12px' }} />
-                              <Bar dataKey="Real" fill="#10b981" fillOpacity={0.7} name="Real (Pilot)" />
-                              <Bar dataKey="MVN" fill="#3b82f6" fillOpacity={0.7} name="MVN" />
-                              <Bar dataKey="Bootstrap" fill="#f59e0b" fillOpacity={0.7} name="Bootstrap" />
-                            </ComposedChart>
-                          </ResponsiveContainer>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+            {/* Enhanced Distribution Comparison - NEW DESIGN */}
+            {pilotData && selectedMethodData && (
+              <>
+                {/* Model Selector */}
+                <div className="mt-6">
+                  <ModelSelector
+                    selectedMethod={selectedMethod}
+                    onMethodChange={setSelectedMethod}
+                    showDescription={true}
+                  />
+                </div>
 
-                  {/* Real vs MVN */}
-                  <div>
-                    <h4 className="font-medium mb-3">Real vs MVN Generated Data</h4>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Distribution comparison between real pilot data and MVN (Multivariate Normal) generated synthetic data.
-                      MVN method preserves mean and covariance structure while generating statistically realistic variations.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {Object.keys(threeWayDistributionData).map((vital) => (
-                        <div key={vital} className="border rounded-lg p-4">
-                          <h5 className="text-sm font-medium mb-3">{vital.replace(/([A-Z])/g, ' $1').trim()}</h5>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <ComposedChart data={(threeWayDistributionData as any)[vital]}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis
-                                dataKey="bin"
-                                tick={{ fontSize: 11 }}
-                                label={{ value: vital.replace(/([A-Z])/g, ' $1').trim(), position: 'insideBottom', offset: -5, fontSize: 12 }}
-                              />
-                              <YAxis tick={{ fontSize: 11 }} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 12 }} />
-                              <Tooltip />
-                              <Legend wrapperStyle={{ fontSize: '12px' }} />
-                              <Bar dataKey="Real" fill="#10b981" fillOpacity={0.7} name="Real (Pilot)" />
-                              <Bar dataKey="MVN" fill="#3b82f6" fillOpacity={0.7} name="MVN Synthetic" />
-                            </ComposedChart>
-                          </ResponsiveContainer>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {isGeneratingComparison && (
+                  <Card className="border-2 border-dashed border-blue-300">
+                    <CardContent className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-blue-600 mr-3" />
+                      <span className="text-lg text-muted-foreground">
+                        Generating {selectedMethod.toUpperCase()} data for comparison...
+                      </span>
+                    </CardContent>
+                  </Card>
+                )}
 
-                  {/* Real vs Bootstrap */}
-                  <div>
-                    <h4 className="font-medium mb-3">Real vs Bootstrap Generated Data</h4>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Distribution comparison between real pilot data and Bootstrap generated synthetic data.
-                      Bootstrap method resamples from real data with added jitter to create similar but unique observations.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {Object.keys(threeWayDistributionData).map((vital) => (
-                        <div key={vital} className="border rounded-lg p-4">
-                          <h5 className="text-sm font-medium mb-3">{vital.replace(/([A-Z])/g, ' $1').trim()}</h5>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <ComposedChart data={(threeWayDistributionData as any)[vital]}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis
-                                dataKey="bin"
-                                tick={{ fontSize: 11 }}
-                                label={{ value: vital.replace(/([A-Z])/g, ' $1').trim(), position: 'insideBottom', offset: -5, fontSize: 12 }}
-                              />
-                              <YAxis tick={{ fontSize: 11 }} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 12 }} />
-                              <Tooltip />
-                              <Legend wrapperStyle={{ fontSize: '12px' }} />
-                              <Bar dataKey="Real" fill="#10b981" fillOpacity={0.7} name="Real (Pilot)" />
-                              <Bar dataKey="Bootstrap" fill="#f59e0b" fillOpacity={0.7} name="Bootstrap Synthetic" />
-                            </ComposedChart>
-                          </ResponsiveContainer>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {!isGeneratingComparison && (
+                  <>
+                    {/* Distribution Charts for Each Vital Sign */}
+                    <div className="space-y-6 mt-6">
+                      {['SystolicBP', 'DiastolicBP', 'HeartRate', 'Temperature'].map((vital) => {
+                        const realValues = pilotData.map((r) => r[vital as keyof VitalsRecord] as number).filter((v) => v != null);
+                        const syntheticValues = selectedMethodData
+                          .map((r) => r[vital as keyof VitalsRecord] as number)
+                          .filter((v) => v != null);
 
-                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                    <p className="text-sm font-medium mb-2">Key Observations:</p>
-                    <ul className="text-sm space-y-1 list-disc list-inside">
-                      <li><strong>Distribution Fidelity:</strong> Both methods closely match real data distributions</li>
-                      <li><strong>MVN Smoothness:</strong> MVN generates smoother distributions based on statistical moments</li>
-                      <li><strong>Bootstrap Preservation:</strong> Bootstrap better preserves multi-modal patterns and outliers</li>
-                      <li><strong>Quality Validation:</strong> Visual overlap confirms high-quality synthetic data generation</li>
-                    </ul>
+                        const units: Record<string, string> = {
+                          SystolicBP: 'mmHg',
+                          DiastolicBP: 'mmHg',
+                          HeartRate: 'bpm',
+                          Temperature: '°C',
+                        };
+
+                        const wasserstein = qualityMetrics?.wasserstein_distances?.[vital];
+                        const rmse = qualityMetrics?.rmse_by_column?.[vital];
+
+                        return (
+                          <DistributionChart
+                            key={vital}
+                            realData={realValues}
+                            syntheticData={syntheticValues}
+                            variable={vital.replace(/([A-Z])/g, ' $1').trim()}
+                            unit={units[vital]}
+                            syntheticMethodName={selectedMethod.toUpperCase()}
+                            wassersteinDistance={wasserstein}
+                            rmse={rmse}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    {/* Q-Q Plots for Normality Assessment */}
+                    <div className="mt-6 space-y-6">
+                      <h3 className="text-2xl font-bold">Normality Assessment (Q-Q Plots)</h3>
+                      <p className="text-muted-foreground">
+                        Quantile-Quantile plots assess how well each variable follows a normal distribution.
+                        Points closer to the diagonal line indicate better normality.
+                      </p>
+
+                      {['SystolicBP', 'DiastolicBP', 'HeartRate', 'Temperature'].map((vital) => {
+                        const realValues = pilotData.map((r) => r[vital as keyof VitalsRecord] as number).filter((v) => v != null);
+                        const syntheticValues = selectedMethodData
+                          .map((r) => r[vital as keyof VitalsRecord] as number)
+                          .filter((v) => v != null);
+
+                        const units: Record<string, string> = {
+                          SystolicBP: 'mmHg',
+                          DiastolicBP: 'mmHg',
+                          HeartRate: 'bpm',
+                          Temperature: '°C',
+                        };
+
+                        return (
+                          <QQPlot
+                            key={vital}
+                            realData={realValues}
+                            syntheticData={syntheticValues}
+                            variable={vital.replace(/([A-Z])/g, ' $1').trim()}
+                            unit={units[vital]}
+                            syntheticMethodName={selectedMethod.toUpperCase()}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    {/* Summary Card */}
+                    <Card className="mt-6 border-2 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50">
+                      <CardHeader>
+                        <CardTitle className="text-green-800">Distribution Comparison Summary</CardTitle>
+                        <CardDescription>
+                          Key insights from comparing Real pilot data vs {selectedMethod.toUpperCase()} synthetic data
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2 text-sm">
+                          <li className="flex items-start gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <strong>Distribution Fidelity:</strong> The {selectedMethod.toUpperCase()} method{' '}
+                              {selectedMethod === 'mvn' && 'preserves mean and covariance structure while generating statistically realistic variations'}
+                              {selectedMethod === 'bootstrap' && 'closely replicates real data patterns through resampling with jitter'}
+                              {selectedMethod === 'rules' && 'follows deterministic business rules to generate consistent patterns'}
+                            </div>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <strong>Quality Validation:</strong> Use Wasserstein distances and RMSE scores above to assess similarity. Lower values indicate better match to real data.
+                            </div>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <strong>Normality Assessment:</strong> Q-Q plots show whether each variable follows a normal distribution. R² values closer to 1.0 indicate better normality.
+                            </div>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <strong>Method Selection:</strong> Try different generation methods using the selector above to compare how each preserves data characteristics.
+                            </div>
+                          </li>
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Show message if no comparison data available */}
+            {pilotData && !selectedMethodData && !isGeneratingComparison && (
+              <Card className="border-2 border-dashed border-yellow-300 bg-yellow-50">
+                <CardContent className="flex items-center justify-center py-8">
+                  <AlertCircle className="h-6 w-6 text-yellow-600 mr-3" />
+                  <div>
+                    <p className="text-lg font-medium">Comparison data not yet generated</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Select a generation method above and run analysis to view distribution comparisons
+                    </p>
                   </div>
                 </CardContent>
               </Card>
