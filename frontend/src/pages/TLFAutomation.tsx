@@ -22,16 +22,24 @@ export default function TLFAutomation() {
       const pilotData = await dataGenerationApi.getPilotData();
 
       // Extract demographics
-      const demographics = pilotData.map((record: any, index: number) => ({
-        SubjectID: record.SubjectID || `SUB-${String(index + 1).padStart(3, "0")}`,
-        TreatmentArm: index % 2 === 0 ? "Active" : "Placebo",
-        Age: 55 + Math.floor(Math.random() * 20),
-        Gender: Math.random() > 0.5 ? "Male" : "Female",
-        Race: ["White", "Black or African American", "Asian"][Math.floor(Math.random() * 3)],
-        Ethnicity: Math.random() > 0.8 ? "Hispanic or Latino" : "Not Hispanic or Latino",
-        Weight: 70 + Math.random() * 30,
-        Height: 160 + Math.random() * 25,
-      }));
+      const demographics = pilotData.map((record: any, index: number) => {
+        const weight = 70 + Math.random() * 30;
+        const height = 160 + Math.random() * 25;
+        const heightInMeters = height / 100;
+        const bmi = weight / (heightInMeters * heightInMeters);
+
+        return {
+          SubjectID: record.SubjectID || `SUB-${String(index + 1).padStart(3, "0")}`,
+          TreatmentArm: index % 2 === 0 ? "Active" : "Placebo",
+          Age: 55 + Math.floor(Math.random() * 20),
+          Gender: Math.random() > 0.5 ? "Male" : "Female",
+          Race: ["White", "Black or African American", "Asian"][Math.floor(Math.random() * 3)],
+          Ethnicity: Math.random() > 0.8 ? "Hispanic or Latino" : "Not Hispanic or Latino",
+          Weight: weight,
+          Height: height,
+          BMI: bmi,
+        };
+      });
 
       const uniqueSubjects = Array.from(
         new Map(demographics.map((d: any) => [d.SubjectID, d])).values()
@@ -43,9 +51,9 @@ export default function TLFAutomation() {
       // Generate mock AE data
       const aeData = uniqueSubjects.slice(0, 50).map((subject: any, index: number) => ({
         SubjectID: subject.SubjectID,
-        AETERM: ["Headache", "Nausea", "Fatigue", "Dizziness", "Cough", "Fever"][index % 6],
-        AEDECOD: ["Headache", "Nausea", "Fatigue", "Dizziness", "Cough", "Pyrexia"][index % 6],
-        AEBODSYS: [
+        AETerm: ["Headache", "Nausea", "Fatigue", "Dizziness", "Cough", "Fever"][index % 6],
+        PT: ["Headache", "Nausea", "Fatigue", "Dizziness", "Cough", "Pyrexia"][index % 6],
+        BodySystem: [
           "Nervous system disorders",
           "Gastrointestinal disorders",
           "General disorders and administration site conditions",
@@ -53,12 +61,11 @@ export default function TLFAutomation() {
           "Respiratory, thoracic and mediastinal disorders",
           "General disorders and administration site conditions",
         ][index % 6],
-        AESEV: ["Mild", "Moderate", "Severe"][index % 3],
-        AETOXGR: [1, 2, 3][index % 3],
-        AESER: index % 10 === 0 ? "Y" : "N",
-        AEREL: ["Related", "Not Related", "Possibly Related"][index % 3],
-        AESTDTC: "2025-01-15",
-        AEENDTC: "2025-01-20",
+        Severity: ["Mild", "Moderate", "Severe"][index % 3],
+        Serious: index % 10 === 0 ? "Y" : "N",
+        Related: ["Related", "Not Related", "Possibly Related"][index % 3],
+        StartDate: "2025-01-15",
+        EndDate: "2025-01-20",
         TreatmentArm: subject.TreatmentArm,
       }));
 
