@@ -64,13 +64,34 @@ export function Analytics() {
       return;
     }
 
+    // Auto-detect the final visit from the data
+    // Typical order: Screening, Day 1, Week 4, Week 12, Month 6, Month 12, etc.
+    const visitOrder = ["Screening", "Day 1", "Week 4", "Week 8", "Week 12", "Week 16", "Week 24",
+                       "Month 3", "Month 6", "Month 9", "Month 12", "Month 18", "Month 24"];
+    const uniqueVisits = [...new Set(generatedData.map(r => r.VisitName))];
+
+    // Find the final visit (last in typical order, or last unique visit)
+    let finalVisit = uniqueVisits[uniqueVisits.length - 1]; // Default to last visit in data
+    for (let i = visitOrder.length - 1; i >= 0; i--) {
+      if (uniqueVisits.includes(visitOrder[i])) {
+        finalVisit = visitOrder[i];
+        break;
+      }
+    }
+
+    if (!finalVisit) {
+      setError("Could not determine final visit in the data. Available visits: " + uniqueVisits.join(", "));
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
     try {
-      // Get week-12 statistics
+      // Get final visit statistics (automatically uses the final visit from data)
       const statsResponse = await analyticsApi.getWeek12Stats({
         vitals_data: generatedData,
+        visit_name: finalVisit,  // Pass the auto-detected final visit
       });
       setWeek12Stats(statsResponse);
 
@@ -100,8 +121,21 @@ export function Analytics() {
         setQualityMetrics(qualityResponse);
         setPcaData(pcaResponse);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Analysis failed");
+    } catch (err: any) {
+      // Extract error message from API response or use default
+      let errorMessage = "Analysis failed";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
+
+      // Provide helpful guidance for common errors
+      if (errorMessage.includes("Week 12")) {
+        errorMessage = "Generated data is missing 'Week 12' visits. Please generate data using standard visit schedule.";
+      }
+
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

@@ -185,6 +185,7 @@ class VitalsData(BaseModel):
 
 class StatisticsRequest(BaseModel):
     vitals_data: List[Dict[str, Any]]
+    visit_name: Optional[str] = "Week 12"  # Default to Week 12 for backward compatibility
 
 class TreatmentGroupStats(BaseModel):
     n: int
@@ -471,7 +472,7 @@ async def calculate_statistics(request: StatisticsRequest):
     """
     try:
         df = pd.DataFrame(request.vitals_data)
-        stats = calculate_week12_statistics(df)
+        stats = calculate_week12_statistics(df, visit_name=request.visit_name)
 
         # Parse nested structure
         return StatisticsResponse(
