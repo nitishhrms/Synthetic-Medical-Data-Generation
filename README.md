@@ -148,6 +148,8 @@ kubectl port-forward -n clinical-trials svc/api-gateway 8000:80
 
 ## 📊 Service Details
 
+**For a comprehensive reference of all services, architecture, and endpoints, see [DEVELOPER_REFERENCE.md](docs/DEVELOPER_REFERENCE.md).**
+
 ### EDC Service API
 
 ```bash
@@ -303,7 +305,7 @@ kubectl get hpa -n clinical-trials --watch
 
 ## 🧪 Testing
 
-**For comprehensive testing procedures, see [COMPREHENSIVE_TESTING_GUIDE.md](COMPREHENSIVE_TESTING_GUIDE.md)**
+**For comprehensive testing procedures, see [COMPREHENSIVE_TESTING_GUIDE.md](docs/COMPREHENSIVE_TESTING_GUIDE.md)**
 
 This guide includes:
 - ✅ Complete frontend + backend testing workflows
@@ -371,8 +373,7 @@ Synthetic-Medical-Data-Generation/
 ├── data/                      # Sample data
 ├── docker-compose.yml
 ├── README.md
-├── CLAUDE.md                  # Backend API reference
-└── QUICKSTART_GUIDE.md        # Getting started guide
+└── docs/                      # Documentation (Quickstart, Guides, etc.)
 ```
 
 ## 🛠️ Development
@@ -447,11 +448,7 @@ This project was developed as part of a 2-week sprint to transform a monolithic 
 
 MIT License - See existing-app/LICENSE
 
-## 🔗 Related Documentation
 
-- [Original Monolithic App](../existing-app/README.md)
-- [Realistic Microservices Plan](../REALISTIC_MICROSERVICES_PLAN.md)
-- [AI-Accelerated Development Strategy](../ai_accelerated_development_strategy.md)
 
 ## 📞 Support
 
