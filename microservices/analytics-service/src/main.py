@@ -50,6 +50,11 @@ from study_analytics import (
     analyze_cross_domain_correlations,
     generate_trial_dashboard
 )
+from benchmarking import (
+    compare_generation_methods,
+    aggregate_quality_scores,
+    generate_recommendations
+)
 
 app = FastAPI(
     title="Analytics Service",
@@ -259,6 +264,25 @@ class TrialDashboardRequest(BaseModel):
     indication: str = Field(default="hypertension", description="Disease indication")
     phase: str = Field(default="Phase 3", description="Trial phase")
 
+# Benchmarking models
+class MethodComparisonRequest(BaseModel):
+    methods_data: Dict[str, Dict[str, Any]] = Field(..., description="Method performance data by method name")
+
+class AggregateQualityRequest(BaseModel):
+    demographics_quality: Optional[float] = Field(None, description="Demographics quality score (0-1)")
+    vitals_quality: Optional[float] = Field(None, description="Vitals quality score (0-1)")
+    labs_quality: Optional[float] = Field(None, description="Labs quality score (0-1)")
+    ae_quality: Optional[float] = Field(None, description="AE quality score (0-1)")
+    aact_similarity: Optional[float] = Field(None, description="AACT similarity score (0-1)")
+
+class RecommendationsRequest(BaseModel):
+    current_quality: float = Field(..., description="Current overall quality score (0-1)")
+    aact_similarity: Optional[float] = Field(None, description="AACT similarity score (0-1)")
+    generation_method: Optional[str] = Field(None, description="Generation method used")
+    n_subjects: Optional[int] = Field(None, description="Number of subjects")
+    indication: Optional[str] = Field(None, description="Disease indication")
+    phase: Optional[str] = Field(None, description="Trial phase")
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -278,7 +302,7 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Analytics Service",
-        "version": "1.5.0",
+        "version": "1.6.0",
         "features": [
             "Week-12 Statistics (t-test)",
             "RECIST + ORR Analysis",
@@ -290,7 +314,8 @@ async def root():
             "AE Analytics (Frequency Tables, TEAEs, SOC Analysis, Quality)",
             "Quality Assessment (PCA, K-NN, Wasserstein)",
             "AACT Integration (Compare Study, Benchmark Demographics, Benchmark AEs)",
-            "Comprehensive Study Analytics (Summary, Cross-Domain Correlations, Trial Dashboard)"
+            "Comprehensive Study Analytics (Summary, Cross-Domain Correlations, Trial Dashboard)",
+            "Benchmarking & Extensions (Performance Comparison, Quality Aggregation, Recommendations)"
         ],
         "endpoints": {
             "health": "/health",
@@ -318,6 +343,15 @@ async def root():
             "quality_demographics": "/quality/demographics/compare",
             "quality_labs": "/quality/labs/compare",
             "quality_ae": "/quality/ae/compare",
+            "aact_compare_study": "/aact/compare-study",
+            "aact_benchmark_demographics": "/aact/benchmark-demographics",
+            "aact_benchmark_ae": "/aact/benchmark-ae",
+            "study_comprehensive_summary": "/study/comprehensive-summary",
+            "study_cross_domain_correlations": "/study/cross-domain-correlations",
+            "study_trial_dashboard": "/study/trial-dashboard",
+            "benchmark_performance": "/benchmark/performance",
+            "benchmark_quality_scores": "/benchmark/quality-scores",
+            "study_recommendations": "/study/recommendations",
             "docs": "/docs"
         }
     }
@@ -2075,6 +2109,307 @@ async def study_trial_dashboard(request: TrialDashboardRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Trial dashboard generation failed: {str(e)}"
+        )
+
+
+# ===== BENCHMARKING & EXTENSIONS ENDPOINTS (Phase 6) =====
+
+@app.post("/benchmark/performance")
+async def benchmark_performance(request: MethodComparisonRequest):
+    """
+    Compare performance of different data generation methods
+
+    **Purpose:**
+    Compares MVN, Bootstrap, Rules, and LLM data generation methods across
+    multiple dimensions: speed, quality, AACT similarity, memory usage.
+
+    **Comparison Dimensions:**
+
+    1. **Speed (records/second):**
+       - MVN: ~29,000 rec/sec (fastest statistical method)
+       - Bootstrap: ~140,000 rec/sec (fastest overall)
+       - Rules: ~80,000 rec/sec (fast deterministic)
+       - LLM: ~70 rec/sec (slowest, API latency)
+
+    2. **Quality Score (0-1):**
+       - Comprehensive quality assessment score
+       - Based on Wasserstein distance, correlation preservation, K-NN
+       - Higher = better match to real data
+
+    3. **AACT Similarity (0-1):**
+       - How well method matches real-world trial patterns
+       - Based on enrollment, treatment effects, AE patterns
+       - Higher = more realistic
+
+    4. **Memory Usage (MB):**
+       - Peak memory consumption during generation
+       - Important for large-scale generation (millions of records)
+
+    **Scoring:**
+    - Weighted overall score: 40% quality + 40% speed + 20% AACT
+    - Ranking: Methods ranked 1-4 by overall score
+
+    **Request Format:**
+    ```json
+    {
+      "methods_data": {
+        "mvn": {
+          "records_per_second": 29000,
+          "quality_score": 0.87,
+          "aact_similarity": 0.91,
+          "memory_mb": 45
+        },
+        "bootstrap": {
+          "records_per_second": 140000,
+          "quality_score": 0.92,
+          "aact_similarity": 0.88,
+          "memory_mb": 38
+        },
+        "rules": { ... },
+        "llm": { ... }
+      }
+    }
+    ```
+
+    **Response:**
+    - method_comparison: Performance table with all metrics
+    - ranking: Methods ranked by overall score
+    - recommendations: Which method to use for different scenarios
+    - tradeoffs: Speed vs quality vs realism considerations
+
+    **Recommendations by Use Case:**
+    - **Production (millions of records)**: Bootstrap (fastest + high quality)
+    - **Research (highest quality)**: LLM (creative, context-aware)
+    - **Regulatory (highest realism)**: Method with highest AACT similarity
+    - **Testing (fast iteration)**: Bootstrap or Rules
+
+    **Use Case:**
+    - Method selection for data generation pipeline
+    - Performance benchmarking
+    - Resource planning (memory, compute)
+    - Method comparison for publications
+    - Justifying method choice to stakeholders
+    """
+    try:
+        result = compare_generation_methods(request.methods_data)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Method comparison failed: {str(e)}"
+        )
+
+
+@app.post("/benchmark/quality-scores")
+async def benchmark_quality_scores(request: AggregateQualityRequest):
+    """
+    Aggregate quality scores across all data domains
+
+    **Purpose:**
+    Combines quality assessments from demographics, vitals, labs, AEs, and AACT
+    into a single overall quality score with detailed breakdown.
+
+    **Domain Quality Scores (0-1):**
+
+    1. **Demographics Quality (20% weight):**
+       - Wasserstein distance for Age, Weight, Height, BMI
+       - Chi-square tests for Gender, Race, Ethnicity
+       - Correlation preservation
+
+    2. **Vitals Quality (25% weight):**
+       - Distribution similarity for SBP, DBP, HR, Temp
+       - K-NN imputation score
+       - Temporal pattern preservation
+
+    3. **Labs Quality (25% weight):**
+       - Wasserstein distance for all lab tests
+       - KS test pass rate
+       - Mean differences vs real data
+
+    4. **AE Quality (20% weight):**
+       - SOC distribution similarity
+       - PT overlap (Jaccard)
+       - Severity/relationship distribution match
+
+    5. **AACT Similarity (10% weight):**
+       - Enrollment realism
+       - Treatment effect realism
+       - Overall trial structure match
+
+    **Weighted Formula:**
+    ```
+    Overall = 0.20×Demographics + 0.25×Vitals + 0.25×Labs + 0.20×AE + 0.10×AACT
+    ```
+
+    **Quality Grades:**
+    - **A+ (≥0.95)**: Exceptional - Publication quality
+    - **A (0.90-0.95)**: Excellent - Production ready
+    - **B+ (0.85-0.90)**: Very Good - Minor improvements possible
+    - **B (0.80-0.85)**: Good - Usable with minor adjustments
+    - **C+ (0.75-0.80)**: Fair - Some improvements needed
+    - **C (0.70-0.75)**: Acceptable - Moderate improvements needed
+    - **D (0.60-0.70)**: Poor - Significant improvements needed
+    - **F (<0.60)**: Failing - Not recommended for use
+
+    **Completeness Score:**
+    - Proportion of domains with quality data (0-1)
+    - 5/5 domains = 1.0 (fully comprehensive)
+    - 3/5 domains = 0.6 (partial)
+
+    **Response:**
+    - domain_scores: Individual scores for each domain
+    - overall_quality: Weighted aggregate score (0-1)
+    - quality_grade: Letter grade (A+ to F)
+    - completeness: Data domain coverage (0-1)
+    - interpretation: Human-readable assessment
+    - benchmarks: How score compares to industry standards
+    - recommendations: Specific improvements by domain
+
+    **Interpretation Examples:**
+    - **0.92 (A)**: "Excellent synthetic data quality across all domains.
+       Production-ready for regulatory submissions and publications."
+    - **0.78 (C+)**: "Fair quality. Demographics and vitals are good (>0.85),
+       but AE patterns need improvement. Consider adjusting AE generation parameters."
+    - **0.65 (D)**: "Poor quality. Significant deviations in labs (0.58) and AEs (0.62).
+       Review generation method and parameters."
+
+    **Use Case:**
+    - Comprehensive quality validation
+    - Method comparison across all domains
+    - Quality assurance before production use
+    - Regulatory documentation (quality evidence)
+    - Identifying which domains need improvement
+    - Portfolio-level quality tracking
+    """
+    try:
+        result = aggregate_quality_scores(
+            demographics_quality=request.demographics_quality,
+            vitals_quality=request.vitals_quality,
+            labs_quality=request.labs_quality,
+            ae_quality=request.ae_quality,
+            aact_similarity=request.aact_similarity
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Quality score aggregation failed: {str(e)}"
+        )
+
+
+@app.post("/study/recommendations")
+async def study_recommendations(request: RecommendationsRequest):
+    """
+    Generate data generation parameter recommendations
+
+    **Purpose:**
+    Analyzes current quality scores and provides specific, actionable recommendations
+    for improving synthetic data quality and realism. Uses AACT benchmarks to
+    suggest optimal parameter values.
+
+    **Analysis Inputs:**
+    - current_quality: Overall quality score (0-1)
+    - aact_similarity: AACT benchmark similarity (0-1)
+    - generation_method: "mvn", "bootstrap", "rules", "llm"
+    - n_subjects: Current sample size
+    - indication: Disease indication (e.g., "hypertension")
+    - phase: Trial phase (e.g., "Phase 3")
+
+    **Recommendation Categories:**
+
+    1. **Quality Improvements:**
+       - If quality < 0.85: Suggests parameter tuning
+       - Specific recommendations per generation method:
+         - MVN: Adjust covariance matrix, increase correlation realism
+         - Bootstrap: Increase jitter fraction, adjust resampling strategy
+         - Rules: Add variability, incorporate clinical ranges
+         - LLM: Refine prompts, add clinical context
+
+    2. **AACT Alignment:**
+       - If AACT similarity < 0.7: Trial structure needs adjustment
+       - Enrollment recommendations (based on AACT percentiles):
+         - Too small: Suggest industry-typical enrollment (e.g., 225 for HTN Phase 3)
+         - Too large: Flag unrealistic enrollment
+       - Treatment effect recommendations:
+         - Compare to AACT mean/median for indication/phase
+         - Suggest realistic effect sizes
+
+    3. **Method Recommendations:**
+       - If quality consistently low: Suggest switching methods
+       - Performance trade-offs (speed vs quality)
+       - Method-specific best practices
+
+    4. **Parameter Optimization:**
+       - n_subjects: Industry-typical enrollment
+       - target_effect: Realistic treatment effect size
+       - jitter_frac (Bootstrap): Optimal noise level
+       - correlation_strength (MVN): Realistic inter-variable correlation
+
+    **Priority Levels:**
+    - **HIGH**: Critical issues impacting quality/realism (Δ quality >0.15)
+    - **MEDIUM**: Moderate improvements possible (Δ quality 0.05-0.15)
+    - **LOW**: Minor refinements (Δ quality <0.05)
+
+    **Response:**
+    - current_status: Assessment of current quality and realism
+    - improvement_opportunities: Prioritized list of improvements
+    - parameter_recommendations: Specific parameter values to try
+    - method_recommendations: Alternative methods to consider
+    - expected_improvements: Estimated quality boost per recommendation
+    - aact_context: Industry benchmarks for comparison
+
+    **Example Recommendations:**
+
+    **Scenario 1 - Quality 0.72, AACT 0.65:**
+    ```
+    Priority: HIGH
+    Issue: Quality below production threshold (0.72 < 0.85)
+    AACT similarity low (0.65 < 0.70)
+
+    Recommendations:
+    1. Increase n_subjects from 50 to 225 (AACT median for HTN Phase 3)
+    2. Adjust treatment effect from -3.0 to -5.2 mmHg (AACT mean)
+    3. Switch from Rules to Bootstrap for better quality (expect +0.15)
+    4. Increase bootstrap jitter_frac from 0.05 to 0.08 (more variability)
+
+    Expected outcome: Quality 0.87, AACT 0.82
+    ```
+
+    **Scenario 2 - Quality 0.90, AACT 0.88:**
+    ```
+    Priority: MEDIUM
+    Issue: Good quality but can optimize further
+
+    Recommendations:
+    1. Fine-tune MVN covariance for correlation preservation (+0.03)
+    2. Add temporal trends to match longitudinal patterns (+0.02)
+    3. Enrollment (100) is reasonable but 225 is more typical (AACT)
+
+    Expected outcome: Quality 0.95 (A+), AACT 0.92
+    ```
+
+    **Use Case:**
+    - Parameter tuning for data generation
+    - Quality improvement roadmap
+    - Method selection guidance
+    - AACT-based trial design validation
+    - Regulatory readiness preparation
+    - Continuous quality improvement
+    """
+    try:
+        result = generate_recommendations(
+            current_quality=request.current_quality,
+            aact_similarity=request.aact_similarity,
+            generation_method=request.generation_method,
+            n_subjects=request.n_subjects,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Recommendations generation failed: {str(e)}"
         )
 
 
