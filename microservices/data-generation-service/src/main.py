@@ -1933,7 +1933,10 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         n_per_arm=request.n_per_arm,
                         target_effect=request.target_effect,
                         seed=request.seed,
-                        n_steps=50  # Default diffusion steps
+                        n_steps=50,  # Default diffusion steps
+                        subject_ids=subject_ids,          # 🔑 Coordinated
+                        visit_schedule=visit_schedule,     # 🔑 Coordinated
+                        treatment_arms=treatment_arms      # 🔑 Coordinated
                     )
             else:
                 # Use original generators (fallback when AACT disabled)
@@ -1954,7 +1957,10 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         n_per_arm=request.n_per_arm,
                         target_effect=request.target_effect,
                         seed=request.seed,
-                        n_steps=50
+                        n_steps=50,
+                        subject_ids=subject_ids,          # 🔑 Coordinated
+                        visit_schedule=visit_schedule,     # 🔑 Coordinated
+                        treatment_arms=treatment_arms      # 🔑 Coordinated
                     )
                 else:  # bootstrap (fallback without AACT - create synthetic baseline)
                     # Create synthetic baseline from default statistics

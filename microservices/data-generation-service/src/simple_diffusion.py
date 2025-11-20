@@ -278,7 +278,10 @@ def generate_with_simple_diffusion(
     target_effect: float = -5.0,
     seed: Optional[int] = None,
     data_path: Optional[str] = None,
-    training_data: Optional[pd.DataFrame] = None
+    training_data: Optional[pd.DataFrame] = None,
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Generate synthetic data using simple diffusion approach
@@ -290,6 +293,9 @@ def generate_with_simple_diffusion(
         seed: Random seed
         data_path: Optional path to pilot data CSV (if not provided, uses training_data or creates synthetic baseline)
         training_data: Optional DataFrame to use as training data (alternative to data_path)
+        subject_ids: Optional coordinated subject IDs (e.g., from comprehensive study generation)
+        visit_schedule: Optional coordinated visit schedule (e.g., from AACT)
+        treatment_arms: Optional coordinated treatment arm assignments
 
     Returns:
         DataFrame with synthetic vitals data
@@ -331,40 +337,53 @@ def generate_with_simple_diffusion(
         training_data = pd.DataFrame(baseline_rows)
         generator = SimpleDiffusionGenerator(training_data)
 
-    # Generate samples (4 visits per subject)
-    n_samples = n_per_arm * 2 * 4  # 2 arms, 4 visits
+    # Use coordinated parameters if provided, otherwise use defaults
+    if subject_ids is None:
+        # Generate default subject IDs (RA001-xxx format for consistency)
+        subject_ids = [f"RA001-{i:03d}" for i in range(1, n_per_arm * 2 + 1)]
+
+    if visit_schedule is None:
+        visit_schedule = ['Screening', 'Day 1', 'Week 4', 'Week 12']
+
+    if treatment_arms is None:
+        # Default: first half Active, second half Placebo
+        treatment_arms = {}
+        for i, subj in enumerate(subject_ids):
+            treatment_arms[subj] = "Active" if i < n_per_arm else "Placebo"
+
+    # Generate samples (subjects × visits)
+    n_samples = len(subject_ids) * len(visit_schedule)
     df = generator.generate(n_samples, n_steps=n_steps, seed=seed)
 
-    # Organize by subject
-    # Assign subjects to visits
-    visits = ['Screening', 'Day 1', 'Week 4', 'Week 12']
-
+    # Organize by subject with coordinated IDs
     result_records = []
-    for arm_idx, arm in enumerate(['Active', 'Placebo']):
-        for subj_idx in range(n_per_arm):
-            subject_id = f"DIFF{arm_idx*n_per_arm + subj_idx + 1:04d}"
 
-            for visit in visits:
-                # Sample from generated data
-                mask = (df['TreatmentArm'] == arm) & (df['VisitName'] == visit)
-                available = df[mask]
+    for subject_id in subject_ids:
+        arm = treatment_arms[subject_id]
 
-                if len(available) > 0:
-                    record = available.sample(1, random_state=seed).iloc[0].to_dict()
-                else:
-                    # Fallback: sample any record and override
-                    record = df.sample(1, random_state=seed).iloc[0].to_dict()
-                    record['TreatmentArm'] = arm
-                    record['VisitName'] = visit
+        for visit in visit_schedule:
+            # Sample from generated data
+            mask = (df['TreatmentArm'] == arm) & (df['VisitName'] == visit)
+            available = df[mask]
 
-                record['SubjectID'] = subject_id
+            if len(available) > 0:
+                record = available.sample(1, random_state=seed).iloc[0].to_dict()
+            else:
+                # Fallback: sample any record and override
+                record = df.sample(1, random_state=seed).iloc[0].to_dict()
+                record['TreatmentArm'] = arm
+                record['VisitName'] = visit
 
-                # Apply treatment effect for Active arm at Week 12
-                if arm == 'Active' and visit == 'Week 12':
-                    record['SystolicBP'] = max(95, min(200,
-                        int(record['SystolicBP'] + target_effect)))
+            # Use coordinated subject ID
+            record['SubjectID'] = subject_id
 
-                result_records.append(record)
+            # Apply treatment effect for Active arm at final visit
+            final_visit = visit_schedule[-1]
+            if arm == 'Active' and visit == final_visit:
+                record['SystolicBP'] = max(95, min(200,
+                    int(record['SystolicBP'] + target_effect)))
+
+            result_records.append(record)
 
     return pd.DataFrame(result_records)
 
