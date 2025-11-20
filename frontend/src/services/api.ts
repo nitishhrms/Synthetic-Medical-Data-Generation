@@ -296,7 +296,15 @@ export const dataGenerationApi = {
         seed: params.seed ?? 42
       }),
     });
-    return handleResponse(response);
+    const data = await handleResponse(response);
+    // Backend returns array directly, wrap it in expected format
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "labs",
+      },
+    };
   },
 
   async generateAE(params: { n_subjects: number; seed?: number }): Promise<any> {
@@ -308,7 +316,15 @@ export const dataGenerationApi = {
         seed: params.seed ?? 7
       }),
     });
-    return handleResponse(response);
+    const data = await handleResponse(response);
+    // Backend returns array directly, wrap it in expected format
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "adverse-events",
+      },
+    };
   },
 
   async getRealVitalSigns(): Promise<any[]> {
@@ -328,6 +344,33 @@ export const dataGenerationApi = {
   async getRealAdverseEvents(): Promise<any[]> {
     const response = await fetch(`${DATA_GEN_SERVICE}/data/real-ae`, {
       headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async generateComprehensiveStudy(params: {
+    n_per_arm?: number;
+    target_effect?: number;
+    method?: string;
+    include_vitals?: boolean;
+    include_demographics?: boolean;
+    include_ae?: boolean;
+    include_labs?: boolean;
+    seed?: number;
+  }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/comprehensive-study`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_per_arm: params.n_per_arm ?? 50,
+        target_effect: params.target_effect ?? -5.0,
+        method: params.method ?? "mvn",
+        include_vitals: params.include_vitals ?? true,
+        include_demographics: params.include_demographics ?? true,
+        include_ae: params.include_ae ?? true,
+        include_labs: params.include_labs ?? true,
+        seed: params.seed ?? 42,
+      }),
     });
     return handleResponse(response);
   },
