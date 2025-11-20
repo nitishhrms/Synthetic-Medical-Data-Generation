@@ -104,6 +104,42 @@ from tlf_automation import (
     generate_all_tlf_tables
 )
 
+# Daft imports for distributed data processing
+try:
+    import daft
+    from daft_processor import DaftMedicalDataProcessor
+    from daft_aggregations import DaftAggregator
+    from daft_udfs import MedicalUDFs, AdvancedMedicalUDFs
+    DAFT_AVAILABLE = True
+except ImportError:
+    DAFT_AVAILABLE = False
+    import warnings
+    warnings.warn("Daft library not available. Install with: pip install getdaft==0.3.0")
+
+# Method comparison module
+try:
+    from method_comparison_daft import compare_generation_methods
+    METHOD_COMPARISON_AVAILABLE = True
+except ImportError:
+    METHOD_COMPARISON_AVAILABLE = False
+    print("Warning: Method comparison module not available")
+
+# Trial planning module
+try:
+    from trial_planning import (
+        VirtualControlArmGenerator,
+        WhatIfScenarioSimulator,
+        TrialFeasibilityEstimator,
+        TrialParameters,
+        generate_virtual_control_arm,
+        run_what_if_enrollment_analysis,
+        estimate_trial_feasibility
+    )
+    TRIAL_PLANNING_AVAILABLE = True
+except ImportError:
+    TRIAL_PLANNING_AVAILABLE = False
+    print("Warning: Trial planning module not available")
+
 app = FastAPI(
     title="Analytics Service",
     description="Clinical Trial Analytics, RBQM, CSR, SDTM Export, Survival Analysis, ADaM Generation, TLF Automation",
@@ -122,21 +158,12 @@ async def shutdown_event():
     await shutdown_db()
 
 # CORS configuration
-import os
 ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
 if ALLOWED_ORIGINS_ENV:
     ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
 else:
-    # Default: allow localhost origins for development
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-        "*"  # Allow all for development
-    ]
+    # Default: allow all origins for development (use specific origins in production)
+    ALLOWED_ORIGINS = ["*"]
 
 if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
@@ -146,9 +173,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,
 )
 
 # Pydantic models
@@ -425,7 +453,8 @@ async def root():
             "benchmark_quality_scores": "/benchmark/quality-scores",
             "study_recommendations": "/study/recommendations",
             "docs": "/docs"
-        }
+        },
+        "daft_available": DAFT_AVAILABLE
     }
 
 @app.post("/stats/week12", response_model=StatisticsResponse)

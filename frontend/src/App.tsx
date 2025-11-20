@@ -5,7 +5,8 @@ import { Login } from "@/components/screens/Login";
 import { Dashboard } from "@/components/screens/Dashboard";
 import { DataGeneration } from "@/components/screens/DataGeneration";
 import { Analytics } from "@/components/screens/Analytics";
-import { Quality } from "@/components/screens/Quality";
+import { QualityDashboard } from "@/components/screens/QualityDashboard";
+import { TrialPlanning } from "@/components/screens/TrialPlanning";
 import { Studies } from "@/components/screens/Studies";
 import { Settings } from "@/components/screens/Settings";
 import { SystemCheck } from "@/components/screens/SystemCheck";
@@ -71,9 +72,15 @@ function AppContent() {
       case "tlf":
         return <TLFAutomation />;
       case "quality":
-        return <Quality />;
+        return <QualityDashboard />;
+      case "trial-planning":
+        return <TrialPlanning />;
       case "rbqm":
         return <RBQMDashboard />;
+      case "linkup":
+        return <LinkupIntegration />;
+      case "medical-imaging":
+        return <MedicalImaging />;
       case "queries":
         return <QueryManagement />;
       case "data-entry":
