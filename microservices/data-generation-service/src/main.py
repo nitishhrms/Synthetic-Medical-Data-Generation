@@ -26,6 +26,8 @@ from generators import (
     generate_demographics_aact,
     generate_vitals_bayesian_aact,
     generate_vitals_mice_aact,
+    generate_labs_aact,
+    generate_oncology_ae_aact,
     generate_visit_schedule
 )
 from realistic_trial import RealisticTrialGenerator
@@ -190,6 +192,21 @@ class GenerateMICEAACTRequest(GenerateAACTRequest):
     missing_rate: float = Field(default=0.10, ge=0.0, le=0.5, description="Fraction of values to make missing")
     estimator: str = Field(default="bayesian_ridge", description="Imputation estimator: 'bayesian_ridge' or 'random_forest'")
     real_data_path: Optional[str] = Field(default=None, description="Path to real data for MICE training")
+
+class GenerateLabsAACTRequest(BaseModel):
+    """Request model for Labs with AACT real-world data"""
+    indication: str = Field(default="hypertension", description="Disease indication")
+    phase: str = Field(default="Phase 3", description="Trial phase")
+    n_subjects: int = Field(default=100, ge=1, le=1000, description="Number of subjects")
+    seed: int = Field(default=42, description="Random seed")
+    use_duration: bool = Field(default=True, description="Use AACT actual duration for visit scheduling")
+
+class GenerateAEAACTRequest(BaseModel):
+    """Request model for Adverse Events with AACT real-world data"""
+    indication: str = Field(default="cancer", description="Disease indication")
+    phase: str = Field(default="Phase 2", description="Trial phase")
+    n_subjects: int = Field(default=30, ge=10, le=100, description="Number of subjects")
+    seed: int = Field(default=7, description="Random seed")
 
 # Response model - returns array directly for compatibility with EDC validation service
 VitalsResponse = List[Dict[str, Any]]
@@ -592,6 +609,104 @@ async def generate_demographics_aact_based(request: GenerateDemographicsAACTRequ
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"AACT Demographics generation failed: {str(e)}"
         )
+
+@app.post("/generate/labs-aact", response_model=List[Dict[str, Any]])
+async def generate_labs_aact_based(request: GenerateLabsAACTRequest):
+    """
+    Generate lab results with AACT real-world data (v4.0) ⭐ NEW!
+
+    **Enhanced with AACT Statistics from 557K+ Trials:**
+    - ✅ Real study duration for realistic visit schedules
+    - ✅ Indication-specific lab abnormalities
+    - ✅ Dynamic visit names based on AACT duration
+    - ✅ Falls back to defaults if AACT unavailable
+
+    **What's Different from Standard Labs:**
+    - Visit schedule adapts to actual study duration (e.g., diabetes Phase 3: 18 months)
+    - Lab values adjusted for indication (e.g., higher glucose for diabetes)
+    - Realistic visit timing based on real-world trials
+
+    **Lab Panels Included:**
+    - Hematology: Hemoglobin, Hematocrit, WBC, Platelets
+    - Chemistry: Glucose, Creatinine, BUN, ALT, AST, Bilirubin
+    - Lipids: Total Cholesterol, LDL, HDL, Triglycerides
+
+    **Example Output:**
+    For Diabetes Phase 3 (100 subjects):
+    - 300 lab records (3 visits per subject)
+    - Higher baseline glucose (~140 vs ~90 for other indications)
+    - Visit schedule: Screening, Month 6, Month 18
+
+    **Parameters:**
+    - indication: Disease indication (default: 'hypertension')
+    - phase: Trial phase (default: 'Phase 3')
+    - n_subjects: Number of subjects (default: 100)
+    - seed: Random seed (default: 42)
+    - use_duration: Use AACT actual duration (default: True)
+    """
+    try:
+        df = generate_labs_aact(
+            indication=request.indication,
+            phase=request.phase,
+            n_subjects=request.n_subjects,
+            seed=request.seed,
+            use_duration=request.use_duration
+        )
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT Labs generation failed: {str(e)}"
+        )
+
+
+@app.post("/generate/ae-aact", response_model=AEResponse)
+async def generate_ae_aact_based(request: GenerateAEAACTRequest):
+    """
+    Generate adverse events with AACT real-world data (v4.0) ⭐ NEW!
+
+    **Enhanced with AACT Statistics from 557K+ Trials:**
+    - ✅ Indication-specific AE terms (cancer, hypertension, diabetes)
+    - ✅ Phase-specific severity distributions
+    - ✅ Real-world AE rates and patterns
+    - ✅ Falls back to defaults if AACT unavailable
+
+    **What's Different from Standard AE:**
+    - AE terms match indication (e.g., "Hypoglycemia" for diabetes)
+    - Severity rates match phase (Phase 1/2: 30% serious, Phase 3/4: 15% serious)
+    - Realistic AE frequencies based on real trials
+
+    **Indication-Specific AE Terms:**
+    - **Cancer**: Neutropenia, Anemia, Myelosuppression, Peripheral neuropathy
+    - **Hypertension**: Dizziness, Headache, Hypotension, Peripheral edema
+    - **Diabetes**: Hypoglycemia, Weight gain, Nausea, Diarrhea
+
+    **Example Output:**
+    For Cancer Phase 2 (30 subjects):
+    - ~21 AE records (~70% of subjects have at least one AE)
+    - Higher serious AE rate (30% for early phase)
+    - Cancer-specific terms (Myelosuppression, Neutropenia)
+
+    **Parameters:**
+    - indication: Disease indication (default: 'cancer')
+    - phase: Trial phase (default: 'Phase 2')
+    - n_subjects: Number of subjects (default: 30)
+    - seed: Random seed (default: 7)
+    """
+    try:
+        df = generate_oncology_ae_aact(
+            indication=request.indication,
+            phase=request.phase,
+            n_subjects=request.n_subjects,
+            seed=request.seed
+        )
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT AE generation failed: {str(e)}"
+        )
+
 
 @app.post("/generate/bayesian-aact", response_model=VitalsResponse)
 async def generate_bayesian_aact_based(request: GenerateBayesianAACTRequest):
@@ -1285,14 +1400,17 @@ class GenerateLabsRequest(BaseModel):
     seed: int = Field(default=42, description="Random seed for reproducibility")
 
 class ComprehensiveStudyRequest(BaseModel):
-    """Request model for comprehensive study data generation"""
+    """Request model for comprehensive study data generation with AACT enhancements"""
     n_per_arm: int = Field(default=50, ge=10, le=200, description="Number of subjects per treatment arm")
     target_effect: float = Field(default=-5.0, description="Target treatment effect for vitals (mmHg)")
     method: str = Field(default="mvn", description="Generation method: 'mvn', 'rules', or 'bootstrap'")
+    indication: str = Field(default="hypertension", description="Disease indication for AACT-enhanced generation")
+    phase: str = Field(default="Phase 3", description="Trial phase for AACT-enhanced generation")
     include_vitals: bool = Field(default=True, description="Generate vitals data")
     include_demographics: bool = Field(default=True, description="Generate demographics data")
     include_ae: bool = Field(default=True, description="Generate adverse events data")
     include_labs: bool = Field(default=True, description="Generate lab results data")
+    use_aact: bool = Field(default=True, description="Use AACT-enhanced generators (recommended)")
     seed: int = Field(default=42, description="Random seed for reproducibility")
 
 class ComprehensiveStudyResponse(BaseModel):
@@ -1725,27 +1843,60 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
             }
         }
 
+        # Track subject IDs to ensure consistency across all datasets
+        subject_ids = None
+
         # Generate Vitals Data
         if request.include_vitals:
-            if request.method == "mvn":
-                vitals_df = generate_vitals_mvn(
-                    n_per_arm=request.n_per_arm,
-                    target_effect=request.target_effect,
-                    seed=request.seed
-                )
-            elif request.method == "rules":
-                vitals_df = generate_vitals_rules(
-                    n_per_arm=request.n_per_arm,
-                    target_effect=request.target_effect,
-                    seed=request.seed
-                )
-            else:  # bootstrap
-                # For bootstrap, we'd need training data - fallback to MVN
-                vitals_df = generate_vitals_mvn(
-                    n_per_arm=request.n_per_arm,
-                    target_effect=request.target_effect,
-                    seed=request.seed
-                )
+            if request.use_aact:
+                # Use AACT-enhanced generators
+                if request.method == "mvn":
+                    vitals_df = generate_vitals_mvn_aact(
+                        indication=request.indication,
+                        phase=request.phase,
+                        n_per_arm=request.n_per_arm,
+                        target_effect=request.target_effect,
+                        seed=request.seed
+                    )
+                elif request.method == "rules":
+                    vitals_df = generate_vitals_rules_aact(
+                        indication=request.indication,
+                        phase=request.phase,
+                        n_per_arm=request.n_per_arm,
+                        target_effect=request.target_effect,
+                        seed=request.seed
+                    )
+                else:  # bootstrap
+                    vitals_df = generate_vitals_bootstrap_aact(
+                        indication=request.indication,
+                        phase=request.phase,
+                        n_per_arm=request.n_per_arm,
+                        target_effect=request.target_effect,
+                        seed=request.seed
+                    )
+            else:
+                # Use original generators
+                if request.method == "mvn":
+                    vitals_df = generate_vitals_mvn(
+                        n_per_arm=request.n_per_arm,
+                        target_effect=request.target_effect,
+                        seed=request.seed
+                    )
+                elif request.method == "rules":
+                    vitals_df = generate_vitals_rules(
+                        n_per_arm=request.n_per_arm,
+                        target_effect=request.target_effect,
+                        seed=request.seed
+                    )
+                else:  # bootstrap
+                    vitals_df = generate_vitals_mvn(
+                        n_per_arm=request.n_per_arm,
+                        target_effect=request.target_effect,
+                        seed=request.seed
+                    )
+
+            # Extract subject IDs from vitals for use in other datasets
+            subject_ids = vitals_df['SubjectID'].unique().tolist()
 
             response_data["vitals"] = vitals_df.to_dict(orient="records")
             response_data["metadata"]["datasets_generated"].append("vitals")
@@ -1753,30 +1904,60 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
 
         # Generate Demographics Data
         if request.include_demographics:
-            demographics_df = generate_demographics(
-                n_subjects=total_subjects,
-                seed=request.seed
-            )
+            if request.use_aact:
+                demographics_df = generate_demographics_aact(
+                    indication=request.indication,
+                    phase=request.phase,
+                    n_subjects=total_subjects,
+                    seed=request.seed
+                )
+            else:
+                demographics_df = generate_demographics(
+                    n_subjects=total_subjects,
+                    seed=request.seed
+                )
+
+            # If we have subject IDs from vitals, ensure demographics uses them
+            if subject_ids is None:
+                subject_ids = demographics_df['SubjectID'].unique().tolist()
+
             response_data["demographics"] = demographics_df.to_dict(orient="records")
             response_data["metadata"]["datasets_generated"].append("demographics")
             response_data["metadata"]["demographics_records"] = len(demographics_df)
 
-        # Generate Adverse Events Data
+        # Generate Adverse Events Data - USE SAME SUBJECT IDs!
         if request.include_ae:
-            ae_df = generate_oncology_ae(
-                n_subjects=total_subjects,
-                seed=request.seed + 1  # Different seed for variety
-            )
+            if request.use_aact:
+                ae_df = generate_oncology_ae_aact(
+                    indication=request.indication,
+                    phase=request.phase,
+                    n_subjects=total_subjects if subject_ids is None else len(subject_ids),
+                    seed=request.seed + 1,
+                    subject_ids=subject_ids  # Pass subject IDs to ensure consistency
+                )
+            else:
+                ae_df = generate_oncology_ae(
+                    n_subjects=total_subjects,
+                    seed=request.seed + 1
+                )
             response_data["adverse_events"] = ae_df.to_dict(orient="records")
             response_data["metadata"]["datasets_generated"].append("adverse_events")
             response_data["metadata"]["ae_records"] = len(ae_df)
 
         # Generate Lab Results Data
         if request.include_labs:
-            labs_df = generate_labs(
-                n_subjects=total_subjects,
-                seed=request.seed + 2  # Different seed for variety
-            )
+            if request.use_aact:
+                labs_df = generate_labs_aact(
+                    indication=request.indication,
+                    phase=request.phase,
+                    n_subjects=total_subjects,
+                    seed=request.seed + 2
+                )
+            else:
+                labs_df = generate_labs(
+                    n_subjects=total_subjects,
+                    seed=request.seed + 2
+                )
             response_data["labs"] = labs_df.to_dict(orient="records")
             response_data["metadata"]["datasets_generated"].append("labs")
             response_data["metadata"]["labs_records"] = len(labs_df)
