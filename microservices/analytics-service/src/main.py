@@ -45,6 +45,11 @@ from aact_integration import (
     benchmark_demographics,
     benchmark_adverse_events
 )
+from study_analytics import (
+    generate_comprehensive_summary,
+    analyze_cross_domain_correlations,
+    generate_trial_dashboard
+)
 
 app = FastAPI(
     title="Analytics Service",
@@ -231,6 +236,29 @@ class AACTBenchmarkAERequest(BaseModel):
     indication: str = Field(..., description="Disease indication")
     phase: str = Field(..., description="Trial phase")
 
+# Study Analytics models
+class ComprehensiveStudyRequest(BaseModel):
+    demographics_data: Optional[List[Dict[str, Any]]] = Field(None, description="Demographics data")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals data")
+    labs_data: Optional[List[Dict[str, Any]]] = Field(None, description="Labs data")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="AE data")
+    indication: str = Field(default="hypertension", description="Disease indication")
+    phase: str = Field(default="Phase 3", description="Trial phase")
+
+class CrossDomainRequest(BaseModel):
+    demographics_data: Optional[List[Dict[str, Any]]] = Field(None, description="Demographics data")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals data")
+    labs_data: Optional[List[Dict[str, Any]]] = Field(None, description="Labs data")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="AE data")
+
+class TrialDashboardRequest(BaseModel):
+    demographics_data: Optional[List[Dict[str, Any]]] = Field(None, description="Demographics data")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals data")
+    labs_data: Optional[List[Dict[str, Any]]] = Field(None, description="Labs data")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="AE data")
+    indication: str = Field(default="hypertension", description="Disease indication")
+    phase: str = Field(default="Phase 3", description="Trial phase")
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -250,7 +278,7 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Analytics Service",
-        "version": "1.4.0",
+        "version": "1.5.0",
         "features": [
             "Week-12 Statistics (t-test)",
             "RECIST + ORR Analysis",
@@ -261,7 +289,8 @@ async def root():
             "Labs Analytics (Summary, Abnormal Detection, Shift Tables, Safety Signals, Longitudinal)",
             "AE Analytics (Frequency Tables, TEAEs, SOC Analysis, Quality)",
             "Quality Assessment (PCA, K-NN, Wasserstein)",
-            "AACT Integration (Compare Study, Benchmark Demographics, Benchmark AEs)"
+            "AACT Integration (Compare Study, Benchmark Demographics, Benchmark AEs)",
+            "Comprehensive Study Analytics (Summary, Cross-Domain Correlations, Trial Dashboard)"
         ],
         "endpoints": {
             "health": "/health",
@@ -1781,6 +1810,271 @@ async def aact_benchmark_ae(request: AACTBenchmarkAERequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"AE benchmarking failed: {str(e)}"
+        )
+
+
+# ===== COMPREHENSIVE STUDY ANALYTICS ENDPOINTS (Phase 5) =====
+
+@app.post("/study/comprehensive-summary")
+async def study_comprehensive_summary(request: ComprehensiveStudyRequest):
+    """
+    Generate comprehensive study summary across all domains
+
+    **Purpose:**
+    Integrates demographics, vitals, labs, and AEs into a unified study summary
+    suitable for Clinical Study Reports (CSR) and regulatory submissions.
+
+    **Integration:**
+    - **Demographics**: Baseline characteristics and randomization balance
+    - **Efficacy**: Vitals-based endpoint analysis
+    - **Safety**: Labs abnormalities + AE frequency
+    - **AACT Benchmark**: Industry comparison for credibility
+    - **Data Quality**: Completeness and regulatory readiness assessment
+
+    **Returns:**
+    - study_overview: Basic study statistics (n_subjects, data domains, total observations)
+    - demographics_summary: Age, gender, treatment arms, randomization balance
+    - efficacy_summary: Endpoint visit, treatment effect (SBP), by-arm results
+    - safety_summary:
+      - labs_safety: Abnormal rates, Grade 3-4 count, Hy's Law cases
+      - ae_safety: Total AEs, SAE rate, top events, most common SOC
+      - overall_safety_assessment: Aggregated safety flags
+    - aact_benchmark: Similarity score, enrollment/effect percentiles, recommendations
+    - data_quality: Completeness scores, quality assessment (Excellent/Good/Fair/Poor)
+    - regulatory_readiness: Requirements met/pending, readiness score, submission status
+
+    **Quality Assessment:**
+    - Data completeness score (0-1): Proportion of key domains with data
+    - Quality grades:
+      - ≥0.95: EXCELLENT - All key data fields complete
+      - ≥0.80: GOOD - Minor data gaps
+      - ≥0.60: FAIR - Some data fields missing
+      - <0.60: POOR - Significant data gaps
+
+    **Regulatory Readiness:**
+    - Checks for: Demographics Table 1, Efficacy data, Safety data, AACT benchmark
+    - Readiness score (0-1): Proportion of requirements met
+    - Status:
+      - ≥0.90: SUBMISSION READY
+      - ≥0.70: NEAR READY
+      - ≥0.50: IN PROGRESS
+      - <0.50: NOT READY
+
+    **Use Case:**
+    - Executive summary for sponsor/CRO
+    - CSR appendix (integrated analysis)
+    - Regulatory briefing document
+    - DSMB interim reports
+    - Portfolio review for multiple trials
+    """
+    try:
+        # Convert lists to DataFrames
+        demographics_df = pd.DataFrame(request.demographics_data) if request.demographics_data else None
+        vitals_df = pd.DataFrame(request.vitals_data) if request.vitals_data else None
+        labs_df = pd.DataFrame(request.labs_data) if request.labs_data else None
+        ae_df = pd.DataFrame(request.ae_data) if request.ae_data else None
+
+        result = generate_comprehensive_summary(
+            demographics_data=demographics_df,
+            vitals_data=vitals_df,
+            labs_data=labs_df,
+            ae_data=ae_df,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Comprehensive summary generation failed: {str(e)}"
+        )
+
+
+@app.post("/study/cross-domain-correlations")
+async def study_cross_domain_correlations(request: CrossDomainRequest):
+    """
+    Analyze correlations between different data domains
+
+    **Purpose:**
+    Identifies relationships across domains (demographics, vitals, labs, AEs)
+    to uncover clinically meaningful patterns, potential confounders, and
+    subgroup effects.
+
+    **Cross-Domain Analyses:**
+
+    1. **Demographics-Vitals Correlations:**
+       - Age vs Blood Pressure (Pearson correlation)
+       - Gender vs Blood Pressure (t-test)
+       - Identifies age-dependent or gender-specific treatment effects
+
+    2. **Demographics-AE Correlations:**
+       - Age vs AE rate (Pearson correlation)
+       - Gender vs AE rate (Mann-Whitney U test)
+       - Detects demographic risk factors for adverse events
+
+    3. **Labs-AE Overlap:**
+       - Subjects with abnormal labs vs subjects with AEs
+       - Overlap rate: What % of abnormal labs also had AEs
+       - Assesses whether lab monitoring captures safety events
+
+    4. **Vitals-Labs Correlations:**
+       - Systolic BP vs Creatinine (Pearson correlation)
+       - Identifies physiological relationships
+       - Useful for mixed models and multivariate analysis
+
+    **Statistical Methods:**
+    - Pearson correlation: Linear relationships between continuous variables
+    - Welch's t-test: Group differences (e.g., male vs female)
+    - Mann-Whitney U: Non-parametric group comparisons (AE rates)
+    - Overlap analysis: Set intersection (labs ∩ AEs)
+
+    **Returns:**
+    - demographics_vitals:
+      - age_vs_sbp: Correlation, p-value, significance, interpretation
+      - gender_vs_sbp: Mean differences, t-statistic, p-value
+    - demographics_ae:
+      - age_vs_ae_rate: Correlation, p-value, significance
+      - gender_vs_ae_rate: Mean AE counts, U-statistic, p-value
+    - labs_ae:
+      - Subjects with abnormal labs, AEs, both, or either only
+      - Overlap rate (0-1)
+      - Association strength interpretation
+    - vitals_labs:
+      - sbp_vs_creatinine: Correlation, p-value, n_observations
+    - clinical_insights: List of key findings and recommendations
+
+    **Clinical Insights Examples:**
+    - "Age significantly correlates with blood pressure (r=0.45), suggesting age-dependent efficacy"
+    - "Significant gender difference in blood pressure (Δ=8.2 mmHg), consider gender-stratified analysis"
+    - "Strong association between lab abnormalities and AEs suggests lab monitoring is capturing safety events"
+
+    **Use Case:**
+    - Subgroup analysis planning
+    - Covariate identification for adjusted analyses
+    - Safety signal investigation
+    - Understanding mechanism of action
+    - Protocol refinement for future studies
+    """
+    try:
+        # Convert lists to DataFrames
+        demographics_df = pd.DataFrame(request.demographics_data) if request.demographics_data else None
+        vitals_df = pd.DataFrame(request.vitals_data) if request.vitals_data else None
+        labs_df = pd.DataFrame(request.labs_data) if request.labs_data else None
+        ae_df = pd.DataFrame(request.ae_data) if request.ae_data else None
+
+        result = analyze_cross_domain_correlations(
+            demographics_data=demographics_df,
+            vitals_data=vitals_df,
+            labs_data=labs_df,
+            ae_data=ae_df
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Cross-domain correlation analysis failed: {str(e)}"
+        )
+
+
+@app.post("/study/trial-dashboard")
+async def study_trial_dashboard(request: TrialDashboardRequest):
+    """
+    Generate executive trial dashboard with key performance indicators
+
+    **Purpose:**
+    Creates a high-level dashboard suitable for executive review, DSMB reports,
+    and regulatory briefing documents. Integrates all domains with AACT context
+    for industry benchmark comparison.
+
+    **Dashboard Sections:**
+
+    1. **Executive Summary:**
+       - Total subjects enrolled
+       - Data domains available (Demographics, Vitals, Labs, AEs)
+       - Data completeness (X/4 domains)
+
+    2. **Enrollment Status:**
+       - Total enrolled vs target
+       - By treatment arm (Active vs Placebo)
+       - Randomization balance assessment (Well-balanced / Imbalanced)
+
+    3. **Efficacy Metrics:**
+       - Primary endpoint visit (e.g., Week 12)
+       - Mean SBP by treatment arm
+       - Treatment effect (Active - Placebo)
+       - Efficacy assessment:
+         - <-10 mmHg: STRONG EFFECT
+         - -10 to -5 mmHg: MODERATE EFFECT
+         - -5 to 0 mmHg: WEAK EFFECT
+         - >0 mmHg: NO EFFECT
+
+    4. **Safety Metrics:**
+       - Total AEs, SAEs
+       - AE rate (% subjects with any AE)
+       - SAE rate (% of all AEs)
+       - Top 5 most common AEs
+       - Hy's Law cases (DILI)
+       - Kidney decline cases
+       - Overall safety assessment (flags for high SAE rate, Hy's Law)
+
+    5. **Quality Metrics:**
+       - Data completeness score (0-1)
+       - SDTM compliance status
+       - AACT similarity score
+       - Quality assessment (High/Good/Limited)
+
+    6. **AACT Context:**
+       - Enrollment percentile (industry comparison)
+       - Treatment effect percentile
+       - Similarity score (0-1)
+       - Industry assessment (e.g., "HIGHLY REALISTIC")
+       - Number of reference trials from AACT
+
+    7. **Risk Flags:**
+       - Severity levels: CRITICAL, HIGH, MEDIUM
+       - Categories: Enrollment, Efficacy, Safety, Data Quality
+       - Issue description + Recommendation
+       - Example: "CRITICAL - 2 Hy's Law cases → Immediate DSMB notification"
+
+    8. **Recommendations:**
+       - Actionable next steps based on risk flags
+       - AACT-based recommendations for parameter adjustments
+       - Overall trial status (progressing well / needs attention)
+
+    **Risk Flag Criteria:**
+    - **Enrollment**: Treatment arm imbalance >10%
+    - **Efficacy**: Weak or no effect detected
+    - **Safety**: Hy's Law cases (CRITICAL), SAE rate >15% (HIGH)
+    - **Data Quality**: Completeness <50% (MEDIUM)
+
+    **Use Case:**
+    - Executive briefings (C-suite, Board)
+    - DSMB interim reports
+    - Regulatory authority meetings (FDA, EMA)
+    - Portfolio review dashboards
+    - Real-time trial monitoring
+    - Quarterly business reviews (QBR)
+    """
+    try:
+        # Convert lists to DataFrames
+        demographics_df = pd.DataFrame(request.demographics_data) if request.demographics_data else None
+        vitals_df = pd.DataFrame(request.vitals_data) if request.vitals_data else None
+        labs_df = pd.DataFrame(request.labs_data) if request.labs_data else None
+        ae_df = pd.DataFrame(request.ae_data) if request.ae_data else None
+
+        result = generate_trial_dashboard(
+            demographics_data=demographics_df,
+            vitals_data=vitals_df,
+            labs_data=labs_df,
+            ae_data=ae_df,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Trial dashboard generation failed: {str(e)}"
         )
 
 
