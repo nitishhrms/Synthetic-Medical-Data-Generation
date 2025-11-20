@@ -12,6 +12,9 @@ import { SystemCheck } from "@/components/screens/SystemCheck";
 import { RBQMDashboard } from "@/components/screens/RBQMDashboard";
 import { QueryManagement } from "@/components/screens/QueryManagement";
 import { DataEntry } from "@/components/screens/DataEntry";
+import SurvivalAnalysis from "@/pages/SurvivalAnalysis";
+import AdamGeneration from "@/pages/AdamGeneration";
+import TLFAutomation from "@/pages/TLFAutomation";
 import { TopAppBar } from "@/components/layout/TopAppBar";
 import { NavigationRail, type Screen } from "@/components/layout/NavigationRail";
 
@@ -61,6 +64,12 @@ function AppContent() {
         return <DataGeneration />;
       case "analytics":
         return <Analytics />;
+      case "survival":
+        return <SurvivalAnalysis />;
+      case "adam":
+        return <AdamGeneration />;
+      case "tlf":
+        return <TLFAutomation />;
       case "quality":
         return <Quality />;
       case "rbqm":
