@@ -2757,7 +2757,8 @@ async def generate_all_tlf(request: TLFRequest):
             vitals_data=request.vitals_data,
             survival_data=request.survival_data
         )
-        return convert_numpy_types(result)
+        # Wrap tables in a "tables" object for frontend compatibility
+        return convert_numpy_types({"tables": result})
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
