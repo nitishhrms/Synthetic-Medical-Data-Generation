@@ -16,6 +16,7 @@ import { DataEntry } from "@/components/screens/DataEntry";
 import { DaftAnalytics } from "@/components/screens/DaftAnalytics";
 import { LinkupIntegration } from "@/components/screens/LinkupIntegration";
 import { MedicalImaging } from "@/components/screens/MedicalImaging";
+import { Scalability } from "@/components/screens/Scalability";
 import { TopAppBar } from "@/components/layout/TopAppBar";
 import { NavigationRail, type Screen } from "@/components/layout/NavigationRail";
 
@@ -67,6 +68,8 @@ function AppContent() {
         return <Analytics />;
       case "daft":
         return <DaftAnalytics />;
+      case "scalability":
+        return <Scalability />;
       case "quality":
         return <QualityDashboard />;
       case "trial-planning":

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
-import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare, ClipboardEdit, FlaskConical, Database, Shield, ImageIcon } from "lucide-react";
+import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare, ClipboardEdit, FlaskConical, Database, Shield, ImageIcon, Zap } from "lucide-react";
 
-export type Screen = "dashboard" | "generate" | "analytics" | "daft" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry" | "trial-planning" | "linkup" | "medical-imaging";
+export type Screen = "dashboard" | "generate" | "analytics" | "daft" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry" | "trial-planning" | "linkup" | "medical-imaging" | "scalability";
 
 interface NavigationRailProps {
   activeScreen: Screen;
@@ -13,6 +13,7 @@ const navItems = [
   { id: "generate" as Screen, label: "Generate", icon: Beaker },
   { id: "analytics" as Screen, label: "Analytics", icon: BarChart3 },
   { id: "daft" as Screen, label: "Daft", icon: Database },
+  { id: "scalability" as Screen, label: "Scalability", icon: Zap },
   { id: "quality" as Screen, label: "Quality", icon: Activity },
   { id: "trial-planning" as Screen, label: "Planning", icon: FlaskConical },
   { id: "rbqm" as Screen, label: "RBQM", icon: TrendingUp },

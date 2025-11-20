@@ -453,3 +453,83 @@ export interface GenerationParamsWithDemographics {
     };
   };
 }
+
+// ============================================================================
+// Scalability Features Types
+// ============================================================================
+
+export interface ComprehensiveStudyRequest {
+  indication?: string;
+  phase?: string;
+  n_per_arm?: number;
+  target_effect?: number;
+  seed?: number;
+  method?: "mvn" | "bootstrap" | "rules";
+  use_duration?: boolean;
+}
+
+export interface ComprehensiveStudyResponse {
+  vitals: any[];
+  demographics: any[];
+  labs: any[];
+  adverse_events: any[];
+  metadata: {
+    indication: string;
+    phase: string;
+    n_subjects: number;
+    total_records: number;
+    generation_time_ms: number;
+    aact_enhanced: boolean;
+  };
+}
+
+export interface BenchmarkResult {
+  avg_time_ms: number;
+  records_per_second: number;
+  records_generated: number;
+}
+
+export interface BenchmarkResponse {
+  benchmark_results: {
+    [method: string]: BenchmarkResult;
+  };
+  fastest_method: string;
+  ranking: Array<{
+    method: string;
+    avg_time_ms: number;
+  }>;
+}
+
+export interface StressTestResponse {
+  stress_test_results: {
+    total_requests: number;
+    successful_requests: number;
+    failed_requests: number;
+    total_time_seconds: number;
+    aggregate_throughput_records_per_second: number;
+  };
+  pass_criteria: {
+    target_time_seconds: number;
+    achieved_time: number;
+    passed: boolean;
+  };
+}
+
+export interface PortfolioAnalytics {
+  portfolio_summary: {
+    total_studies: number;
+    total_subjects: number;
+    studies_by_indication: { [indication: string]: number };
+    studies_by_phase: { [phase: string]: number };
+    average_generation_time_ms: number;
+  };
+  quality_metrics: {
+    average_quality_score: number;
+    studies_meeting_quality_threshold: number;
+  };
+  resource_utilization: {
+    cache_hit_rate: number;
+    aact_lookup_rate: number;
+  };
+  note?: string;
+}

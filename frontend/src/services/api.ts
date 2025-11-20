@@ -25,6 +25,11 @@ import type {
   WhatIfPatientMixResponse,
   FeasibilityAssessmentRequest,
   FeasibilityAssessmentResponse,
+  ComprehensiveStudyRequest,
+  ComprehensiveStudyResponse,
+  BenchmarkResponse,
+  StressTestResponse,
+  PortfolioAnalytics,
 } from "@/types";
 
 // ============================================================================
@@ -355,34 +360,18 @@ export const dataGenerationApi = {
     return handleResponse(response);
   },
 
-  async generateComprehensiveStudy(params: {
-    n_per_arm?: number;
-    target_effect?: number;
-    method?: string;
-    indication?: string;
-    phase?: string;
-    include_vitals?: boolean;
-    include_demographics?: boolean;
-    include_ae?: boolean;
-    include_labs?: boolean;
-    use_aact?: boolean;
-    seed?: number;
-  }): Promise<any> {
+  async generateComprehensiveStudy(params: ComprehensiveStudyRequest): Promise<ComprehensiveStudyResponse> {
     const response = await fetch(`${DATA_GEN_SERVICE}/generate/comprehensive-study`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        n_per_arm: params.n_per_arm ?? 50,
-        target_effect: params.target_effect ?? -5.0,
-        method: params.method ?? "mvn",
         indication: params.indication || "hypertension",
         phase: params.phase || "Phase 3",
-        include_vitals: params.include_vitals ?? true,
-        include_demographics: params.include_demographics ?? true,
-        include_ae: params.include_ae ?? true,
-        include_labs: params.include_labs ?? true,
-        use_aact: params.use_aact ?? true,  // Use AACT by default
+        n_per_arm: params.n_per_arm ?? 50,
+        target_effect: params.target_effect ?? -5.0,
         seed: params.seed ?? 42,
+        method: params.method ?? "mvn",
+        use_duration: params.use_duration ?? true,
       }),
     });
     return handleResponse(response);
@@ -397,6 +386,56 @@ export const dataGenerationApi = {
 
   async getPilotData(): Promise<VitalsRecord[]> {
     const response = await fetch(`${DATA_GEN_SERVICE}/data/pilot`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  // ============================================================================
+  // Scalability Features
+  // ============================================================================
+
+  async benchmarkPerformance(params: {
+    n_per_arm?: number;
+    methods?: string;
+    indication?: string;
+    phase?: string;
+  }): Promise<BenchmarkResponse> {
+    const queryParams = new URLSearchParams({
+      n_per_arm: (params.n_per_arm ?? 50).toString(),
+      methods: params.methods || "mvn,bootstrap,rules",
+      indication: params.indication || "hypertension",
+      phase: params.phase || "Phase 3",
+    });
+
+    const response = await fetch(`${DATA_GEN_SERVICE}/benchmark/performance?${queryParams}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async stressTestConcurrent(params: {
+    n_concurrent_requests?: number;
+    n_per_arm?: number;
+    indication?: string;
+    phase?: string;
+  }): Promise<StressTestResponse> {
+    const queryParams = new URLSearchParams({
+      n_concurrent_requests: (params.n_concurrent_requests ?? 10).toString(),
+      n_per_arm: (params.n_per_arm ?? 50).toString(),
+      indication: params.indication || "hypertension",
+      phase: params.phase || "Phase 3",
+    });
+
+    const response = await fetch(`${DATA_GEN_SERVICE}/stress-test/concurrent?${queryParams}`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getPortfolioAnalytics(): Promise<PortfolioAnalytics> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/analytics/portfolio`, {
       headers: getAuthHeaders(),
     });
     return handleResponse(response);
