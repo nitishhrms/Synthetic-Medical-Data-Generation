@@ -18,8 +18,14 @@ from stats import (
 )
 from rbqm import generate_rbqm_summary
 from csr import generate_csr_draft
-from sdtm import export_to_sdtm_vs
+from sdtm import export_to_sdtm_vs, export_to_sdtm_dm
 from db_utils import db, cache, startup_db, shutdown_db
+from demographics_analytics import (
+    calculate_baseline_characteristics,
+    calculate_demographic_summary,
+    assess_treatment_arm_balance,
+    compare_demographics_quality
+)
 
 app = FastAPI(
     title="Analytics Service",
@@ -163,6 +169,14 @@ class ComprehensiveQualityResponse(BaseModel):
     euclidean_distances: Dict[str, Any] = Field(..., description="Distance statistics")
     summary: str = Field(..., description="Human-readable quality summary")
 
+# Demographics models
+class DemographicsRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]]
+
+class DemographicsCompareRequest(BaseModel):
+    real_demographics: List[Dict[str, Any]]
+    synthetic_demographics: List[Dict[str, Any]]
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -182,21 +196,30 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Analytics Service",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "features": [
             "Week-12 Statistics (t-test)",
             "RECIST + ORR Analysis",
             "RBQM Summary",
             "CSR Draft Generation",
-            "SDTM Export"
+            "SDTM Export (Vitals + Demographics)",
+            "Demographics Analytics (Baseline, Balance, Quality)",
+            "Quality Assessment (PCA, K-NN, Wasserstein)"
         ],
         "endpoints": {
             "health": "/health",
-            "stats": "/stats/week12",
-            "recist": "/stats/recist",
+            "stats_week12": "/stats/week12",
+            "stats_recist": "/stats/recist",
+            "demographics_baseline": "/stats/demographics/baseline",
+            "demographics_summary": "/stats/demographics/summary",
+            "demographics_balance": "/stats/demographics/balance",
             "rbqm": "/rbqm/summary",
             "csr": "/csr/draft",
-            "sdtm": "/sdtm/export",
+            "sdtm_vitals": "/sdtm/export",
+            "sdtm_demographics": "/sdtm/demographics/export",
+            "quality_pca": "/quality/pca-comparison",
+            "quality_comprehensive": "/quality/comprehensive",
+            "quality_demographics": "/quality/demographics/compare",
             "docs": "/docs"
         }
     }
@@ -607,6 +630,218 @@ async def comprehensive_quality_assessment(request: ComprehensiveQualityRequest)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Quality assessment failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# DEMOGRAPHICS ANALYTICS ENDPOINTS (Phase 1)
+# ============================================================================
+
+@app.post("/stats/demographics/baseline")
+async def demographics_baseline(request: DemographicsRequest):
+    """
+    Generate baseline characteristics table (Table 1)
+
+    **Purpose:**
+    Creates the standard demographics table (Table 1) found in clinical trial reports,
+    showing baseline characteristics overall and by treatment arm.
+
+    **Returns:**
+    - Overall statistics across all subjects
+    - Statistics by treatment arm (Active vs Placebo)
+    - P-values for balance tests (t-test for continuous, chi-square for categorical)
+    - Clinical interpretation of randomization balance
+
+    **Use Case:**
+    - Required for all clinical study reports
+    - Demonstrates proper randomization
+    - Baseline population description
+    """
+    try:
+        df = pd.DataFrame(request.demographics_data)
+        result = calculate_baseline_characteristics(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Baseline characteristics calculation failed: {str(e)}"
+        )
+
+
+@app.post("/stats/demographics/summary")
+async def demographics_summary(request: DemographicsRequest):
+    """
+    Calculate demographic distribution summary for visualization
+
+    **Purpose:**
+    Provides aggregated demographic distributions suitable for charts and graphs.
+
+    **Returns:**
+    - Age distribution by brackets (18-30, 31-45, 46-60, 61+)
+    - Gender distribution (counts and percentages)
+    - Race distribution
+    - Ethnicity distribution
+    - BMI categories (WHO classification)
+
+    **Use Case:**
+    - Dashboard visualizations
+    - Quick population overview
+    - Diversity assessment
+    """
+    try:
+        df = pd.DataFrame(request.demographics_data)
+        result = calculate_demographic_summary(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demographic summary calculation failed: {str(e)}"
+        )
+
+
+@app.post("/stats/demographics/balance")
+async def demographics_balance(request: DemographicsRequest):
+    """
+    Assess treatment arm balance (randomization quality check)
+
+    **Purpose:**
+    Validates that randomization produced balanced treatment arms across
+    all demographic variables. Poor balance may indicate randomization issues.
+
+    **Statistical Tests:**
+    - Continuous variables (Age, Weight, Height, BMI): Welch's t-test
+    - Categorical variables (Gender, Race, Ethnicity): Chi-square test
+    - Effect sizes: Cohen's d (standardized mean difference)
+
+    **Returns:**
+    - P-values for each demographic variable
+    - Standardized differences (Cohen's d)
+    - Overall balance assessment (Well-balanced / Acceptable / Poor)
+    - Flags for variables with significant imbalance
+
+    **Interpretation:**
+    - P-value > 0.05: Arms are balanced
+    - |Cohen's d| < 0.2: Negligible difference
+    - |Cohen's d| 0.2-0.5: Small difference
+    - |Cohen's d| > 0.5: Moderate-to-large difference (concern)
+
+    **Use Case:**
+    - Quality control for trial randomization
+    - Regulatory requirement for CSR
+    - Identifying covariates for adjusted analysis
+    """
+    try:
+        df = pd.DataFrame(request.demographics_data)
+        result = assess_treatment_arm_balance(df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Treatment arm balance assessment failed: {str(e)}"
+        )
+
+
+@app.post("/quality/demographics/compare")
+async def demographics_quality(request: DemographicsCompareRequest):
+    """
+    Compare real vs synthetic demographics data quality
+
+    **Purpose:**
+    Validates that synthetic demographics match real-world clinical trial demographics
+    using multiple statistical metrics.
+
+    **Metrics Computed:**
+    1. **Wasserstein Distance** - Distribution similarity for continuous variables (Age, Weight, Height, BMI)
+       - Lower is better (0 = identical distributions)
+       - Typical acceptable range: < 5.0
+
+    2. **Chi-square Tests** - Distribution match for categorical variables (Gender, Race, Ethnicity)
+       - P-value > 0.05 indicates distributions are similar
+
+    3. **Correlation Preservation** - How well inter-variable relationships are maintained
+       - 1.0 = perfect preservation
+       - > 0.85 = excellent
+
+    4. **Overall Quality Score** (0-1 scale)
+       - ≥ 0.85: Excellent - Production ready
+       - 0.70-0.85: Good - Minor adjustments may help
+       - < 0.70: Needs improvement
+
+    **Returns:**
+    - Wasserstein distances for each continuous variable
+    - Chi-square test results for each categorical variable
+    - Correlation preservation score
+    - Overall quality score
+    - Detailed interpretation and recommendations
+
+    **Use Case:**
+    - Validating synthetic data generation methods
+    - Quality assurance before using synthetic data for analysis
+    - Regulatory evidence of synthetic data fidelity
+    - Method comparison (MVN vs Bootstrap vs LLM)
+    """
+    try:
+        real_df = pd.DataFrame(request.real_demographics)
+        synthetic_df = pd.DataFrame(request.synthetic_demographics)
+        result = compare_demographics_quality(real_df, synthetic_df)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demographics quality comparison failed: {str(e)}"
+        )
+
+
+@app.post("/sdtm/demographics/export")
+async def demographics_sdtm_export(request: DemographicsRequest):
+    """
+    Export demographics to SDTM DM (Demographics) domain format
+
+    **Purpose:**
+    Converts demographics data to CDISC SDTM DM domain format for regulatory submission.
+
+    **SDTM DM Domain Variables:**
+    - STUDYID: Study identifier
+    - DOMAIN: DM (Demographics)
+    - USUBJID: Unique subject identifier
+    - SUBJID: Subject identifier
+    - RFSTDTC: Reference start date
+    - RFENDTC: Reference end date
+    - SITEID: Site identifier
+    - AGE: Age in years
+    - AGEU: Age units (YEARS)
+    - SEX: Sex (M/F/U)
+    - RACE: Race
+    - ETHNIC: Ethnicity
+    - ARMCD: Planned arm code (ACT/PBO/UNK)
+    - ARM: Planned arm description
+    - ACTARMCD: Actual arm code
+    - ACTARM: Actual arm description
+
+    **Compliance:**
+    - Follows CDISC SDTM-IG v3.4
+    - FDA/EMA submission ready
+    - Includes all required DM domain variables
+
+    **Use Case:**
+    - Regulatory submission (IND, NDA, BLA)
+    - Data package preparation
+    - SDTM validation testing
+    """
+    try:
+        df = pd.DataFrame(request.demographics_data)
+        sdtm_df = export_to_sdtm_dm(df)
+
+        return {
+            "sdtm_data": sdtm_df.to_dict(orient="records"),
+            "rows": len(sdtm_df),
+            "domain": "DM",
+            "compliance": "SDTM-IG v3.4"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SDTM DM export failed: {str(e)}"
         )
 
 
