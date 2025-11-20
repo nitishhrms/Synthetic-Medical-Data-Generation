@@ -32,6 +32,7 @@ from generators import (
 )
 from realistic_trial import RealisticTrialGenerator
 from db_utils import db, cache, startup_db, shutdown_db
+from simple_diffusion import generate_with_simple_diffusion
 
 # Daft imports for million-scale generation
 try:
