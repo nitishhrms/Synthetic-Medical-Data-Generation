@@ -436,7 +436,10 @@ def generate_vitals_bootstrap(
     target_effect: float = -5.0,
     jitter_frac: float = 0.05,
     cat_flip_prob: float = 0.05,
-    seed: int = 42
+    seed: int = 42,
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Bootstrap-based synthetic data generation with clinical trial enhancements
@@ -567,16 +570,32 @@ def generate_vitals_bootstrap(
     if rows_to_add:
         out = pd.concat([out, pd.DataFrame(rows_to_add)], ignore_index=True)
 
-    # ===== Regenerate SubjectIDs in proper format (RA###-###) =====
-    unique_subjects = out["SubjectID"].unique()
-    subject_mapping = {}
-    counter = 1
+    # ===== Regenerate SubjectIDs using coordination parameters (if provided) =====
+    if subject_ids is not None and treatment_arms is not None:
+        # Use coordinated subject IDs and treatment arms
+        unique_subjects = out["SubjectID"].unique()
+        subject_mapping = {}
 
-    for old_subj in unique_subjects:
-        subject_mapping[old_subj] = f"RA001-{counter:03d}"
-        counter += 1
+        # Map old subjects to coordinated subject IDs
+        for i, old_subj in enumerate(unique_subjects):
+            if i < len(subject_ids):
+                new_id = subject_ids[i]
+                subject_mapping[old_subj] = new_id
+                # Also update treatment arm to match coordination
+                out.loc[out["SubjectID"] == old_subj, "TreatmentArm"] = treatment_arms[new_id]
 
-    out["SubjectID"] = out["SubjectID"].map(subject_mapping)
+        out["SubjectID"] = out["SubjectID"].map(subject_mapping)
+    else:
+        # Generate default subject IDs
+        unique_subjects = out["SubjectID"].unique()
+        subject_mapping = {}
+        counter = 1
+
+        for old_subj in unique_subjects:
+            subject_mapping[old_subj] = f"RA001-{counter:03d}"
+            counter += 1
+
+        out["SubjectID"] = out["SubjectID"].map(subject_mapping)
 
     # ===== Apply Treatment Effect at Week 12 =====
     week12 = out["VisitName"] == "Week 12"
@@ -900,7 +919,10 @@ def generate_vitals_mvn_aact(
     n_per_arm: int = 50,
     target_effect: float = -5.0,
     seed: int = 123,
-    use_duration: bool = True
+    use_duration: bool = True,
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Generate vitals using MVN with AACT real-world data (v4.0)
@@ -909,6 +931,7 @@ def generate_vitals_mvn_aact(
     - Uses real baseline vitals by indication/phase from AACT
     - Uses real study duration for visit schedule
     - Maintains all original MVN quality (covariance structure, etc.)
+    - **NEW**: Supports coordination with other datasets via subject_ids, visit_schedule, treatment_arms
 
     Args:
         indication: Disease indication (e.g., 'hypertension', 'diabetes')
@@ -917,6 +940,9 @@ def generate_vitals_mvn_aact(
         target_effect: Target SBP reduction (Active - Placebo) at final visit
         seed: Random seed
         use_duration: If True, use AACT duration for visit schedule
+        subject_ids: Optional list of subject IDs (for coordination with other datasets)
+        visit_schedule: Optional list of visit names (for coordination with other datasets)
+        treatment_arms: Optional dict mapping subject_id -> "Active" or "Placebo" (for coordination)
 
     Returns:
         DataFrame with synthetic vitals using AACT baseline statistics
@@ -951,11 +977,34 @@ def generate_vitals_mvn_aact(
         temp_mean, temp_std = 36.7, 0.3
         duration_months = 12
 
-    # Generate visit schedule
-    if use_duration:
+    # ============================================================================
+    # Use Coordination Parameters if provided (for comprehensive study generation)
+    # ============================================================================
+
+    # Use provided visit schedule or generate from AACT/defaults
+    if visit_schedule is not None:
+        visit_names = visit_schedule
+    elif use_duration:
         visit_names, visit_days = generate_visit_schedule(duration_months, n_visits=4)
     else:
         visit_names = VISITS
+
+    # Use provided subject IDs or generate defaults
+    if subject_ids is not None:
+        # Use provided subject IDs (already includes both arms)
+        all_subjects = subject_ids
+    else:
+        # Generate default subject IDs
+        subj_active = [f"RA001-{i:03d}" for i in range(1, n_per_arm + 1)]
+        subj_placebo = [f"RA001-{i:03d}" for i in range(n_per_arm + 1, 2 * n_per_arm + 1)]
+        all_subjects = subj_active + subj_placebo
+
+    # Use provided treatment arms or generate defaults
+    if treatment_arms is None:
+        # Generate default treatment assignments
+        treatment_arms = {}
+        for i, subj in enumerate(all_subjects):
+            treatment_arms[subj] = "Active" if i < n_per_arm else "Placebo"
 
     # Build MVN models using AACT baseline statistics
     models = {}
@@ -976,25 +1025,22 @@ def generate_vitals_mvn_aact(
 
             models[(visit, arm)] = {"mu": mu, "cov": cov}
 
-    # Generate subjects
+    # Generate vitals data using coordinated subject IDs and treatment arms
     rows = []
-    subj_active = [f"RA001-{i:03d}" for i in range(1, n_per_arm + 1)]
-    subj_placebo = [f"RA001-{i:03d}" for i in range(n_per_arm + 1, 2 * n_per_arm + 1)]
+    for sid in all_subjects:
+        arm = treatment_arms[sid]  # Use coordinated treatment assignment
+        for visit in visit_names:
+            m = models[(visit, arm)]
+            x = rng.multivariate_normal(mean=m["mu"], cov=m["cov"], size=1)[0]
+            sbp, dbp, hr, temp = x.tolist()
 
-    for arm, subjects in [("Active", subj_active), ("Placebo", subj_placebo)]:
-        for sid in subjects:
-            for visit in visit_names:
-                m = models[(visit, arm)]
-                x = rng.multivariate_normal(mean=m["mu"], cov=m["cov"], size=1)[0]
-                sbp, dbp, hr, temp = x.tolist()
-
-                rows.append([
-                    sid, visit, arm,
-                    int(np.clip(round(sbp), 95, 200)),
-                    int(np.clip(round(dbp), 55, 130)),
-                    int(np.clip(round(hr), 50, 120)),
-                    float(np.clip(temp, 35.0, 40.0)),
-                ])
+            rows.append([
+                sid, visit, arm,
+                int(np.clip(round(sbp), 95, 200)),
+                int(np.clip(round(dbp), 55, 130)),
+                int(np.clip(round(hr), 50, 120)),
+                float(np.clip(temp, 35.0, 40.0)),
+            ])
 
     df = pd.DataFrame(rows, columns=["SubjectID", "VisitName", "TreatmentArm"] + NUM_COLS)
 
@@ -1027,7 +1073,10 @@ def generate_vitals_bootstrap_aact(
     target_effect: float = -5.0,
     jitter_frac: float = 0.05,
     seed: int = 42,
-    use_duration: bool = True
+    use_duration: bool = True,
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Generate vitals using Bootstrap with AACT real-world data (v4.0)
@@ -1063,13 +1112,24 @@ def generate_vitals_bootstrap_aact(
             visit_mapping = {old: new for old, new in zip(VISITS, visit_names)}
             pilot_df["VisitName"] = pilot_df["VisitName"].map(visit_mapping).fillna(pilot_df["VisitName"])
 
-    # Use standard bootstrap generator with modified pilot data
+    # Use provided visit schedule or get from AACT
+    if visit_schedule is None and AACT_AVAILABLE and use_duration:
+        demographics = get_demographics(indication, phase)
+        if 'actual_duration' in demographics:
+            duration_months = int(demographics['actual_duration'].get('median_months', 12))
+            visit_names, _ = generate_visit_schedule(duration_months, n_visits=4)
+            visit_schedule = visit_names
+
+    # Use standard bootstrap generator with modified pilot data and coordination parameters
     result = generate_vitals_bootstrap(
         training_df=pilot_df,
         n_per_arm=n_per_arm,
         target_effect=target_effect,
         jitter_frac=jitter_frac,
-        seed=seed
+        seed=seed,
+        subject_ids=subject_ids,          # 🔑 Pass coordination
+        visit_schedule=visit_schedule,     # 🔑 Pass coordination
+        treatment_arms=treatment_arms      # 🔑 Pass coordination
     )
 
     return result
@@ -1081,7 +1141,10 @@ def generate_vitals_rules_aact(
     n_per_arm: int = 50,
     target_effect: float = -5.0,
     seed: int = 42,
-    use_duration: bool = True
+    use_duration: bool = True,
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Generate vitals using Rules with AACT real-world data (v4.0)
@@ -1090,6 +1153,7 @@ def generate_vitals_rules_aact(
     - Uses real baseline vitals by indication/phase
     - Uses real study duration for visit schedule
     - Maintains deterministic rules-based approach
+    - **NEW**: Supports coordination with other datasets
 
     Args:
         indication: Disease indication
@@ -1098,6 +1162,9 @@ def generate_vitals_rules_aact(
         target_effect: Target SBP reduction
         seed: Random seed
         use_duration: Use AACT duration for visits
+        subject_ids: Optional list of subject IDs (for coordination)
+        visit_schedule: Optional list of visit names (for coordination)
+        treatment_arms: Optional dict mapping subject_id -> treatment arm (for coordination)
 
     Returns:
         DataFrame with synthetic vitals
@@ -1114,22 +1181,31 @@ def generate_vitals_rules_aact(
         base_dbp = baseline_vitals.get('diastolic', {}).get('mean', 80.0)
         dbp_std = baseline_vitals.get('diastolic', {}).get('std', 8.0)
 
-        if use_duration and 'actual_duration' in demographics:
+        if visit_schedule is None and use_duration and 'actual_duration' in demographics:
             duration_months = int(demographics['actual_duration'].get('median_months', 12))
             visit_names, _ = generate_visit_schedule(duration_months, n_visits=4)
         else:
-            visit_names = VISITS
+            visit_names = visit_schedule if visit_schedule is not None else VISITS
     else:
         base_sbp, sbp_std = 130.0, 10.0
         base_dbp, dbp_std = 80.0, 8.0
-        visit_names = VISITS
+        visit_names = visit_schedule if visit_schedule is not None else VISITS
 
-    # Generate subjects
-    arms = (["Active"] * n_per_arm) + (["Placebo"] * n_per_arm)
-    subs = [f"RA001-{i:03d}" for i in range(1, 2 * n_per_arm + 1)]
+    # Use coordination parameters if provided
+    if subject_ids is not None:
+        subs = subject_ids
+    else:
+        subs = [f"RA001-{i:03d}" for i in range(1, 2 * n_per_arm + 1)]
+
+    if treatment_arms is None:
+        # Generate default treatment arms
+        treatment_arms = {}
+        for i, sid in enumerate(subs):
+            treatment_arms[sid] = "Active" if i < n_per_arm else "Placebo"
 
     rows = []
-    for sid, arm in zip(subs, arms):
+    for sid in subs:
+        arm = treatment_arms[sid]  # Use coordinated treatment assignment
         # Subject-specific baseline (using AACT mean)
         subj_base_sbp = rng.normal(base_sbp, sbp_std)
         subj_base_dbp = rng.normal(base_dbp, dbp_std)
@@ -1184,7 +1260,9 @@ def generate_demographics_aact(
     indication: str = "hypertension",
     phase: str = "Phase 3",
     n_subjects: int = 100,
-    seed: int = 42
+    seed: int = 42,
+    subject_ids: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Generate demographics using AACT real-world distributions (v4.0)
@@ -1245,11 +1323,16 @@ def generate_demographics_aact(
         races = ["White", "Black or African American", "Asian", "Other"]
         race_probs = [0.60, 0.13, 0.06, 0.21]
 
+    # Use coordination parameters if provided
+    if subject_ids is not None:
+        subjects_to_generate = subject_ids
+        n_subjects = len(subjects_to_generate)
+    else:
+        subjects_to_generate = [f"RA001-{i+1:03d}" for i in range(n_subjects)]
+
     demographics = []
 
-    for i in range(n_subjects):
-        subject_id = f"RA001-{i+1:03d}"
-
+    for subject_id in subjects_to_generate:
         # Age: Use AACT distribution
         age = int(np.clip(rng.normal(age_median, age_std), 18, 85))
 
@@ -1317,7 +1400,10 @@ def generate_vitals_bayesian_aact(
     target_effect: float = -5.0,
     seed: int = 42,
     use_duration: bool = True,
-    real_data_path: Optional[str] = None
+    real_data_path: Optional[str] = None,
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Generate vitals using Bayesian Network with AACT real-world data (v4.0)
@@ -1380,19 +1466,43 @@ def generate_vitals_bayesian_aact(
         real_data_path=real_data_path
     )
 
-    # Post-process: Update visit schedule based on AACT duration
-    if use_duration and duration_months != 12:
-        visit_names, visit_days = generate_visit_schedule(duration_months, n_visits=4)
+    # Post-process: Update visit schedule based on AACT duration or coordination
+    if visit_schedule is not None:
+        # Use provided visit schedule for coordination
+        visit_names_to_use = visit_schedule
+    elif use_duration and duration_months != 12:
+        visit_names_to_use, visit_days = generate_visit_schedule(duration_months, n_visits=4)
+    else:
+        visit_names_to_use = None
 
+    if visit_names_to_use is not None:
         # Map old visit names to new ones
         visit_mapping = {
-            'Screening': visit_names[0],
-            'Day 1': visit_names[1],
-            'Week 4': visit_names[2] if len(visit_names) > 2 else 'Week 4',
-            'Week 12': visit_names[3] if len(visit_names) > 3 else 'Week 12'
+            'Screening': visit_names_to_use[0],
+            'Day 1': visit_names_to_use[1],
+            'Week 4': visit_names_to_use[2] if len(visit_names_to_use) > 2 else 'Week 4',
+            'Week 12': visit_names_to_use[3] if len(visit_names_to_use) > 3 else 'Week 12'
         }
 
         df['VisitName'] = df['VisitName'].map(visit_mapping)
+
+    # Post-process: Apply coordination parameters if provided
+    if subject_ids is not None or treatment_arms is not None:
+        unique_subjects = df['SubjectID'].unique()
+
+        if subject_ids is not None:
+            # Map old subject IDs to coordinated ones
+            subject_mapping = {}
+            for i, old_subj in enumerate(unique_subjects):
+                if i < len(subject_ids):
+                    subject_mapping[old_subj] = subject_ids[i]
+            df['SubjectID'] = df['SubjectID'].map(subject_mapping)
+
+        if treatment_arms is not None:
+            # Update treatment arms to match coordination
+            for new_subj in df['SubjectID'].unique():
+                if new_subj in treatment_arms:
+                    df.loc[df['SubjectID'] == new_subj, 'TreatmentArm'] = treatment_arms[new_subj]
 
     return df
 
@@ -1403,6 +1513,9 @@ def generate_vitals_mice_aact(
     n_per_arm: int = 50,
     target_effect: float = -5.0,
     seed: int = 42,
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None,
     use_duration: bool = True,
     missing_rate: float = 0.10,
     estimator: str = 'bayesian_ridge',
@@ -1473,19 +1586,43 @@ def generate_vitals_mice_aact(
         real_data_path=real_data_path
     )
 
-    # Post-process: Update visit schedule based on AACT duration
-    if use_duration and duration_months != 12:
-        visit_names, visit_days = generate_visit_schedule(duration_months, n_visits=4)
+    # Post-process: Update visit schedule based on AACT duration or coordination
+    if visit_schedule is not None:
+        # Use provided visit schedule for coordination
+        visit_names_to_use = visit_schedule
+    elif use_duration and duration_months != 12:
+        visit_names_to_use, visit_days = generate_visit_schedule(duration_months, n_visits=4)
+    else:
+        visit_names_to_use = None
 
+    if visit_names_to_use is not None:
         # Map old visit names to new ones
         visit_mapping = {
-            'Screening': visit_names[0],
-            'Day 1': visit_names[1],
-            'Week 4': visit_names[2] if len(visit_names) > 2 else 'Week 4',
-            'Week 12': visit_names[3] if len(visit_names) > 3 else 'Week 12'
+            'Screening': visit_names_to_use[0],
+            'Day 1': visit_names_to_use[1],
+            'Week 4': visit_names_to_use[2] if len(visit_names_to_use) > 2 else 'Week 4',
+            'Week 12': visit_names_to_use[3] if len(visit_names_to_use) > 3 else 'Week 12'
         }
 
         df['VisitName'] = df['VisitName'].map(visit_mapping)
+
+    # Post-process: Apply coordination parameters if provided
+    if subject_ids is not None or treatment_arms is not None:
+        unique_subjects = df['SubjectID'].unique()
+
+        if subject_ids is not None:
+            # Map old subject IDs to coordinated ones
+            subject_mapping = {}
+            for i, old_subj in enumerate(unique_subjects):
+                if i < len(subject_ids):
+                    subject_mapping[old_subj] = subject_ids[i]
+            df['SubjectID'] = df['SubjectID'].map(subject_mapping)
+
+        if treatment_arms is not None:
+            # Update treatment arms to match coordination
+            for new_subj in df['SubjectID'].unique():
+                if new_subj in treatment_arms:
+                    df.loc[df['SubjectID'] == new_subj, 'TreatmentArm'] = treatment_arms[new_subj]
 
     return df
 
@@ -1499,7 +1636,10 @@ def generate_labs_aact(
     phase: str = "Phase 3",
     n_subjects: int = 100,
     seed: int = 42,
-    use_duration: bool = True
+    use_duration: bool = True,
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Generate lab results with AACT real-world data (v4.0)
@@ -1534,17 +1674,24 @@ def generate_labs_aact(
         if use_duration:
             print("⚠️  AACT data not available, using default duration: 12 months")
 
-    # Generate visit schedule
-    if use_duration and duration_months != 12:
+    # Use provided visit schedule or generate from AACT/defaults
+    if visit_schedule is not None:
+        visit_names = visit_schedule
+    elif use_duration and duration_months != 12:
         visit_names, _ = generate_visit_schedule(duration_months, n_visits=3)
     else:
         visit_names = ["Screening", "Week 4", "Week 12"]
 
+    # Use provided subject IDs or generate defaults
+    if subject_ids is not None:
+        subjects_to_generate = subject_ids
+        n_subjects = len(subjects_to_generate)
+    else:
+        subjects_to_generate = [f"RA001-{i+1:03d}" for i in range(n_subjects)]
+
     labs = []
 
-    for i in range(n_subjects):
-        subject_id = f"RA001-{i+1:03d}"
-
+    for subject_id in subjects_to_generate:
         for visit in visit_names:
             # Hematology (Complete Blood Count)
             hemoglobin = rng.normal(14.5, 1.5)  # 12-18 g/dL
@@ -1624,7 +1771,9 @@ def generate_oncology_ae_aact(
     phase: str = "Phase 2",
     n_subjects: int = 30,
     seed: int = 7,
-    subject_ids: Optional[List[str]] = None
+    subject_ids: Optional[List[str]] = None,
+    visit_schedule: Optional[List[str]] = None,
+    treatment_arms: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
     Generate adverse events with AACT real-world data (v4.0)

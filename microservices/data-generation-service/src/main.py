@@ -1828,6 +1828,44 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
     """
     try:
         total_subjects = request.n_per_arm * 2  # Active + Placebo
+
+        # ============================================================================
+        # STEP 1: Generate Coordination Metadata FIRST
+        # ============================================================================
+        # This ensures ALL datasets share the same subjects, visits, and treatment arms
+
+        # 1.1 Generate Subject IDs
+        subject_ids = [f"RA001-{i:03d}" for i in range(1, total_subjects + 1)]
+
+        # 1.2 Assign Treatment Arms (stratified: first half Active, second half Placebo)
+        treatment_arms = {}
+        for i, subj in enumerate(subject_ids):
+            treatment_arms[subj] = "Active" if i < request.n_per_arm else "Placebo"
+
+        # 1.3 Determine Visit Schedule from AACT (if using AACT)
+        visit_schedule = None
+        if request.use_aact:
+            try:
+                from aact_utils import get_aact_loader
+                aact = get_aact_loader()
+                demographics = aact.get_demographics(request.indication.lower(), request.phase)
+
+                if demographics and 'actual_duration' in demographics:
+                    duration_months = int(demographics['actual_duration'].get('median_months', 12))
+                    # Generate visit schedule based on duration
+                    from generators import generate_visit_schedule
+                    visit_names, visit_days = generate_visit_schedule(duration_months, n_visits=4)
+                    visit_schedule = visit_names
+            except:
+                pass  # Fall back to default
+
+        if visit_schedule is None:
+            visit_schedule = ["Screening", "Day 1", "Week 4", "Week 12"]
+
+        # ============================================================================
+        # STEP 2: Generate All Datasets with Coordination Metadata
+        # ============================================================================
+
         response_data = {
             "vitals": None,
             "demographics": None,
@@ -1839,24 +1877,32 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                 "seed": request.seed,
                 "method": request.method,
                 "generation_timestamp": datetime.utcnow().isoformat(),
-                "datasets_generated": []
+                "datasets_generated": [],
+                "coordination": {
+                    "subject_ids": subject_ids[:5] + ["..."],  # Show first 5
+                    "visit_schedule": visit_schedule,
+                    "treatment_arms_count": {
+                        "Active": request.n_per_arm,
+                        "Placebo": request.n_per_arm
+                    }
+                }
             }
         }
-
-        # Track subject IDs to ensure consistency across all datasets
-        subject_ids = None
 
         # Generate Vitals Data
         if request.include_vitals:
             if request.use_aact:
-                # Use AACT-enhanced generators
+                # Use AACT-enhanced generators with coordination metadata
                 if request.method == "mvn":
                     vitals_df = generate_vitals_mvn_aact(
                         indication=request.indication,
                         phase=request.phase,
                         n_per_arm=request.n_per_arm,
                         target_effect=request.target_effect,
-                        seed=request.seed
+                        seed=request.seed,
+                        subject_ids=subject_ids,          # 🔑 Coordinated
+                        visit_schedule=visit_schedule,     # 🔑 Coordinated
+                        treatment_arms=treatment_arms      # 🔑 Coordinated
                     )
                 elif request.method == "rules":
                     vitals_df = generate_vitals_rules_aact(
@@ -1864,7 +1910,10 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         phase=request.phase,
                         n_per_arm=request.n_per_arm,
                         target_effect=request.target_effect,
-                        seed=request.seed
+                        seed=request.seed,
+                        subject_ids=subject_ids,          # 🔑 Coordinated
+                        visit_schedule=visit_schedule,     # 🔑 Coordinated
+                        treatment_arms=treatment_arms      # 🔑 Coordinated
                     )
                 else:  # bootstrap
                     vitals_df = generate_vitals_bootstrap_aact(
@@ -1872,7 +1921,10 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         phase=request.phase,
                         n_per_arm=request.n_per_arm,
                         target_effect=request.target_effect,
-                        seed=request.seed
+                        seed=request.seed,
+                        subject_ids=subject_ids,          # 🔑 Coordinated
+                        visit_schedule=visit_schedule,     # 🔑 Coordinated
+                        treatment_arms=treatment_arms      # 🔑 Coordinated
                     )
             else:
                 # Use original generators
@@ -1895,9 +1947,6 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         seed=request.seed
                     )
 
-            # Extract subject IDs from vitals for use in other datasets
-            subject_ids = vitals_df['SubjectID'].unique().tolist()
-
             response_data["vitals"] = vitals_df.to_dict(orient="records")
             response_data["metadata"]["datasets_generated"].append("vitals")
             response_data["metadata"]["vitals_records"] = len(vitals_df)
@@ -1909,7 +1958,9 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                     indication=request.indication,
                     phase=request.phase,
                     n_subjects=total_subjects,
-                    seed=request.seed
+                    seed=request.seed,
+                    subject_ids=subject_ids,          # 🔑 Coordinated
+                    treatment_arms=treatment_arms      # 🔑 Coordinated
                 )
             else:
                 demographics_df = generate_demographics(
@@ -1917,23 +1968,21 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                     seed=request.seed
                 )
 
-            # If we have subject IDs from vitals, ensure demographics uses them
-            if subject_ids is None:
-                subject_ids = demographics_df['SubjectID'].unique().tolist()
-
             response_data["demographics"] = demographics_df.to_dict(orient="records")
             response_data["metadata"]["datasets_generated"].append("demographics")
             response_data["metadata"]["demographics_records"] = len(demographics_df)
 
-        # Generate Adverse Events Data - USE SAME SUBJECT IDs!
+        # Generate Adverse Events Data
         if request.include_ae:
             if request.use_aact:
                 ae_df = generate_oncology_ae_aact(
                     indication=request.indication,
                     phase=request.phase,
-                    n_subjects=total_subjects if subject_ids is None else len(subject_ids),
+                    n_subjects=total_subjects,
                     seed=request.seed + 1,
-                    subject_ids=subject_ids  # Pass subject IDs to ensure consistency
+                    subject_ids=subject_ids,          # 🔑 Coordinated
+                    visit_schedule=visit_schedule,     # 🔑 Coordinated
+                    treatment_arms=treatment_arms      # 🔑 Coordinated
                 )
             else:
                 ae_df = generate_oncology_ae(
@@ -1951,7 +2000,10 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                     indication=request.indication,
                     phase=request.phase,
                     n_subjects=total_subjects,
-                    seed=request.seed + 2
+                    seed=request.seed + 2,
+                    subject_ids=subject_ids,          # 🔑 Coordinated
+                    visit_schedule=visit_schedule,     # 🔑 Coordinated
+                    treatment_arms=treatment_arms      # 🔑 Coordinated
                 )
             else:
                 labs_df = generate_labs(
