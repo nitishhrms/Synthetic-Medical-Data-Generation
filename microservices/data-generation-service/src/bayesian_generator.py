@@ -99,7 +99,7 @@ class BayesianNetworkGenerator:
 
         return df_discrete
 
-    def _learn_structure(self, data: pd.DataFrame) -> BayesianNetwork:
+    def _learn_structure(self, data: pd.DataFrame) -> "BayesianNetwork":
         """
         Learn Bayesian network structure from data using Hill Climb search
 
@@ -123,7 +123,7 @@ class BayesianNetworkGenerator:
 
         return best_model
 
-    def _use_expert_structure(self) -> BayesianNetwork:
+    def _use_expert_structure(self) -> "BayesianNetwork":
         """
         Use expert-defined structure based on clinical knowledge
 
