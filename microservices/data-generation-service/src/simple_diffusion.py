@@ -273,27 +273,63 @@ def load_and_train_simple_diffusion(data_path: str) -> SimpleDiffusionGenerator:
 
 
 def generate_with_simple_diffusion(
-    data_path: str,
     n_per_arm: int = 50,
     n_steps: int = 50,
     target_effect: float = -5.0,
-    seed: Optional[int] = None
+    seed: Optional[int] = None,
+    data_path: Optional[str] = None,
+    training_data: Optional[pd.DataFrame] = None
 ) -> pd.DataFrame:
     """
     Generate synthetic data using simple diffusion approach
 
     Args:
-        data_path: Path to pilot data CSV
         n_per_arm: Number of subjects per treatment arm
         n_steps: Number of diffusion refinement steps
         target_effect: Target treatment effect (for SBP reduction)
         seed: Random seed
+        data_path: Optional path to pilot data CSV (if not provided, uses training_data or creates synthetic baseline)
+        training_data: Optional DataFrame to use as training data (alternative to data_path)
 
     Returns:
         DataFrame with synthetic vitals data
     """
-    # Load generator
-    generator = load_and_train_simple_diffusion(data_path)
+    # Load or create generator
+    if data_path is not None:
+        generator = load_and_train_simple_diffusion(data_path)
+    elif training_data is not None:
+        generator = SimpleDiffusionGenerator(training_data)
+    else:
+        # Create synthetic baseline from default statistics (AACT fallback)
+        if seed is not None:
+            np.random.seed(seed)
+
+        baseline_rows = []
+        baseline_subjects = 50
+        visits = ['Screening', 'Day 1', 'Week 4', 'Week 12']
+
+        for i in range(baseline_subjects):
+            sid = f"BASE-{i+1:03d}"
+            arm = "Active" if i < baseline_subjects // 2 else "Placebo"
+
+            for visit in visits:
+                sbp = int(np.clip(np.random.normal(140, 15), 95, 200))
+                dbp = int(np.clip(np.random.normal(85, 10), 55, 130))
+                hr = int(np.clip(np.random.normal(72, 10), 50, 120))
+                temp = float(np.clip(np.random.normal(36.7, 0.3), 35.0, 40.0))
+
+                baseline_rows.append({
+                    'SubjectID': sid,
+                    'VisitName': visit,
+                    'TreatmentArm': arm,
+                    'SystolicBP': sbp,
+                    'DiastolicBP': dbp,
+                    'HeartRate': hr,
+                    'Temperature': temp
+                })
+
+        training_data = pd.DataFrame(baseline_rows)
+        generator = SimpleDiffusionGenerator(training_data)
 
     # Generate samples (4 visits per subject)
     n_samples = n_per_arm * 2 * 4  # 2 arms, 4 visits
