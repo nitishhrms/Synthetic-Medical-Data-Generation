@@ -16,7 +16,7 @@ export function DataGeneration() {
   // Common state
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("vitals");
+  const [activeTab, setActiveTab] = useState("complete"); // Start with Complete Study (recommended)
 
   // Vitals state
   const [vitalsData, setVitalsData] = useState<any[]>([]);
@@ -214,9 +214,9 @@ export function DataGeneration() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Multi-Domain Data Generation</h1>
+          <h1 className="text-3xl font-bold">Clinical Trial Data Generation</h1>
           <p className="text-muted-foreground">
-            Generate comprehensive clinical trial data: Vitals, Demographics, Labs, and Adverse Events
+            Generate complete, coordinated clinical trial datasets with guaranteed consistency across all domains
           </p>
         </div>
         <Button onClick={handleLoadRealData} variant="outline" disabled={isGenerating}>
@@ -257,6 +257,10 @@ export function DataGeneration() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="complete">
+            <Database className="h-4 w-4 mr-2" />
+            Complete Study ⭐
+          </TabsTrigger>
           <TabsTrigger value="vitals">
             <Activity className="h-4 w-4 mr-2" />
             Vitals
@@ -273,120 +277,41 @@ export function DataGeneration() {
             <AlertTriangle className="h-4 w-4 mr-2" />
             Adverse Events
           </TabsTrigger>
-          <TabsTrigger value="complete">
-            <Database className="h-4 w-4 mr-2" />
-            Complete Study
-          </TabsTrigger>
         </TabsList>
 
         {/* VITALS TAB */}
         <TabsContent value="vitals" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Vital Signs Generation</CardTitle>
-              <CardDescription>Generate SBP, DBP, Heart Rate, Temperature</CardDescription>
+              <CardTitle>Vital Signs Data</CardTitle>
+              <CardDescription>View vitals generated from Complete Study tab (SBP, DBP, Heart Rate, Temperature)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* AACT Configuration - Real-World Data */}
-              <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg mb-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="h-4 w-4 text-purple-600" />
-                  <h3 className="font-semibold text-purple-900">AACT Real-World Data (557K+ Trials)</h3>
-                  <Badge variant="outline" className="bg-white">Enhanced v4.0</Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-purple-900">Disease Indication</Label>
-                    <select
-                      value={indication}
-                      onChange={(e) => setIndication(e.target.value)}
-                      className="w-full mt-1 p-2 border rounded-md bg-white"
-                    >
-                      <option value="hypertension">Hypertension (8,695 trials)</option>
-                      <option value="diabetes">Diabetes (20,857 trials)</option>
-                      <option value="cancer">Cancer (82,255 trials)</option>
-                      <option value="heart failure">Heart Failure</option>
-                      <option value="asthma">Asthma</option>
-                      <option value="copd">COPD</option>
-                      <option value="depression">Depression</option>
-                      <option value="alzheimer disease">Alzheimer's Disease</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-purple-900">Trial Phase</Label>
-                    <select
-                      value={phase}
-                      onChange={(e) => setPhase(e.target.value)}
-                      className="w-full mt-1 p-2 border rounded-md bg-white"
-                    >
-                      <option value="Phase 1">Phase 1 - Safety</option>
-                      <option value="Phase 2">Phase 2 - Efficacy</option>
-                      <option value="Phase 3">Phase 3 - Confirmation</option>
-                      <option value="Phase 4">Phase 4 - Post-Marketing</option>
-                    </select>
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-blue-600" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-semibold">ℹ️ Data displayed from Complete Study generation</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Use the <strong>Complete Study ⭐</strong> tab to generate coordinated datasets with guaranteed consistency
+                    </p>
                   </div>
                 </div>
-                <p className="text-xs text-purple-700 mt-2">
-                  ℹ️ Data uses real baseline vitals, study durations, and demographics from AACT database
-                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Generation Method</Label>
-                  <div className="grid gap-2 mt-2">
-                    {methods.map((method) => (
-                      <button
-                        key={method.id}
-                        onClick={() => setSelectedMethod(method.id)}
-                        className={`p-3 border rounded-lg text-left ${
-                          selectedMethod === method.id ? "border-primary bg-primary/5" : ""
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{method.name}</span>
-                          <Badge variant="outline">{method.speed}</Badge>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+              {vitalsMetadata && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                  <p className="font-medium text-green-900">✅ Generated</p>
+                  <p className="text-green-700">Records: {vitalsMetadata?.records ?? 0}</p>
+                  <p className="text-green-700">Subjects: {vitalsMetadata?.subjects ?? 0}</p>
                 </div>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Subjects Per Arm</Label>
-                    <Input
-                      type="number"
-                      value={nPerArm}
-                      onChange={(e) => setNPerArm(parseInt(e.target.value) || 0)}
-                      min={1}
-                      max={1000}
-                    />
-                  </div>
-                  <div>
-                    <Label>Target Effect (mmHg)</Label>
-                    <Input
-                      type="number"
-                      value={targetEffect}
-                      onChange={(e) => setTargetEffect(parseFloat(e.target.value) || 0)}
-                      step={0.1}
-                    />
-                  </div>
-                  <Button onClick={handleGenerateVitals} disabled={isGenerating} className="w-full">
-                    {isGenerating ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
-                    ) : (
-                      `Generate with ${methods.find(m => m.id === selectedMethod)?.name ?? 'MVN'}`
-                    )}
-                  </Button>
-                  {vitalsMetadata && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                      <p className="font-medium text-green-900">✅ Generated</p>
-                      <p className="text-green-700">Records: {vitalsMetadata?.records ?? 0}</p>
-                      <p className="text-green-700">Subjects: {vitalsMetadata?.subjects ?? 0}</p>
-                    </div>
-                  )}
+              )}
+
+              {!vitalsMetadata && (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">No data generated yet. Please use the <strong>Complete Study ⭐</strong> tab to generate data.</p>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -444,93 +369,49 @@ export function DataGeneration() {
         <TabsContent value="demographics" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Demographics Generation</CardTitle>
-              <CardDescription>Generate Age, Gender, Race, Ethnicity, Height, Weight, BMI, Smoking Status with AACT real-world distributions</CardDescription>
+              <CardTitle>Demographics Data</CardTitle>
+              <CardDescription>View demographics generated from Complete Study tab (Age, Gender, Race, Ethnicity, Height, Weight, BMI, Smoking Status)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* AACT Configuration - Real-World Data */}
-              <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="h-4 w-4 text-purple-600" />
-                  <h3 className="font-semibold text-purple-900">AACT Real-World Distributions</h3>
-                  <Badge variant="outline" className="bg-white">Enhanced v4.0</Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-purple-900">Disease Indication</Label>
-                    <select
-                      value={indication}
-                      onChange={(e) => setIndication(e.target.value)}
-                      className="w-full mt-1 p-2 border rounded-md bg-white"
-                    >
-                      <option value="hypertension">Hypertension</option>
-                      <option value="diabetes">Diabetes</option>
-                      <option value="cancer">Cancer</option>
-                      <option value="heart failure">Heart Failure</option>
-                      <option value="asthma">Asthma</option>
-                      <option value="copd">COPD</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-purple-900">Trial Phase</Label>
-                    <select
-                      value={phase}
-                      onChange={(e) => setPhase(e.target.value)}
-                      className="w-full mt-1 p-2 border rounded-md bg-white"
-                    >
-                      <option value="Phase 1">Phase 1</option>
-                      <option value="Phase 2">Phase 2</option>
-                      <option value="Phase 3">Phase 3</option>
-                      <option value="Phase 4">Phase 4</option>
-                    </select>
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-blue-600" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-semibold">ℹ️ Data displayed from Complete Study generation</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Use the <strong>Complete Study ⭐</strong> tab to generate coordinated datasets with AACT real-world distributions
+                    </p>
                   </div>
                 </div>
-                <p className="text-xs text-purple-700 mt-2">
-                  ℹ️ Age, gender, and race distributions match real trials for this indication/phase
-                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-muted rounded-lg">
-                  <h3 className="font-medium mb-2">Generated Fields:</h3>
-                  <ul className="text-sm space-y-1 text-muted-foreground">
-                    <li>• Age (from AACT real distribution)</li>
-                    <li>• Gender (from AACT real ratio)</li>
-                    <li>• Race (from AACT baseline characteristics)</li>
-                    <li>• Ethnicity (Hispanic/Not Hispanic)</li>
-                    <li>• Height (gender-specific, cm)</li>
-                    <li>• Weight (age-correlated, kg)</li>
-                    <li>• BMI (auto-calculated)</li>
-                    <li>• Smoking Status</li>
-                  </ul>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Number of Subjects</Label>
-                    <Input
-                      type="number"
-                      value={demographicsN}
-                      onChange={(e) => setDemographicsN(parseInt(e.target.value) || 0)}
-                      min={1}
-                      max={1000}
-                    />
-                  </div>
-                  <Button onClick={handleGenerateDemographics} disabled={isGenerating} className="w-full">
-                    {isGenerating ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
-                    ) : (
-                      'Generate Demographics'
-                    )}
-                  </Button>
-                  {demographicsMetadata && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                      <p className="font-medium text-green-900">✅ Generated</p>
-                      <p className="text-green-700">Subjects: {demographicsMetadata?.subjects ?? 0}</p>
-                      <p className="text-green-700">Records: {demographicsMetadata?.records ?? 0}</p>
-                    </div>
-                  )}
-                </div>
+              <div className="p-4 bg-muted rounded-lg">
+                <h3 className="font-medium mb-2">Generated Fields:</h3>
+                <ul className="text-sm space-y-1 text-muted-foreground">
+                  <li>• Age (from AACT real distribution)</li>
+                  <li>• Gender (from AACT real ratio)</li>
+                  <li>• Race (from AACT baseline characteristics)</li>
+                  <li>• Ethnicity (Hispanic/Not Hispanic)</li>
+                  <li>• Height (gender-specific, cm)</li>
+                  <li>• Weight (age-correlated, kg)</li>
+                  <li>• BMI (auto-calculated)</li>
+                  <li>• Smoking Status</li>
+                </ul>
               </div>
+
+              {demographicsMetadata && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                  <p className="font-medium text-green-900">✅ Generated</p>
+                  <p className="text-green-700">Subjects: {demographicsMetadata?.subjects ?? 0}</p>
+                  <p className="text-green-700">Records: {demographicsMetadata?.records ?? 0}</p>
+                </div>
+              )}
+
+              {!demographicsMetadata && (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">No data generated yet. Please use the <strong>Complete Study ⭐</strong> tab to generate data.</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -586,59 +467,51 @@ export function DataGeneration() {
         <TabsContent value="labs" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Lab Results Generation</CardTitle>
-              <CardDescription>Generate Hematology, Chemistry, and Lipid panels for multiple visits</CardDescription>
+              <CardTitle>Lab Results Data</CardTitle>
+              <CardDescription>View lab results generated from Complete Study tab (Hematology, Chemistry, and Lipid panels)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-muted rounded-lg">
-                  <h3 className="font-medium mb-2">Generated Lab Tests:</h3>
-                  <div className="text-sm space-y-2 text-muted-foreground">
-                    <div>
-                      <strong>Hematology:</strong> Hemoglobin, Hematocrit, WBC, Platelets
-                    </div>
-                    <div>
-                      <strong>Chemistry:</strong> Glucose, Creatinine, BUN, ALT, AST, Bilirubin
-                    </div>
-                    <div>
-                      <strong>Lipids:</strong> Total Chol, LDL, HDL, Triglycerides
-                    </div>
-                    <div className="text-xs mt-2">
-                      For visits: Screening, Week 4, Week 12
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Number of Subjects</Label>
-                    <Input
-                      type="number"
-                      value={labsN}
-                      onChange={(e) => setLabsN(parseInt(e.target.value) || 0)}
-                      min={1}
-                      max={1000}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Each subject will have 3 visits = {(labsN * 3).toLocaleString()} lab records
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-blue-600" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-semibold">ℹ️ Data displayed from Complete Study generation</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Use the <strong>Complete Study ⭐</strong> tab to generate coordinated datasets with shared visit schedules
                     </p>
                   </div>
-                  <Button onClick={handleGenerateLabs} disabled={isGenerating} className="w-full">
-                    {isGenerating ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
-                    ) : (
-                      'Generate Lab Results'
-                    )}
-                  </Button>
-                  {labsMetadata && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                      <p className="font-medium text-green-900">✅ Generated</p>
-                      <p className="text-green-700">Subjects: {labsMetadata?.subjects ?? 0}</p>
-                      <p className="text-green-700">Records: {labsMetadata?.records ?? 0}</p>
-                      <p className="text-green-700">Visits: {labsMetadata?.visits_per_subject ?? 0} per subject</p>
-                    </div>
-                  )}
                 </div>
               </div>
+
+              <div className="p-4 bg-muted rounded-lg">
+                <h3 className="font-medium mb-2">Generated Lab Tests:</h3>
+                <div className="text-sm space-y-2 text-muted-foreground">
+                  <div>
+                    <strong>Hematology:</strong> Hemoglobin, Hematocrit, WBC, Platelets
+                  </div>
+                  <div>
+                    <strong>Chemistry:</strong> Glucose, Creatinine, BUN, ALT, AST, Bilirubin
+                  </div>
+                  <div>
+                    <strong>Lipids:</strong> Total Chol, LDL, HDL, Triglycerides
+                  </div>
+                </div>
+              </div>
+
+              {labsMetadata && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                  <p className="font-medium text-green-900">✅ Generated</p>
+                  <p className="text-green-700">Subjects: {labsMetadata?.subjects ?? 0}</p>
+                  <p className="text-green-700">Records: {labsMetadata?.records ?? 0}</p>
+                  <p className="text-green-700">Visits: {labsMetadata?.visits_per_subject ?? 0} per subject</p>
+                </div>
+              )}
+
+              {!labsMetadata && (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">No data generated yet. Please use the <strong>Complete Study ⭐</strong> tab to generate data.</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -696,49 +569,46 @@ export function DataGeneration() {
         <TabsContent value="ae" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Adverse Events Generation</CardTitle>
-              <CardDescription>Generate realistic AEs with MedDRA coding, severity, and causality</CardDescription>
+              <CardTitle>Adverse Events Data</CardTitle>
+              <CardDescription>View adverse events generated from Complete Study tab (MedDRA coding, severity, and causality)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-muted rounded-lg">
-                  <h3 className="font-medium mb-2">Generated AE Data:</h3>
-                  <ul className="text-sm space-y-1 text-muted-foreground">
-                    <li>• AE Terms (Neutropenia, Nausea, etc.)</li>
-                    <li>• Body System (SOC - MedDRA)</li>
-                    <li>• Seriousness (Y/N)</li>
-                    <li>• Causality/Relationship (Y/N)</li>
-                    <li>• Outcome (RESOLVED/ONGOING/FATAL)</li>
-                    <li>• Includes mandatory serious/related events</li>
-                  </ul>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Number of Subjects</Label>
-                    <Input
-                      type="number"
-                      value={aeN}
-                      onChange={(e) => setAeN(parseInt(e.target.value) || 0)}
-                      min={10}
-                      max={100}
-                    />
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-blue-600" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-semibold">ℹ️ Data displayed from Complete Study generation</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Use the <strong>Complete Study ⭐</strong> tab to generate coordinated datasets with phase-appropriate AE rates
+                    </p>
                   </div>
-                  <Button onClick={handleGenerateAE} disabled={isGenerating} className="w-full">
-                    {isGenerating ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
-                    ) : (
-                      'Generate Adverse Events'
-                    )}
-                  </Button>
-                  {aeMetadata && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                      <p className="font-medium text-green-900">✅ Generated</p>
-                      <p className="text-green-700">AE Records: {aeMetadata?.records ?? (aeData ?? []).length}</p>
-                      <p className="text-green-700">Subjects: {aeN}</p>
-                    </div>
-                  )}
                 </div>
               </div>
+
+              <div className="p-4 bg-muted rounded-lg">
+                <h3 className="font-medium mb-2">Generated AE Data:</h3>
+                <ul className="text-sm space-y-1 text-muted-foreground">
+                  <li>• AE Terms (Neutropenia, Nausea, etc.)</li>
+                  <li>• Body System (SOC - MedDRA)</li>
+                  <li>• Seriousness (Y/N)</li>
+                  <li>• Causality/Relationship (Y/N)</li>
+                  <li>• Outcome (RESOLVED/ONGOING/FATAL)</li>
+                  <li>• Includes mandatory serious/related events</li>
+                </ul>
+              </div>
+
+              {aeMetadata && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+                  <p className="font-medium text-green-900">✅ Generated</p>
+                  <p className="text-green-700">AE Records: {aeMetadata?.records ?? (aeData ?? []).length}</p>
+                </div>
+              )}
+
+              {!aeMetadata && (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                  <p className="text-sm text-gray-600">No data generated yet. Please use the <strong>Complete Study ⭐</strong> tab to generate data.</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -798,53 +668,245 @@ export function DataGeneration() {
         <TabsContent value="complete" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Complete Study Generation</CardTitle>
-              <CardDescription>Generate all domains simultaneously for a complete clinical trial dataset</CardDescription>
+              <CardTitle>🎯 Complete Study Generation (Recommended)</CardTitle>
+              <CardDescription>
+                Generate all domains simultaneously with guaranteed data consistency
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              {/* Key Benefit Callout */}
+              <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-300 rounded-lg">
                 <div className="flex items-start gap-2">
-                  <Database className="h-5 w-5 text-blue-600 mt-0.5" />
-                  <div className="text-sm text-blue-800">
-                    <p className="font-medium mb-1">Complete Study will generate:</p>
+                  <Database className="h-5 w-5 text-green-600 mt-0.5" />
+                  <div className="text-sm text-green-900">
+                    <p className="font-semibold mb-2">✅ Why Use Complete Study Generation?</p>
                     <ul className="list-disc list-inside space-y-1 ml-2">
-                      <li>Demographics for all subjects</li>
-                      <li>Vitals for all visits (Screening, Day 1, Week 4, Week 12)</li>
-                      <li>Lab results for key visits (Screening, Week 4, Week 12)</li>
-                      <li>Adverse events throughout the study</li>
-                      <li>Multi-sheet Excel export or separate SDTM CSVs</li>
+                      <li><strong>Guaranteed Consistency:</strong> All datasets share the same subject IDs</li>
+                      <li><strong>Same Visit Schedule:</strong> Vitals and labs use identical visit names</li>
+                      <li><strong>Matched Treatment Arms:</strong> Subject RA001-001 is "Active" in all datasets</li>
+                      <li><strong>SDTM-Compliant:</strong> Datasets can be joined on SubjectID with 100% match rate</li>
+                      <li><strong>Parameter Coordination:</strong> Indication/phase affect ALL datasets appropriately</li>
                     </ul>
+                    <p className="mt-2 text-xs text-green-700">
+                      ℹ️ This is the recommended approach for realistic clinical trial data generation
+                    </p>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Total Subjects (both arms)</Label>
-                  <Input type="number" defaultValue={100} min={20} max={500} />
+              {/* AACT Configuration */}
+              <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="h-4 w-4 text-purple-600" />
+                  <h3 className="font-semibold text-purple-900">AACT Real-World Data (557K+ Trials)</h3>
+                  <Badge variant="outline" className="bg-white">Enhanced v4.0</Badge>
                 </div>
-                <div>
-                  <Label>Target Effect (mmHg)</Label>
-                  <Input type="number" defaultValue={-5.0} step={0.1} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-purple-900">Disease Indication</Label>
+                    <select
+                      value={indication}
+                      onChange={(e) => setIndication(e.target.value)}
+                      className="w-full mt-1 p-2 border rounded-md bg-white"
+                    >
+                      <option value="hypertension">Hypertension (8,695 trials)</option>
+                      <option value="diabetes">Diabetes (20,857 trials)</option>
+                      <option value="cancer">Cancer (82,255 trials)</option>
+                      <option value="heart failure">Heart Failure</option>
+                      <option value="asthma">Asthma</option>
+                      <option value="copd">COPD</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-purple-900">Trial Phase</Label>
+                    <select
+                      value={phase}
+                      onChange={(e) => setPhase(e.target.value)}
+                      className="w-full mt-1 p-2 border rounded-md bg-white"
+                    >
+                      <option value="Phase 1">Phase 1 - Safety (30% serious AEs)</option>
+                      <option value="Phase 2">Phase 2 - Efficacy</option>
+                      <option value="Phase 3">Phase 3 - Confirmation (15% serious AEs)</option>
+                      <option value="Phase 4">Phase 4 - Post-Marketing</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
+              {/* Study Parameters */}
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label>Subjects Per Arm</Label>
+                  <Input
+                    type="number"
+                    value={nPerArm}
+                    onChange={(e) => setNPerArm(parseInt(e.target.value) || 0)}
+                    min={10}
+                    max={200}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Total: {nPerArm * 2} subjects
+                  </p>
+                </div>
+                <div>
+                  <Label>Target Effect (mmHg)</Label>
+                  <Input
+                    type="number"
+                    value={targetEffect}
+                    onChange={(e) => setTargetEffect(parseFloat(e.target.value) || 0)}
+                    step={0.1}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Active vs Placebo SBP difference
+                  </p>
+                </div>
+                <div>
+                  <Label>Generation Method</Label>
+                  <select
+                    value={selectedMethod}
+                    onChange={(e) => setSelectedMethod(e.target.value)}
+                    className="w-full mt-1 p-2 border rounded-md"
+                  >
+                    <option value="mvn">MVN (Fastest)</option>
+                    <option value="bootstrap">Bootstrap</option>
+                    <option value="rules">Rules-based</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Generate Button */}
               <Button
                 className="w-full"
                 size="lg"
                 onClick={async () => {
-                  alert("Complete Study generation coming soon!\n\nThis will:\n- Generate all domains\n- Link data via SubjectID\n- Export as multi-sheet Excel or SDTM datasets");
+                  setIsGenerating(true);
+                  setError("");
+                  try {
+                    const response = await dataGenerationApi.generateComprehensiveStudy({
+                      n_per_arm: nPerArm,
+                      target_effect: targetEffect,
+                      method: selectedMethod,
+                      indication,
+                      phase,
+                      include_vitals: true,
+                      include_demographics: true,
+                      include_ae: true,
+                      include_labs: true,
+                      use_aact: true,
+                      seed: 42
+                    });
+
+                    // Store all datasets
+                    if (response?.vitals) {
+                      setVitalsData(response.vitals);
+                      setVitalsMetadata({ records: response.vitals.length, subjects: nPerArm * 2 });
+                      setGeneratedData(response.vitals);
+                    }
+                    if (response?.demographics) {
+                      setDemographicsData(response.demographics);
+                      setDemographicsMetadata({ records: response.demographics.length, subjects: nPerArm * 2 });
+                    }
+                    if (response?.labs) {
+                      setLabsData(response.labs);
+                      setLabsMetadata({ records: response.labs.length, subjects: nPerArm * 2 });
+                    }
+                    if (response?.adverse_events) {
+                      setAeData(response.adverse_events);
+                      setAeMetadata({ records: response.adverse_events.length });
+                    }
+
+                    alert(`✅ Complete Study Generated Successfully!\n\n` +
+                      `Vitals: ${response?.vitals?.length || 0} records\n` +
+                      `Demographics: ${response?.demographics?.length || 0} subjects\n` +
+                      `Labs: ${response?.labs?.length || 0} records\n` +
+                      `Adverse Events: ${response?.adverse_events?.length || 0} events\n\n` +
+                      `All datasets share the same ${nPerArm * 2} subjects with consistent IDs and visit schedules.`);
+                  } catch (err: any) {
+                    setError(err?.message ?? "Complete study generation failed");
+                  } finally {
+                    setIsGenerating(false);
+                  }
                 }}
+                disabled={isGenerating}
               >
-                <Database className="h-5 w-5 mr-2" />
-                Generate Complete Study
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                    Generating Complete Study...
+                  </>
+                ) : (
+                  <>
+                    <Database className="h-5 w-5 mr-2" />
+                    Generate Complete Study
+                  </>
+                )}
               </Button>
 
               <p className="text-sm text-muted-foreground text-center">
-                Complete study generation will create a fully integrated dataset with all domains
+                After generation, view individual datasets in the Vitals, Demographics, Labs, and AE tabs above
               </p>
             </CardContent>
           </Card>
+
+          {/* Summary Card (shown after generation) */}
+          {(vitalsData.length > 0 || demographicsData.length > 0 || labsData.length > 0 || aeData.length > 0) && (
+            <Card className="border-green-500">
+              <CardHeader>
+                <CardTitle>📊 Generated Data Summary</CardTitle>
+                <CardDescription>All datasets are coordinated and ready for analysis</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 bg-blue-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Activity className="h-4 w-4 text-blue-600" />
+                      <span className="font-medium text-blue-900">Vitals</span>
+                    </div>
+                    <p className="text-2xl font-bold text-blue-600">{vitalsData.length}</p>
+                    <p className="text-xs text-blue-700">records</p>
+                  </div>
+                  <div className="p-4 bg-purple-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="h-4 w-4 text-purple-600" />
+                      <span className="font-medium text-purple-900">Demographics</span>
+                    </div>
+                    <p className="text-2xl font-bold text-purple-600">{demographicsData.length}</p>
+                    <p className="text-xs text-purple-700">subjects</p>
+                  </div>
+                  <div className="p-4 bg-green-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FlaskConical className="h-4 w-4 text-green-600" />
+                      <span className="font-medium text-green-900">Labs</span>
+                    </div>
+                    <p className="text-2xl font-bold text-green-600">{labsData.length}</p>
+                    <p className="text-xs text-green-700">records</p>
+                  </div>
+                  <div className="p-4 bg-orange-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertTriangle className="h-4 w-4 text-orange-600" />
+                      <span className="font-medium text-orange-900">AEs</span>
+                    </div>
+                    <p className="text-2xl font-bold text-orange-600">{aeData.length}</p>
+                    <p className="text-xs text-orange-700">events</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button onClick={() => downloadCSV(vitalsData, "vitals.csv")} variant="outline" size="sm">
+                    <Download className="h-3 w-3 mr-1" /> Vitals CSV
+                  </Button>
+                  <Button onClick={() => downloadCSV(demographicsData, "demographics.csv")} variant="outline" size="sm">
+                    <Download className="h-3 w-3 mr-1" /> Demographics CSV
+                  </Button>
+                  <Button onClick={() => downloadCSV(labsData, "labs.csv")} variant="outline" size="sm">
+                    <Download className="h-3 w-3 mr-1" /> Labs CSV
+                  </Button>
+                  <Button onClick={() => downloadCSV(aeData, "adverse_events.csv")} variant="outline" size="sm">
+                    <Download className="h-3 w-3 mr-1" /> AE CSV
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

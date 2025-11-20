@@ -287,13 +287,17 @@ export const dataGenerationApi = {
     };
   },
 
-  async generateLabs(params: { n_subjects: number; seed?: number }): Promise<any> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/labs`, {
+  async generateLabs(params: { n_subjects: number; seed?: number; indication?: string; phase?: string }): Promise<any> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/labs-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
         n_subjects: params.n_subjects,
-        seed: params.seed ?? 42
+        seed: params.seed ?? 42,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
       }),
     });
     const data = await handleResponse(response);
@@ -302,18 +306,21 @@ export const dataGenerationApi = {
       data,
       metadata: {
         records: data.length,
-        method: "labs",
+        method: "labs-aact",
       },
     };
   },
 
-  async generateAE(params: { n_subjects: number; seed?: number }): Promise<any> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/ae`, {
+  async generateAE(params: { n_subjects: number; seed?: number; indication?: string; phase?: string }): Promise<any> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/ae-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
         n_subjects: params.n_subjects,
-        seed: params.seed ?? 7
+        seed: params.seed ?? 7,
+        indication: params.indication || "cancer",
+        phase: params.phase || "Phase 2",
       }),
     });
     const data = await handleResponse(response);
@@ -322,7 +329,7 @@ export const dataGenerationApi = {
       data,
       metadata: {
         records: data.length,
-        method: "adverse-events",
+        method: "ae-aact",
       },
     };
   },
@@ -352,10 +359,13 @@ export const dataGenerationApi = {
     n_per_arm?: number;
     target_effect?: number;
     method?: string;
+    indication?: string;
+    phase?: string;
     include_vitals?: boolean;
     include_demographics?: boolean;
     include_ae?: boolean;
     include_labs?: boolean;
+    use_aact?: boolean;
     seed?: number;
   }): Promise<any> {
     const response = await fetch(`${DATA_GEN_SERVICE}/generate/comprehensive-study`, {
@@ -365,10 +375,13 @@ export const dataGenerationApi = {
         n_per_arm: params.n_per_arm ?? 50,
         target_effect: params.target_effect ?? -5.0,
         method: params.method ?? "mvn",
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
         include_vitals: params.include_vitals ?? true,
         include_demographics: params.include_demographics ?? true,
         include_ae: params.include_ae ?? true,
         include_labs: params.include_labs ?? true,
+        use_aact: params.use_aact ?? true,  // Use AACT by default
         seed: params.seed ?? 42,
       }),
     });
