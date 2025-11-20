@@ -100,11 +100,17 @@ export const authApi = {
 // ============================================================================
 
 export const dataGenerationApi = {
-  async generateMVN(params: GenerationRequest): Promise<GenerationResponse> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mvn`, {
+  async generateMVN(params: GenerationRequest & { indication?: string; phase?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mvn-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+      }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
     // Backend returns array directly, wrap it in expected format
@@ -114,21 +120,22 @@ export const dataGenerationApi = {
       metadata: {
         records: data.length,
         subjects: uniqueSubjects,
-        method: "mvn",
+        method: "mvn-aact",
       },
     };
   },
 
-  async generateBootstrap(params: GenerationRequest): Promise<GenerationResponse> {
-    // First, fetch pilot data to use as training data
-    const pilotData = await this.getPilotData();
-
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bootstrap`, {
+  async generateBootstrap(params: GenerationRequest & { indication?: string; phase?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bootstrap-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
         ...params,
-        training_data: pilotData,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+        jitter_frac: 0.05,
       }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
@@ -138,16 +145,22 @@ export const dataGenerationApi = {
       metadata: {
         records: data.length,
         subjects: uniqueSubjects,
-        method: "bootstrap",
+        method: "bootstrap-aact",
       },
     };
   },
 
-  async generateRules(params: GenerationRequest): Promise<GenerationResponse> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/rules`, {
+  async generateRules(params: GenerationRequest & { indication?: string; phase?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/rules-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+      }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
     const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
@@ -237,16 +250,27 @@ export const dataGenerationApi = {
     return handleResponse(response);
   },
 
-  async generateDemographics(params: { n_subjects: number; seed?: number }): Promise<any> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/demographics`, {
+  async generateDemographics(params: { n_subjects: number; seed?: number; indication?: string; phase?: string }): Promise<any> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/demographics-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
         n_subjects: params.n_subjects,
-        seed: params.seed ?? 42
+        seed: params.seed ?? 42,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
       }),
     });
-    return handleResponse(response);
+    const data = await handleResponse(response);
+    // Return in expected format with metadata
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "demographics-aact",
+      },
+    };
   },
 
   async generateLabs(params: { n_subjects: number; seed?: number }): Promise<any> {
