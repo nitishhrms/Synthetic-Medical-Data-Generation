@@ -7,6 +7,8 @@ import { DataGeneration } from "@/components/screens/DataGeneration";
 import { Analytics } from "@/components/screens/Analytics";
 import { QualityDashboard } from "@/components/screens/QualityDashboard";
 import { TrialPlanning } from "@/components/screens/TrialPlanning";
+import { LinkupIntegration } from "@/components/screens/LinkupIntegration";
+import { MedicalImaging } from "@/components/screens/MedicalImaging";
 import { Studies } from "@/components/screens/Studies";
 import { Settings } from "@/components/screens/Settings";
 import { SystemCheck } from "@/components/screens/SystemCheck";

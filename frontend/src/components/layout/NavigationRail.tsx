@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
-import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare, ClipboardEdit, ActivitySquare, Database, Table } from "lucide-react";
+import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare, ClipboardEdit, ActivitySquare, Database, Table, FlaskConical, Shield, ImageIcon } from "lucide-react";
 
-export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry" | "survival" | "adam" | "tlf";
+export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry" | "survival" | "adam" | "tlf" | "trial-planning" | "linkup" | "medical-imaging";
 
 interface NavigationRailProps {
   activeScreen: Screen;
