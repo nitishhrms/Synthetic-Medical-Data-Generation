@@ -820,3 +820,18 @@ def get_baseline_characteristics(indication: str, phase: str = "Phase 3", top_n:
 def get_disease_taxonomy(indication: str, max_terms: int = 50) -> Dict[str, Any]:
     """Convenience function to get disease taxonomy (MeSH terms)"""
     return get_aact_loader().get_disease_taxonomy(indication, max_terms)
+
+
+def get_baseline_vitals(indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+    """Convenience function to get baseline vitals (SBP, DBP, HR, Temperature)"""
+    return get_aact_loader().get_baseline_vitals(indication, phase)
+
+
+def get_dropout_patterns(indication: str, phase: str = "Phase 3") -> Dict[str, Any]:
+    """Convenience function to get dropout patterns and reasons"""
+    return get_aact_loader().get_dropout_patterns(indication, phase)
+
+
+def get_adverse_events(indication: str, phase: str = "Phase 3", top_n: int = 20) -> List[Dict[str, Any]]:
+    """Convenience function to get adverse event frequencies"""
+    return get_aact_loader().get_adverse_events(indication, phase, top_n)
