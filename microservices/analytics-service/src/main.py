@@ -55,11 +55,33 @@ from benchmarking import (
     aggregate_quality_scores,
     generate_recommendations
 )
+from survival_analysis import (
+    generate_survival_data,
+    calculate_kaplan_meier,
+    log_rank_test,
+    calculate_hazard_ratio,
+    export_survival_sdtm_tte,
+    comprehensive_survival_analysis
+)
+from adam_generation import (
+    generate_adsl,
+    generate_adtte,
+    generate_adae,
+    generate_bds_vitals,
+    generate_bds_labs,
+    generate_all_adam_datasets
+)
+from tlf_automation import (
+    generate_table1_demographics,
+    generate_ae_summary_table,
+    generate_efficacy_table,
+    generate_all_tlf_tables
+)
 
 app = FastAPI(
     title="Analytics Service",
-    description="Clinical Trial Analytics, RBQM, CSR, and SDTM Export",
-    version="1.0.0"
+    description="Clinical Trial Analytics, RBQM, CSR, SDTM Export, Survival Analysis, ADaM Generation, TLF Automation",
+    version="2.0.0"
 )
 
 # Database lifecycle events
@@ -282,6 +304,30 @@ class RecommendationsRequest(BaseModel):
     n_subjects: Optional[int] = Field(None, description="Number of subjects")
     indication: Optional[str] = Field(None, description="Disease indication")
     phase: Optional[str] = Field(None, description="Trial phase")
+
+# ===== Phase 7: Survival Analysis Models =====
+class SurvivalAnalysisRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]] = Field(..., description="Subject demographics")
+    indication: str = Field(default="oncology", description="Therapeutic area")
+    median_survival_active: float = Field(default=18.0, description="Median survival for active arm (months)")
+    median_survival_placebo: float = Field(default=12.0, description="Median survival for placebo arm (months)")
+    seed: Optional[int] = Field(None, description="Random seed for reproducibility")
+
+# ===== Phase 8: ADaM Generation Models =====
+class AdamGenerationRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]] = Field(..., description="Demographics records")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals records")
+    labs_data: Optional[List[Dict[str, Any]]] = Field(None, description="Labs records (long format)")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="Adverse event records")
+    survival_data: Optional[List[Dict[str, Any]]] = Field(None, description="Survival/TTE records")
+    study_id: str = Field(default="STUDY001", description="Study identifier")
+
+# ===== Phase 9: TLF Automation Models =====
+class TLFRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]] = Field(..., description="Demographics records")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="Adverse event records")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals records")
+    survival_data: Optional[List[Dict[str, Any]]] = Field(None, description="Survival records")
 
 @app.get("/health")
 async def health_check():
@@ -2410,6 +2456,362 @@ async def study_recommendations(request: RecommendationsRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Recommendations generation failed: {str(e)}"
+        )
+
+
+# =============================================================================
+# PHASE 7: SURVIVAL ANALYSIS ENDPOINTS
+# =============================================================================
+
+@app.post("/survival/comprehensive")
+async def analyze_survival_comprehensive(request: SurvivalAnalysisRequest):
+    """
+    Comprehensive survival analysis including KM curves, log-rank test, and hazard ratios.
+
+    **What It Does:**
+    1. Generates time-to-event data from demographics
+    2. Calculates Kaplan-Meier survival curves for each arm
+    3. Performs log-rank test for difference between arms
+    4. Calculates hazard ratio with 95% CI
+    5. Exports data in CDISC SDTM TTE domain format
+
+    **Use Cases:**
+    - Oncology trials (Overall Survival, Progression-Free Survival)
+    - Time-to-event endpoints in any therapeutic area
+    - CSR survival analysis tables
+    - Regulatory submission packages (SDTM TTE domain)
+    """
+    try:
+        result = comprehensive_survival_analysis(
+            demographics_data=request.demographics_data,
+            indication=request.indication,
+            median_survival_active=request.median_survival_active,
+            median_survival_placebo=request.median_survival_placebo,
+            seed=request.seed
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Survival analysis failed: {str(e)}"
+        )
+
+
+@app.post("/survival/kaplan-meier")
+async def calculate_km_curves(request: Dict[str, Any]):
+    """
+    Calculate Kaplan-Meier survival curves with confidence intervals.
+
+    **Inputs:**
+    - survival_data: List of survival records with EventTime, EventOccurred, Censored
+    - treatment_arm: Optional specific arm to analyze (None = all)
+
+    **Outputs:**
+    - km_curve: Time points with survival probability and CI
+    - median_survival: Median survival time
+    - n_subjects, n_events, n_censored
+    """
+    try:
+        survival_data = request.get("survival_data", [])
+        treatment_arm = request.get("treatment_arm")
+
+        result = calculate_kaplan_meier(survival_data, treatment_arm)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"KM calculation failed: {str(e)}"
+        )
+
+
+@app.post("/survival/log-rank-test")
+async def perform_log_rank_test(request: Dict[str, Any]):
+    """
+    Perform log-rank test to compare survival curves between two treatment arms.
+
+    **Statistical Test:**
+    - Null hypothesis: No difference in survival between arms
+    - Test statistic: Chi-square with 1 df
+    - Significance level: α = 0.05
+
+    **Outputs:**
+    - test_statistic: Chi-square value
+    - p_value: Two-sided p-value
+    - significant: Boolean (p < 0.05)
+    - interpretation: Text summary
+    """
+    try:
+        survival_data = request.get("survival_data", [])
+        arm1 = request.get("arm1", "Active")
+        arm2 = request.get("arm2", "Placebo")
+
+        result = log_rank_test(survival_data, arm1, arm2)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Log-rank test failed: {str(e)}"
+        )
+
+
+@app.post("/survival/hazard-ratio")
+async def calculate_hr(request: Dict[str, Any]):
+    """
+    Calculate hazard ratio comparing treatment to reference arm.
+
+    **Hazard Ratio Interpretation:**
+    - HR < 1: Treatment reduces risk (favors treatment)
+    - HR = 1: No difference between arms
+    - HR > 1: Treatment increases risk (favors control)
+
+    **Example:**
+    HR = 0.75 (95% CI: 0.58, 0.97)
+    Treatment reduces risk of death by 25% vs control (p=0.032)
+
+    **Outputs:**
+    - hazard_ratio: HR value
+    - ci_lower, ci_upper: 95% confidence interval
+    - interpretation: Clinical benefit assessment
+    """
+    try:
+        survival_data = request.get("survival_data", [])
+        reference_arm = request.get("reference_arm", "Placebo")
+        treatment_arm = request.get("treatment_arm", "Active")
+
+        result = calculate_hazard_ratio(survival_data, reference_arm, treatment_arm)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Hazard ratio calculation failed: {str(e)}"
+        )
+
+
+# =============================================================================
+# PHASE 8: ADAM DATASET GENERATION ENDPOINTS
+# =============================================================================
+
+@app.post("/adam/generate-all")
+async def generate_all_adam(request: AdamGenerationRequest):
+    """
+    Generate all CDISC ADaM datasets from source data.
+
+    **What It Generates:**
+    1. **ADSL** - Subject-Level Analysis Dataset (one row per subject)
+    2. **ADTTE** - Time-to-Event Analysis Dataset (survival endpoints)
+    3. **ADAE** - Adverse Event Analysis Dataset (safety analysis)
+    4. **BDS Vitals** - Basic Data Structure for vitals (longitudinal)
+    5. **BDS Labs** - Basic Data Structure for labs (longitudinal)
+
+    **Why ADaM?**
+    - FDA/EMA require ADaM for regulatory submissions
+    - ADaM is analysis-ready (vs SDTM which is collected data)
+    - Biostatisticians work directly with ADaM datasets
+    - ADaM includes derived variables (BASE, CHG, analysis flags)
+
+    **Use Cases:**
+    - Regulatory submission packages
+    - Statistical analysis programming
+    - Biostatistician training
+    - Method validation
+    """
+    try:
+        result = generate_all_adam_datasets(
+            demographics_data=request.demographics_data,
+            vitals_data=request.vitals_data,
+            labs_data=request.labs_data,
+            ae_data=request.ae_data,
+            survival_data=request.survival_data,
+            study_id=request.study_id
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ADaM generation failed: {str(e)}"
+        )
+
+
+@app.post("/adam/adsl")
+async def generate_adsl_dataset(request: AdamGenerationRequest):
+    """
+    Generate ADSL (Subject-Level Analysis Dataset).
+
+    **ADSL is the cornerstone dataset containing:**
+    - Demographics (age, sex, race, ethnicity)
+    - Treatment assignment (planned and actual)
+    - Important dates (screening, randomization, treatment start/end)
+    - Disposition (completed, discontinued, reason)
+    - Analysis population flags (ITT, Safety, Per-Protocol)
+    - Baseline values
+    - Derived variables for analysis
+
+    **One record per subject** - All other ADaM datasets link to ADSL via USUBJID.
+    """
+    try:
+        adsl = generate_adsl(
+            demographics_data=request.demographics_data,
+            vitals_data=request.vitals_data,
+            ae_data=request.ae_data,
+            study_id=request.study_id
+        )
+        return {"ADSL": adsl, "n_subjects": len(adsl)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ADSL generation failed: {str(e)}"
+        )
+
+
+# =============================================================================
+# PHASE 9: TLF AUTOMATION ENDPOINTS
+# =============================================================================
+
+@app.post("/tlf/generate-all")
+async def generate_all_tlf(request: TLFRequest):
+    """
+    Generate all standard TLF (Tables, Listings, Figures) for clinical study report.
+
+    **What It Generates:**
+    1. **Table 1** - Demographics and Baseline Characteristics
+    2. **Table 2** - Adverse Event Summary by SOC and Preferred Term
+    3. **Table 3** - Efficacy Endpoints Summary
+
+    **Why This Matters:**
+    - Biostatisticians spend 30-40% of time creating these tables manually
+    - Automation saves weeks of work per study
+    - Ensures consistency across trials
+    - Publication-ready format (markdown + structured data)
+
+    **Output Formats:**
+    - Structured table data (for programmatic use)
+    - Markdown format (for Word/PDF export)
+    - Ready for regulatory submission
+
+    **Use Cases:**
+    - CSR table generation
+    - Manuscript preparation
+    - Protocol amendments (sample tables)
+    - Training (showing expected output format)
+    """
+    try:
+        result = generate_all_tlf_tables(
+            demographics_data=request.demographics_data,
+            ae_data=request.ae_data,
+            vitals_data=request.vitals_data,
+            survival_data=request.survival_data
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"TLF generation failed: {str(e)}"
+        )
+
+
+@app.post("/tlf/table1-demographics")
+async def generate_table1(request: Dict[str, Any]):
+    """
+    Generate Table 1: Demographics and Baseline Characteristics.
+
+    **Standard Table 1 Format:**
+    - Age (mean, SD, min, max, categories)
+    - Gender (n, %)
+    - Race (n, %)
+    - Ethnicity (n, %)
+    - Weight, Height, BMI
+    - By treatment arm + total column
+
+    **Statistical Tests:**
+    - Continuous: t-test or Wilcoxon
+    - Categorical: Chi-square or Fisher's exact
+    - Assesses baseline comparability between arms
+
+    **Output:**
+    - Table data (JSON)
+    - Markdown format (for Word export)
+    - Statistical test results (if requested)
+    """
+    try:
+        demographics_data = request.get("demographics_data", [])
+        include_stats = request.get("include_stats", True)
+
+        result = generate_table1_demographics(demographics_data, include_stats)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Table 1 generation failed: {str(e)}"
+        )
+
+
+@app.post("/tlf/table2-adverse-events")
+async def generate_table2_ae(request: Dict[str, Any]):
+    """
+    Generate Table 2: Adverse Event Summary by SOC and Preferred Term.
+
+    **Standard AE Table Format:**
+    - Any Adverse Event (overall incidence)
+    - Any Serious Adverse Event
+    - Any Related Adverse Event
+    - By System Organ Class (MedDRA SOC)
+      - Preferred Terms within each SOC
+    - Shows n (%) for each treatment arm
+    - Only AEs occurring in ≥5% of subjects (configurable)
+
+    **Use Cases:**
+    - CSR safety section
+    - SAE reporting
+    - Risk-benefit assessment
+    - Regulatory review
+    """
+    try:
+        ae_data = request.get("ae_data", [])
+        by_soc = request.get("by_soc", True)
+        min_incidence = request.get("min_incidence", 5.0)
+
+        result = generate_ae_summary_table(ae_data, by_soc, min_incidence)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AE table generation failed: {str(e)}"
+        )
+
+
+@app.post("/tlf/table3-efficacy")
+async def generate_table3_efficacy(request: Dict[str, Any]):
+    """
+    Generate Table 3: Efficacy Endpoints Summary.
+
+    **For Vitals Endpoints:**
+    - Primary: Systolic BP at Week 12 (mean, SD by arm)
+    - Secondary: Diastolic BP, Heart Rate
+    - Treatment effect (difference with 95% CI)
+    - P-value from t-test
+
+    **For Survival Endpoints:**
+    - Median survival by arm
+    - Hazard ratio (95% CI)
+    - P-value from log-rank test
+    - Events/censored counts
+
+    **Output:**
+    - Formatted efficacy table
+    - Statistical test results
+    - Clinical interpretation
+    """
+    try:
+        vitals_data = request.get("vitals_data")
+        survival_data = request.get("survival_data")
+        endpoint_type = request.get("endpoint_type", "vitals")
+
+        result = generate_efficacy_table(vitals_data, survival_data, endpoint_type)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Efficacy table generation failed: {str(e)}"
         )
 
 
