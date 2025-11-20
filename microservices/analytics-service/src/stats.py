@@ -30,6 +30,7 @@ def calculate_week12_statistics(df: pd.DataFrame, visit_name: str = "Week 12") -
         df: DataFrame with vitals data
         visit_name: Name of the visit to analyze (default: "Week 12")
                    Can be "Week 12", "Month 6", "Month 12", "Week 16", etc.
+                   If specified visit not found, auto-detects final visit
 
     Returns:
         Dict with statistical test results in nested format
@@ -38,9 +39,34 @@ def calculate_week12_statistics(df: pd.DataFrame, visit_name: str = "Week 12") -
     wk12 = df[df["VisitName"] == visit_name].copy()
 
     if wk12.empty:
-        # List available visits to help user
+        # Auto-fallback: Try to find the final visit in the data
         available_visits = sorted(df["VisitName"].unique().tolist())
-        raise ValueError(f"No '{visit_name}' data found. Available visits: {available_visits}")
+
+        # Try to auto-detect final visit using common visit order
+        visit_order = ["Screening", "Day 1", "Week 2", "Week 4", "Week 8", "Week 12", "Week 16", "Week 24",
+                      "Month 3", "Month 4", "Month 6", "Month 9", "Month 12", "Month 18", "Month 24"]
+
+        # Find the last visit in visit_order that exists in data
+        detected_visit = None
+        for v in reversed(visit_order):
+            if v in available_visits:
+                detected_visit = v
+                break
+
+        # If auto-detection worked, use it; otherwise, use the last available visit
+        if detected_visit:
+            visit_name = detected_visit
+        elif available_visits:
+            visit_name = available_visits[-1]
+        else:
+            raise ValueError(f"No visits found in the data")
+
+        print(f"[AUTO-DETECT] Requested visit '{visit_name}' not found. Using auto-detected final visit: '{visit_name}'")
+        wk12 = df[df["VisitName"] == visit_name].copy()
+
+        # If still empty after auto-detection, raise error
+        if wk12.empty:
+            raise ValueError(f"No data found even after auto-detection. Available visits: {available_visits}")
 
     # Split by treatment arm
     wk12["SystolicBP"] = pd.to_numeric(wk12["SystolicBP"], errors="coerce")
