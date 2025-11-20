@@ -44,9 +44,10 @@ export interface GenerationResponse {
   };
 }
 
-// Week-12 Statistics Request
+// Week-12 Statistics Request (flexible visit name)
 export interface Week12StatsRequest {
   vitals_data: VitalsRecord[];
+  visit_name?: string;  // Optional: defaults to "Week 12" if not provided
 }
 
 // Week-12 Statistics Response

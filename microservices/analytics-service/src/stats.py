@@ -20,23 +20,27 @@ def _phi(x: float) -> float:
     return 0.5 * (1.0 + erf(x / np.sqrt(2.0)))
 
 
-def calculate_week12_statistics(df: pd.DataFrame) -> Dict[str, Any]:
+def calculate_week12_statistics(df: pd.DataFrame, visit_name: str = "Week 12") -> Dict[str, Any]:
     """
-    Calculate Week-12 statistics (Active vs Placebo)
+    Calculate final visit statistics (Active vs Placebo)
 
-    Performs Welch's t-test on SystolicBP at Week 12
+    Performs Welch's t-test on SystolicBP at the specified final visit
 
     Args:
         df: DataFrame with vitals data
+        visit_name: Name of the visit to analyze (default: "Week 12")
+                   Can be "Week 12", "Month 6", "Month 12", "Week 16", etc.
 
     Returns:
         Dict with statistical test results in nested format
     """
-    # Filter to Week 12 only
-    wk12 = df[df["VisitName"] == "Week 12"].copy()
+    # Filter to specified visit only
+    wk12 = df[df["VisitName"] == visit_name].copy()
 
     if wk12.empty:
-        raise ValueError("No Week 12 data found")
+        # List available visits to help user
+        available_visits = sorted(df["VisitName"].unique().tolist())
+        raise ValueError(f"No '{visit_name}' data found. Available visits: {available_visits}")
 
     # Split by treatment arm
     wk12["SystolicBP"] = pd.to_numeric(wk12["SystolicBP"], errors="coerce")
@@ -44,7 +48,7 @@ def calculate_week12_statistics(df: pd.DataFrame) -> Dict[str, Any]:
     placebo = wk12[wk12["TreatmentArm"] == "Placebo"]["SystolicBP"].dropna().values
 
     if len(active) == 0 or len(placebo) == 0:
-        raise ValueError("Insufficient data for both arms at Week 12")
+        raise ValueError(f"Insufficient data for both arms at {visit_name}")
 
     # Calculate basic statistics
     x_active = np.asarray(active, dtype=float)
