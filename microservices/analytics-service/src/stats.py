@@ -74,7 +74,19 @@ def calculate_week12_statistics(df: pd.DataFrame, visit_name: str = "Week 12") -
     placebo = wk12[wk12["TreatmentArm"] == "Placebo"]["SystolicBP"].dropna().values
 
     if len(active) == 0 or len(placebo) == 0:
-        raise ValueError(f"Insufficient data for both arms at {visit_name}")
+        # Provide detailed error message showing what data is available
+        arm_counts = wk12.groupby("TreatmentArm").size().to_dict()
+        missing_arms = []
+        if len(active) == 0:
+            missing_arms.append("Active")
+        if len(placebo) == 0:
+            missing_arms.append("Placebo")
+
+        error_msg = f"Insufficient data for both arms at '{visit_name}'. "
+        error_msg += f"Missing arms: {', '.join(missing_arms)}. "
+        error_msg += f"Available: {arm_counts}. "
+        error_msg += "Try generating data with more subjects per arm."
+        raise ValueError(error_msg)
 
     # Calculate basic statistics
     x_active = np.asarray(active, dtype=float)
