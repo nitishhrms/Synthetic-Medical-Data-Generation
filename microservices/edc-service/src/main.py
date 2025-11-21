@@ -343,127 +343,270 @@ async def store_vitals(request: VitalsBulkRequest):
 # Study Management Endpoints
 # ============================================================================
 
-# In-memory storage for studies and subjects (for development)
-# In production, these would be stored in a proper database
-studies_db: Dict[str, Dict] = {}
-subjects_db: Dict[str, Dict] = {}
+# ============================================================================
+# Study Management Endpoints
+# ============================================================================
+
+# Database operations replace in-memory storage
+
 
 @app.post("/studies")
 async def create_study(study: StudyCreate):
     """Create a new clinical trial study"""
-    study_id = f"STU{len(studies_db) + 1:03d}"
+    # Generate study ID (STU + 3 digits)
+    # In a real app, this might be a sequence or UUID
+    count = await db.fetchval("SELECT COUNT(*) FROM studies")
+    study_id = f"STU{count + 1:03d}"
 
-    study_data = {
-        "study_id": study_id,
-        "study_name": study.study_name,
-        "indication": study.indication,
-        "phase": study.phase,
-        "sponsor": study.sponsor,
-        "start_date": study.start_date,
-        "status": study.status,
-        "subjects_enrolled": 0,
-        "created_at": datetime.utcnow().isoformat()
-    }
-
-    studies_db[study_id] = study_data
-
-    return {
-        "study_id": study_id,
-        "message": "Study created successfully"
-    }
+    try:
+        await db.execute("""
+            INSERT INTO studies (
+                study_id, study_name, indication, phase, sponsor, 
+                start_date, status, subjects_enrolled, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, NOW())
+        """, 
+        study_id, study.study_name, study.indication, study.phase, 
+        study.sponsor, datetime.strptime(study.start_date, "%Y-%m-%d").date(), study.status)
+        
+        return {
+            "study_id": study_id,
+            "message": "Study created successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create study: {str(e)}")
 
 @app.get("/studies")
 async def list_studies():
     """List all studies"""
+    studies = await db.fetch("SELECT * FROM studies ORDER BY created_at DESC")
+    
+    # Convert to list of dicts and format dates
+    result = []
+    for s in studies:
+        s_dict = dict(s)
+        if s_dict.get('start_date'):
+            s_dict['start_date'] = s_dict['start_date'].isoformat()
+        if s_dict.get('created_at'):
+            s_dict['created_at'] = s_dict['created_at'].isoformat()
+        result.append(s_dict)
+        
     return {
-        "studies": list(studies_db.values())
+        "studies": result
     }
 
 @app.get("/studies/{study_id}")
 async def get_study(study_id: str):
     """Get study details"""
-    if study_id not in studies_db:
+    study = await db.fetchrow("SELECT * FROM studies WHERE study_id = $1", study_id)
+    
+    if not study:
         raise HTTPException(status_code=404, detail="Study not found")
 
-    return studies_db[study_id]
+    s_dict = dict(study)
+    if s_dict.get('start_date'):
+        s_dict['start_date'] = s_dict['start_date'].isoformat()
+    if s_dict.get('created_at'):
+        s_dict['created_at'] = s_dict['created_at'].isoformat()
+
+    return s_dict
+
+@app.get("/studies/{study_id}/subjects")
+async def list_study_subjects(study_id: str):
+    """List all subjects in a study"""
+    # Verify study exists
+    study_exists = await db.fetchval("SELECT 1 FROM studies WHERE study_id = $1", study_id)
+    if not study_exists:
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    subjects = await db.fetch("""
+        SELECT * FROM subjects 
+        WHERE study_id = $1 
+        ORDER BY created_at DESC
+    """, study_id)
+    
+    # Convert to list of dicts and format dates
+    result = []
+    for s in subjects:
+        s_dict = dict(s)
+        if s_dict.get('enrollment_date'):
+            s_dict['enrollment_date'] = s_dict['enrollment_date'].isoformat()
+        if s_dict.get('created_at'):
+            s_dict['created_at'] = s_dict['created_at'].isoformat()
+        result.append(s_dict)
+        
+    return {
+        "subjects": result
+    }
+
 
 @app.post("/subjects")
 async def enroll_subject(subject: SubjectCreate):
     """Enroll a new subject in a study"""
     # Verify study exists
-    if subject.study_id not in studies_db:
+    study_exists = await db.fetchval("SELECT 1 FROM studies WHERE study_id = $1", subject.study_id)
+    if not study_exists:
         raise HTTPException(status_code=404, detail="Study not found")
 
-    # Generate subject ID
-    study_subjects = [s for s in subjects_db.values() if s["study_id"] == subject.study_id]
-    subject_num = len(study_subjects) + 1
-    subject_id = f"{subject.study_id.replace('STU', 'RA')}-{subject_num:03d}"
+    try:
+        # Generate subject ID
+        count = await db.fetchval("SELECT COUNT(*) FROM subjects WHERE study_id = $1", subject.study_id)
+        subject_num = count + 1
+        subject_id = f"{subject.study_id.replace('STU', 'RA')}-{subject_num:03d}"
 
-    subject_data = {
-        "subject_id": subject_id,
-        "study_id": subject.study_id,
-        "site_id": subject.site_id,
-        "treatment_arm": subject.treatment_arm,
-        "enrollment_date": datetime.utcnow().isoformat(),
-        "status": "enrolled"
-    }
+        # Enroll subject
+        await db.execute("""
+            INSERT INTO subjects (
+                subject_id, study_id, site_id, treatment_arm, 
+                enrollment_date, status, created_at
+            ) VALUES ($1, $2, $3, $4, NOW(), 'enrolled', NOW())
+        """, subject_id, subject.study_id, subject.site_id, subject.treatment_arm)
 
-    subjects_db[subject_id] = subject_data
+        # Update study subject count
+        await db.execute("""
+            UPDATE studies 
+            SET subjects_enrolled = subjects_enrolled + 1 
+            WHERE study_id = $1
+        """, subject.study_id)
 
-    # Update study subject count
-    studies_db[subject.study_id]["subjects_enrolled"] += 1
-
-    return {
-        "subject_id": subject_id,
-        "message": "Subject enrolled successfully"
-    }
+        return {
+            "subject_id": subject_id,
+            "message": "Subject enrolled successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enroll subject: {str(e)}")
 
 @app.get("/subjects/{subject_id}")
 async def get_subject(subject_id: str):
     """Get subject details"""
-    if subject_id not in subjects_db:
+    subject = await db.fetchrow("SELECT * FROM subjects WHERE subject_id = $1", subject_id)
+    
+    if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
 
-    return subjects_db[subject_id]
+    s_dict = dict(subject)
+    if s_dict.get('enrollment_date'):
+        s_dict['enrollment_date'] = s_dict['enrollment_date'].isoformat()
+    if s_dict.get('created_at'):
+        s_dict['created_at'] = s_dict['created_at'].isoformat()
+
+    return s_dict
+
 
 @app.post("/import/synthetic")
 async def import_synthetic_data(request: ImportSyntheticRequest):
     """Import synthetic data into a study"""
     # Verify study exists
-    if request.study_id not in studies_db:
+    study_exists = await db.fetchval("SELECT 1 FROM studies WHERE study_id = $1", request.study_id)
+    if not study_exists:
         raise HTTPException(status_code=404, detail="Study not found")
 
-    # Extract unique subjects from the data
-    unique_subjects = set(record.SubjectID for record in request.data)
+    try:
+        # Extract unique subjects from the data
+        unique_subjects = list(set(record.SubjectID for record in request.data))
+        unique_subjects.sort() # Ensure deterministic order
+        
+        subjects_created = 0
+        observations_imported = 0
+        
+        # Get current subject count for this study to generate new IDs
+        current_count = await db.fetchval("SELECT COUNT(*) FROM subjects WHERE study_id = $1", request.study_id)
+        
+        # Create a mapping from old ID to new ID
+        id_mapping = {}
+        
+        # 1. Create Subjects
+        for i, old_subject_id in enumerate(unique_subjects):
+            # Generate new Subject ID: RA{StudyNum}-{SeqNum}
+            # e.g. STU002 -> RA002-001
+            study_num = request.study_id.replace("STU", "")
+            new_seq = current_count + i + 1
+            new_subject_id = f"RA{study_num}-{new_seq:03d}"
+            
+            id_mapping[old_subject_id] = new_subject_id
+            
+            # Extract treatment arm from first record for this subject
+            subject_records = [r for r in request.data if r.SubjectID == old_subject_id]
+            if not subject_records:
+                continue
+                
+            treatment_arm = subject_records[0].TreatmentArm
 
-    # Create subjects if they don't exist
-    subjects_created = 0
-    for subject_id in unique_subjects:
-        if subject_id not in subjects_db:
-            # Extract treatment arm from first record
-            treatment_arm = next(r.TreatmentArm for r in request.data if r.SubjectID == subject_id)
-
-            subject_data = {
-                "subject_id": subject_id,
-                "study_id": request.study_id,
-                "site_id": "Site001",  # Default site
-                "treatment_arm": treatment_arm,
-                "enrollment_date": datetime.utcnow().isoformat(),
-                "status": "enrolled"
-            }
-            subjects_db[subject_id] = subject_data
+            # Create subject in EDC table
+            await db.execute("""
+                INSERT INTO subjects (
+                    subject_id, study_id, site_id, treatment_arm, 
+                    enrollment_date, status, created_at
+                ) VALUES ($1, $2, $3, $4, NOW(), 'enrolled', NOW())
+            """, new_subject_id, request.study_id, "Site001", treatment_arm)
+            
+            # Create patient in Clinical table (for vitals storage)
+            # Check if patient exists (unlikely with new ID, but good practice)
+            patient_exists = await db.fetchval(
+                "SELECT patient_id FROM patients WHERE subject_number = $1", 
+                new_subject_id
+            )
+            
+            if not patient_exists:
+                await db.execute("""
+                    INSERT INTO patients (tenant_id, subject_number, site_id, protocol_id, enrollment_date, treatment_arm)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                """, "DEFAULT_TENANT", new_subject_id, "Site001", request.study_id, datetime.utcnow().date(), treatment_arm)
+            
             subjects_created += 1
 
-    # Update study subject count
-    studies_db[request.study_id]["subjects_enrolled"] = len(
-        [s for s in subjects_db.values() if s["study_id"] == request.study_id]
-    )
+        # 2. Import Vitals Data
+        for record in request.data:
+            if record.SubjectID not in id_mapping:
+                continue
+                
+            new_subject_id = id_mapping[record.SubjectID]
+            
+            # Get patient_id
+            patient_id = await db.fetchval(
+                "SELECT patient_id FROM patients WHERE subject_number = $1", 
+                new_subject_id
+            )
+            
+            if patient_id:
+                await db.execute("""
+                    INSERT INTO vital_signs (
+                        tenant_id, patient_id, visit_date, measurement_time,
+                        systolic_bp, diastolic_bp, heart_rate, temperature,
+                        data_batch
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                """,
+                    "DEFAULT_TENANT",
+                    patient_id,
+                    datetime.utcnow().date(),
+                    datetime.utcnow(),
+                    record.SystolicBP,
+                    record.DiastolicBP,
+                    record.HeartRate,
+                    record.Temperature,
+                    json.dumps({
+                        "visit_name": record.VisitName, 
+                        "treatment_arm": record.TreatmentArm,
+                        "original_subject_id": record.SubjectID
+                    })
+                )
+                observations_imported += 1
 
-    return ImportSyntheticResponse(
-        subjects_imported=subjects_created,
-        observations_imported=len(request.data),
-        message=f"Successfully imported {len(request.data)} observations for {subjects_created} subjects from {request.source}"
-    )
+        # Update study subject count
+        if subjects_created > 0:
+            await db.execute("""
+                UPDATE studies 
+                SET subjects_enrolled = (SELECT COUNT(*) FROM subjects WHERE study_id = $1)
+                WHERE study_id = $1
+            """, request.study_id)
+
+        return ImportSyntheticResponse(
+            subjects_imported=subjects_created,
+            observations_imported=observations_imported,
+            message=f"Successfully imported {observations_imported} observations for {subjects_created} subjects. IDs remapped."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to import data: {str(e)}")
 
 
 # ============================================================================
@@ -484,6 +627,42 @@ class QueryRespondRequest(BaseModel):
 
 class QueryCloseRequest(BaseModel):
     resolution_notes: str
+
+class QueryCreate(BaseModel):
+    study_id: str
+    subject_id: str
+    query_text: str
+    field: Optional[str] = None
+    severity: str = "Major"
+    opened_by: int = 1  # Default system user
+
+@app.post("/queries")
+async def create_query(query: QueryCreate):
+    """Create a new query (manually or from Quality Service)"""
+    try:
+        # Verify subject exists
+        subject_exists = await db.fetchval("SELECT 1 FROM subjects WHERE subject_id = $1", query.subject_id)
+        if not subject_exists:
+            raise HTTPException(status_code=404, detail="Subject not found")
+
+        query_id = await db.fetchval("""
+            INSERT INTO queries (
+                study_id, subject_id, query_text, field, severity, 
+                status, opened_by, opened_at
+            ) VALUES ($1, $2, $3, $4, $5, 'open', $6, NOW())
+            RETURNING query_id
+        """, query.study_id, query.subject_id, query.query_text, query.field, query.severity, query.opened_by)
+
+        # Add history
+        await db.execute("""
+            INSERT INTO query_history (query_id, action, user_id, notes)
+            VALUES ($1, 'opened', $2, 'Query created')
+        """, query_id, query.opened_by)
+
+        return {"query_id": query_id, "message": "Query created successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create query: {str(e)}")
+
 
 @app.get("/queries")
 async def list_queries(

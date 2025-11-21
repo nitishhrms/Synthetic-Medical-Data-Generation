@@ -970,7 +970,12 @@ export function Analytics() {
                 ) : (
                   savedDatasets.map((dataset) => (
                     <SelectItem key={dataset.id} value={dataset.id.toString()}>
-                      {dataset.dataset_name} ({dataset.record_count} records)
+                      <div className="flex flex-col items-start text-left">
+                        <span className="font-medium">{dataset.dataset_name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {dataset.metadata?.method?.toUpperCase() ?? "UNKNOWN"} • {dataset.metadata?.indication ?? "N/A"} • {new Date(dataset.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
                     </SelectItem>
                   ))
                 )}

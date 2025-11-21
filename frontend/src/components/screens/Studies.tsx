@@ -12,19 +12,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { edcApi } from "@/services/api";
-import { useData } from "@/contexts/DataContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { edcApi, dataGenerationApi } from "@/services/api";
 import type { Study } from "@/types";
-import { FileText, Plus, Upload, Loader2, Calendar, Users } from "lucide-react";
+import { FileText, Plus, Loader2, Calendar, Users, Database } from "lucide-react";
 
 export function Studies() {
-  const { generatedData } = useData();
   const [studies, setStudies] = useState<Study[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedStudy, setSelectedStudy] = useState<Study | null>(null);
   const [error, setError] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+
+  // Dataset selection state
+  const [datasets, setDatasets] = useState<any[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [studyToImport, setStudyToImport] = useState<Study | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -39,7 +50,17 @@ export function Studies() {
 
   useEffect(() => {
     loadStudies();
+    fetchDatasets();
   }, []);
+
+  const fetchDatasets = async () => {
+    try {
+      const result = await dataGenerationApi.listDatasets();
+      setDatasets(result.datasets || []);
+    } catch (err) {
+      console.error('Failed to fetch datasets:', err);
+    }
+  };
 
   const loadStudies = async () => {
     setIsLoading(true);
@@ -77,9 +98,15 @@ export function Studies() {
     }
   };
 
-  const handleImportData = async (study: Study) => {
-    if (!generatedData) {
-      setError("No generated data available. Please generate data first.");
+  const handleImportClick = (study: Study) => {
+    setStudyToImport(study);
+    setSelectedDataset(null);
+    setShowImportDialog(true);
+  };
+
+  const handleImportData = async () => {
+    if (!selectedDataset || !studyToImport) {
+      setError("Please select a dataset to import");
       return;
     }
 
@@ -87,11 +114,23 @@ export function Studies() {
     setError("");
 
     try {
+      // Fetch the selected dataset from data generation service
+      const datasetId = parseInt(selectedDataset);
+      const datasetResult = await dataGenerationApi.loadDataById(datasetId);
+
+      if (!datasetResult || !datasetResult.data) {
+        throw new Error("Failed to load dataset");
+      }
+
       const response = await edcApi.importSyntheticData(
-        study.study_id,
-        generatedData,
-        "frontend-generation"
+        studyToImport.study_id,
+        datasetResult.data,
+        selectedDataset
       );
+
+      setShowImportDialog(false);
+      setStudyToImport(null);
+      setSelectedDataset(null);
       alert(`Successfully imported ${response.subjects_imported} subjects with ${response.observations_imported} observations`);
       await loadStudies();
     } catch (err) {
@@ -201,8 +240,8 @@ export function Studies() {
                   <Button
                     size="sm"
                     className="flex-1"
-                    onClick={() => handleImportData(study)}
-                    disabled={!generatedData || isImporting}
+                    onClick={() => handleImportClick(study)}
+                    disabled={datasets.length === 0 || isImporting}
                   >
                     {isImporting ? (
                       <>
@@ -211,7 +250,7 @@ export function Studies() {
                       </>
                     ) : (
                       <>
-                        <Upload className="mr-2 h-3 w-3" />
+                        <Database className="mr-2 h-3 w-3" />
                         Import Data
                       </>
                     )}
@@ -245,12 +284,28 @@ export function Studies() {
 
             <div className="space-y-2">
               <Label htmlFor="indication">Indication</Label>
-              <Input
-                id="indication"
-                placeholder="e.g., Hypertension"
+              <Select
                 value={formData.indication}
-                onChange={(e) => setFormData({ ...formData, indication: e.target.value })}
-              />
+                onValueChange={(value) => setFormData({ ...formData, indication: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select indication" />
+                </SelectTrigger>
+                <SelectContent className="z-[100]">
+                  <SelectItem value="Hypertension">Hypertension</SelectItem>
+                  <SelectItem value="Diabetes Type 2">Diabetes (Type 2)</SelectItem>
+                  <SelectItem value="Oncology">Oncology</SelectItem>
+                  <SelectItem value="Rheumatoid Arthritis">Rheumatoid Arthritis</SelectItem>
+                  <SelectItem value="Cardiovascular Disease">Cardiovascular Disease</SelectItem>
+                  <SelectItem value="Alzheimer's Disease">Alzheimer's Disease</SelectItem>
+                  <SelectItem value="COPD">COPD</SelectItem>
+                  <SelectItem value="Major Depressive Disorder">Major Depressive Disorder</SelectItem>
+                  <SelectItem value="Asthma">Asthma</SelectItem>
+                  <SelectItem value="Migraine">Migraine</SelectItem>
+                  <SelectItem value="Parkinson's Disease">Parkinson's Disease</SelectItem>
+                  <SelectItem value="Multiple Sclerosis">Multiple Sclerosis</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -308,68 +363,194 @@ export function Studies() {
         </DialogContent>
       </Dialog>
 
+      {/* Import Data Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Import Dataset to {studyToImport?.study_name}</DialogTitle>
+            <DialogDescription>
+              Select a generated dataset to import into this study
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {datasets.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Database className="mx-auto h-12 w-12 mb-3 opacity-50" />
+                <p>No datasets available</p>
+                <p className="text-sm">Generate data first from the Generate screen</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="dataset-select">Available Datasets</Label>
+                  <Select value={selectedDataset || ""} onValueChange={setSelectedDataset}>
+                    <SelectTrigger id="dataset-select">
+                      <SelectValue placeholder="Select dataset..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {datasets.map((ds) => (
+                        <SelectItem key={ds.id} value={ds.id.toString()}>
+                          {ds.dataset_name} ({ds.record_count} records) - {new Date(ds.created_at).toLocaleString()}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedDataset && (
+                  <div className="bg-muted p-3 rounded text-sm space-y-1">
+                    <p><strong>Dataset:</strong> {datasets.find(d => d.id.toString() === selectedDataset)?.dataset_name}</p>
+                    <p><strong>Records:</strong> {datasets.find(d => d.id.toString() === selectedDataset)?.record_count}</p>
+                    <p><strong>Created:</strong> {new Date(datasets.find(d => d.id.toString() === selectedDataset)?.created_at || '').toLocaleString()}</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowImportDialog(false)} disabled={isImporting}>
+              Cancel
+            </Button>
+            <Button onClick={handleImportData} disabled={!selectedDataset || isImporting}>
+              {isImporting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                'Import Data'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Study Details Dialog */}
       {selectedStudy && (
-        <Dialog open={!!selectedStudy} onOpenChange={() => setSelectedStudy(null)}>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>{selectedStudy.study_name}</DialogTitle>
-              <DialogDescription>Study Details and Information</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Study ID</p>
-                  <p className="text-sm font-mono mt-1">{selectedStudy.study_id}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Status</p>
-                  <Badge className="mt-1">{selectedStudy.status || "active"}</Badge>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Indication</p>
-                <p className="text-sm mt-1">{selectedStudy.indication}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Phase</p>
-                  <p className="text-sm mt-1">{selectedStudy.phase}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Sponsor</p>
-                  <p className="text-sm mt-1">{selectedStudy.sponsor}</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Start Date</p>
-                <p className="text-sm mt-1">
-                  {new Date(selectedStudy.start_date).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </p>
-              </div>
-
-              {selectedStudy.created_at && (
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Created</p>
-                  <p className="text-sm mt-1">
-                    {new Date(selectedStudy.created_at).toLocaleString()}
-                  </p>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button onClick={() => setSelectedStudy(null)}>Close</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <StudyDetailsDialog
+          study={selectedStudy}
+          onClose={() => setSelectedStudy(null)}
+        />
       )}
     </div>
+  );
+}
+
+function StudyDetailsDialog({ study, onClose }: { study: Study; onClose: () => void }) {
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
+
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      setLoadingSubjects(true);
+      try {
+        const response = await edcApi.getStudySubjects(study.study_id);
+        setSubjects(response.subjects || []);
+      } catch (error) {
+        console.error("Failed to fetch subjects:", error);
+      } finally {
+        setLoadingSubjects(false);
+      }
+    };
+
+    if (study.study_id) {
+      fetchSubjects();
+    }
+  }, [study.study_id]);
+
+  return (
+    <Dialog open={!!study} onOpenChange={() => onClose()}>
+      <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{study.study_name}</DialogTitle>
+          <DialogDescription>Study Details and Enrolled Subjects</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-6 py-4">
+          {/* Study Info */}
+          <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Study ID</p>
+              <p className="text-sm font-mono mt-1">{study.study_id}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Status</p>
+              <Badge className="mt-1">{study.status || "active"}</Badge>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Indication</p>
+              <p className="text-sm mt-1">{study.indication}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Phase</p>
+              <p className="text-sm mt-1">{study.phase}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Sponsor</p>
+              <p className="text-sm mt-1">{study.sponsor}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Start Date</p>
+              <p className="text-sm mt-1">
+                {new Date(study.start_date).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+
+          {/* Subjects List */}
+          <div>
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Enrolled Subjects ({subjects.length})
+            </h3>
+
+            {loadingSubjects ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : subjects.length === 0 ? (
+              <div className="text-center py-8 border rounded-lg bg-muted/20">
+                <p className="text-muted-foreground">No subjects enrolled yet.</p>
+              </div>
+            ) : (
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="p-3 text-left font-medium">Subject ID</th>
+                      <th className="p-3 text-left font-medium">Site</th>
+                      <th className="p-3 text-left font-medium">Status</th>
+                      <th className="p-3 text-left font-medium">Enrolled</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {subjects.map((subject) => (
+                      <tr key={subject.subject_id} className="hover:bg-muted/50">
+                        <td className="p-3 font-mono">{subject.subject_id}</td>
+                        <td className="p-3">{subject.site_id}</td>
+                        <td className="p-3">
+                          <Badge variant="outline" className="text-xs">
+                            {subject.status}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-muted-foreground">
+                          {new Date(subject.enrollment_date).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

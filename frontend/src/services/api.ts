@@ -42,6 +42,7 @@ const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8001";
 const SECURITY_SERVICE = import.meta.env.VITE_SECURITY_URL || "http://localhost:8005";
 const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8004";
 const DAFT_SERVICE = import.meta.env.VITE_DAFT_URL || "http://localhost:8007";
+const AI_MONITOR_SERVICE = import.meta.env.VITE_AI_MONITOR_URL || "http://localhost:8008";
 
 // ============================================================================
 // Helper Functions
@@ -1107,6 +1108,47 @@ export const edcApi = {
     });
     return handleResponse(response);
   },
+
+  async getStudySubjects(studyId: string): Promise<{ subjects: any[] }> {
+    const response = await fetch(`${EDC_SERVICE}/studies/${studyId}/subjects`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async listQueries(params?: { status?: string; severity?: string; subject_id?: string }): Promise<any[]> {
+    const queryParams = new URLSearchParams();
+    if (params?.status && params.status !== 'all') queryParams.append('status_filter', params.status);
+    if (params?.severity && params.severity !== 'all') queryParams.append('severity', params.severity);
+    if (params?.subject_id) queryParams.append('subject_id', params.subject_id);
+
+    const response = await fetch(`${EDC_SERVICE}/queries?${queryParams}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async respondToQuery(queryId: number, responseText: string): Promise<any> {
+    // Note: Backend endpoint for respond might need to be created or verified
+    // Assuming PUT /queries/{id}/respond based on frontend code
+    const response = await fetch(`${EDC_SERVICE}/queries/${queryId}/respond`, {
+      method: "PUT",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ response_text: responseText }),
+    });
+    return handleResponse(response);
+  },
+
+  async closeQuery(queryId: number, notes: string): Promise<any> {
+    // Note: Backend endpoint for close might need to be created or verified
+    // Assuming PUT /queries/{id}/close based on frontend code
+    const response = await fetch(`${EDC_SERVICE}/queries/${queryId}/close`, {
+      method: "PUT",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ resolution_notes: notes }),
+    });
+    return handleResponse(response);
+  },
 };
 
 // ============================================================================
@@ -1131,6 +1173,50 @@ export const qualityApi = {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({ records: data }),
+    });
+    return handleResponse(response);
+  },
+
+  async assessSYNDATA(realData: any[], syntheticData: any[]): Promise<SYNDATAMetricsResponse> {
+    const response = await fetch(`${QUALITY_SERVICE}/syndata/assess`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        real_data: realData,
+        synthetic_data: syntheticData
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async generateQualityReport(method: string, realData: any[], syntheticData: any[]): Promise<{ report: string }> {
+    const response = await fetch(`${QUALITY_SERVICE}/report/generate`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        generation_method: method,
+        real_data: realData,
+        synthetic_data: syntheticData
+      }),
+    });
+    return handleResponse(response);
+  },
+
+  async assessPrivacy(
+    realData: any[],
+    syntheticData: any[],
+    quasiIdentifiers?: string[],
+    sensitiveAttributes?: string[]
+  ): Promise<PrivacyAssessmentResponse> {
+    const response = await fetch(`${QUALITY_SERVICE}/privacy/assess`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        real_data: realData,
+        synthetic_data: syntheticData,
+        quasi_identifiers: quasiIdentifiers,
+        sensitive_attributes: sensitiveAttributes
+      }),
     });
     return handleResponse(response);
   },
@@ -1265,3 +1351,45 @@ export const medicalImagingApi = {
     return handleResponse(response);
   },
 };
+
+// ============================================================================
+// AI Monitor API
+// ============================================================================
+
+export const aiMonitorApi = {
+  async reviewSubject(studyId: string, subjectId: string): Promise<any> {
+    const response = await fetch(`${AI_MONITOR_SERVICE}/review/subject`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ study_id: studyId, subject_id: subjectId }),
+    });
+    return handleResponse(response);
+  },
+
+  async reviewStudy(studyId: string, maxSubjects?: number): Promise<any> {
+    const response = await fetch(`${AI_MONITOR_SERVICE}/review/study`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ study_id: studyId, max_subjects: maxSubjects || 10 }),
+    });
+    return handleResponse(response);
+  },
+
+  async reviewStudyAndPostQueries(studyId: string, maxSubjects?: number): Promise<any> {
+    const response = await fetch(`${AI_MONITOR_SERVICE}/review/study/post-queries`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ study_id: studyId, max_subjects: maxSubjects || 10 }),
+    });
+    return handleResponse(response);
+  },
+
+  async healthCheck(): Promise<any> {
+    const response = await fetch(`${AI_MONITOR_SERVICE}/health`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};
+

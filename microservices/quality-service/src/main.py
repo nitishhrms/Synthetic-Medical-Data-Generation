@@ -212,10 +212,7 @@ async def validate_with_edit_checks(request: EditChecksRequest):
 @app.post("/checks/validate-and-save-queries")
 async def validate_and_save_queries(request: EditChecksRequest):
     """
-    Run validation and automatically save violations as queries
-
-    This replaces the old /checks/validate endpoint for EDC integration.
-    It runs edit checks and creates query records for any violations found.
+    Run validation and automatically save violations as queries in EDC Service
     """
     try:
         # Convert to DataFrame
@@ -248,47 +245,46 @@ async def validate_and_save_queries(request: EditChecksRequest):
                     "check_name": row.get("CheckName", "")
                 })
 
-        # Save violations as queries in database
+        # Post violations to EDC Service
         queries_created = 0
-        if violations and db.pool:
-            for violation in violations:
-                # Generate query text
-                query_text = f"{violation.get('check_name', 'Check')}: {violation['message']}"
+        import httpx
+        
+        # EDC Service URL (assume running on port 8003 based on previous context)
+        edc_url = os.getenv("EDC_SERVICE_URL", "http://localhost:8003")
+        
+        if violations:
+            async with httpx.AsyncClient() as client:
+                for violation in violations:
+                    # Generate query text
+                    query_text = f"{violation.get('check_name', 'Check')}: {violation['message']}"
+                    
+                    # Determine severity
+                    severity_map = {
+                        "error": "critical",
+                        "warning": "warning",
+                        "info": "info"
+                    }
+                    severity = severity_map.get(violation.get("severity", "warning"), "warning")
 
-                # Determine severity based on check
-                severity_map = {
-                    "error": "critical",
-                    "warning": "warning",
-                    "info": "info"
-                }
-                severity = severity_map.get(violation.get("severity", "warning"), "warning")
+                    # Create query payload
+                    payload = {
+                        "study_id": "STU001", # Default for now, should be passed in request
+                        "subject_id": violation.get("subject_id", "UNKNOWN"),
+                        "query_text": query_text,
+                        "field": violation.get("field", ""),
+                        "severity": severity,
+                        "opened_by": 1 # System user
+                    }
 
-                # Insert query into database
-                try:
-                    query_id = await db.fetchval("""
-                        INSERT INTO queries (
-                            subject_id, check_id, field_id, query_text,
-                            severity, query_type, status, opened_at
-                        )
-                        VALUES ($1, $2, $3, $4, $5, 'auto', 'open', NOW())
-                        RETURNING query_id
-                    """,
-                        violation.get("subject_id", "UNKNOWN"),
-                        violation.get("check_id", ""),
-                        violation.get("field", ""),
-                        query_text,
-                        severity
-                    )
-
-                    # Log to query_history
-                    await db.execute("""
-                        INSERT INTO query_history (query_id, action, action_at, notes)
-                        VALUES ($1, 'opened', NOW(), 'Auto-generated from edit check')
-                    """, query_id)
-
-                    queries_created += 1
-                except Exception as db_error:
-                    logger.warning(f"Failed to save query to database: {db_error}")
+                    try:
+                        # Post to EDC
+                        resp = await client.post(f"{edc_url}/queries", json=payload)
+                        if resp.status_code == 200:
+                            queries_created += 1
+                        else:
+                            print(f"Failed to create query in EDC: {resp.text}")
+                    except Exception as req_err:
+                        print(f"Error connecting to EDC service: {req_err}")
 
         # Calculate quality score
         num_violations = len(violations)
@@ -442,6 +438,16 @@ async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Privacy assessment failed: {str(e)}"
         )
+
+
+# Backward compatibility alias for RBQM Dashboard
+@app.post("/privacy/assess")
+async def assess_privacy_alias(request: PrivacyAssessmentRequest):
+    """
+    Alias for /privacy/assess/comprehensive endpoint
+    Maintains backward compatibility with RBQM Dashboard
+    """
+    return await assess_privacy_comprehensive(request)
 
 
 @app.post("/privacy/assess/k-anonymity")
@@ -639,6 +645,16 @@ async def generate_comprehensive_quality_report(request: QualityReportRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Quality report generation failed: {str(e)}"
         )
+
+
+# Backward compatibility alias for RBQM Dashboard
+@app.post("/report/generate")
+async def generate_quality_report_alias(request: QualityReportRequest):
+    """
+    Alias for /quality/report endpoint
+    Maintains backward compatibility with RBQM Dashboard
+    """
+    return await generate_comprehensive_quality_report(request)
 
 
 if __name__ == "__main__":

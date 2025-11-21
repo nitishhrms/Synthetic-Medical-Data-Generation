@@ -52,9 +52,12 @@ export function RBQMDashboard() {
         queries = queriesData.queries || queriesData || [];
       }
 
-      // Note: /vitals/all endpoint doesn't exist yet
-      // For now, use empty array or show message to user
-      const vitals: any[] = [];
+      // Fetch vitals data from EDC service
+      const vitalsRes = await fetch('http://localhost:8001/vitals/all');
+      let vitals = [];
+      if (vitalsRes.ok) {
+        vitals = await vitalsRes.json();
+      }
 
       // Only call RBQM if we have some data
       if (vitals.length === 0 && queries.length === 0) {

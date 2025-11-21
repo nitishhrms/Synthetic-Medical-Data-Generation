@@ -13,8 +13,9 @@ import { Studies } from "@/components/screens/Studies";
 import { Settings } from "@/components/screens/Settings";
 import { SystemCheck } from "@/components/screens/SystemCheck";
 import { RBQMDashboard } from "@/components/screens/RBQMDashboard";
-import { QueryManagement } from "@/components/screens/QueryManagement";
+import { Queries } from "@/components/screens/Queries";
 import { DataEntry } from "@/components/screens/DataEntry";
+import { AIMedicalMonitor } from "@/components/screens/AIMedicalMonitor";
 import SurvivalAnalysis from "@/pages/SurvivalAnalysis";
 import AdamGeneration from "@/pages/AdamGeneration";
 import TLFAutomation from "@/pages/TLFAutomation";
@@ -85,9 +86,11 @@ function AppContent() {
       case "medical-imaging":
         return <MedicalImaging />;
       case "queries":
-        return <QueryManagement />;
+        return <Queries />;
       case "data-entry":
         return <DataEntry />;
+      case "ai-monitor":
+        return <AIMedicalMonitor />;
       case "studies":
         return <Studies />;
       case "settings":

@@ -59,6 +59,8 @@ def generate_rbqm_summary(queries_df: pd.DataFrame, vitals_df: pd.DataFrame,
     def count_check(prefix):
         if queries_df is None or queries_df.empty:
             return 0
+        if "CheckID" not in queries_df.columns:
+            return 0
         return int(queries_df["CheckID"].astype(str).str.startswith(prefix).sum())
 
     out_of_range = sum(count_check(cid) for cid in ["VS001", "VS002", "VS003", "VS004"])
@@ -67,9 +69,10 @@ def generate_rbqm_summary(queries_df: pd.DataFrame, vitals_df: pd.DataFrame,
     arm_change_subjects = 0
     duplicates = 0
     if isinstance(queries_df, pd.DataFrame) and not queries_df.empty:
-        missing_visit_subjects = queries_df.loc[queries_df["CheckID"] == "VS011", "SubjectID"].nunique()
-        arm_change_subjects = queries_df.loc[queries_df["CheckID"] == "VS010", "SubjectID"].nunique()
-        duplicates = int((queries_df["CheckID"] == "VS012").sum())
+        if "CheckID" in queries_df.columns:
+            missing_visit_subjects = queries_df.loc[queries_df["CheckID"] == "VS011", "SubjectID"].nunique()
+            arm_change_subjects = queries_df.loc[queries_df["CheckID"] == "VS010", "SubjectID"].nunique()
+            duplicates = int((queries_df["CheckID"] == "VS012").sum())
 
     # AE KRIs
     fatal = 0
@@ -96,7 +99,8 @@ def generate_rbqm_summary(queries_df: pd.DataFrame, vitals_df: pd.DataFrame,
     protocol_deviations = 0
     if isinstance(queries_df, pd.DataFrame) and not queries_df.empty:
         # Deviations include: treatment arm changes, missing required visits
-        protocol_deviations = arm_change_subjects + missing_visit_subjects
+        if "CheckID" in queries_df.columns:
+            protocol_deviations = arm_change_subjects + missing_visit_subjects
 
     # Screen-Fail Rate (KRI)
     # In production: (screened - enrolled) / screened
@@ -117,8 +121,11 @@ def generate_rbqm_summary(queries_df: pd.DataFrame, vitals_df: pd.DataFrame,
         site_q = q_df.groupby("SiteID").size().rename("queries").reset_index()
 
         # Protocol deviation counts per site
-        protocol_deviations_df = q_df[q_df["CheckID"].isin(["VS010", "VS011"])]
-        site_deviations = protocol_deviations_df.groupby("SiteID").size().rename("protocol_deviations").reset_index()
+        if "CheckID" in q_df.columns:
+            protocol_deviations_df = q_df[q_df["CheckID"].isin(["VS010", "VS011"])]
+            site_deviations = protocol_deviations_df.groupby("SiteID").size().rename("protocol_deviations").reset_index()
+        else:
+            site_deviations = pd.DataFrame(columns=["SiteID", "protocol_deviations"])
     else:
         site_q = pd.DataFrame(columns=["SiteID", "queries"])
         site_deviations = pd.DataFrame(columns=["SiteID", "protocol_deviations"])

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertCircle, MessageSquare, CheckCircle2, XCircle, Clock, Filter } from 'lucide-react';
+import { edcApi } from '@/services/api';
 
 interface Query {
   query_id: number;
@@ -39,21 +40,11 @@ export function QueryManagement() {
   const fetchQueries = async () => {
     try {
       setLoading(true);
-
-      const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.append('status_filter', statusFilter);
-      if (severityFilter !== 'all') params.append('severity', severityFilter);
-
-      const url = `http://localhost:8001/queries${params.toString() ? `?${params.toString()}` : ''}`;
-      const res = await fetch(url);
-
-      if (res.ok) {
-        const data = await res.json();
-        setQueries(Array.isArray(data) ? data : []);
-      } else {
-        console.error('Failed to fetch queries');
-        setQueries([]);
-      }
+      const data = await edcApi.listQueries({
+        status: statusFilter,
+        severity: severityFilter
+      });
+      setQueries(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to fetch queries:', error);
       setQueries([]);
@@ -80,28 +71,16 @@ export function QueryManagement() {
     try {
       setSubmitting(true);
 
-      const endpoint = selectedQuery.status === 'open'
-        ? `/queries/${selectedQuery.query_id}/respond`
-        : `/queries/${selectedQuery.query_id}/close`;
-
-      const body = selectedQuery.status === 'open'
-        ? { response_text: responseText }
-        : { resolution_notes: resolutionNotes };
-
-      const res = await fetch(`http://localhost:8004${endpoint}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (res.ok) {
-        setShowResponseModal(false);
-        setResponseText('');
-        setResolutionNotes('');
-        fetchQueries(); // Refresh the list
+      if (selectedQuery.status === 'open') {
+        await edcApi.respondToQuery(selectedQuery.query_id, responseText);
       } else {
-        alert('Failed to submit response');
+        await edcApi.closeQuery(selectedQuery.query_id, resolutionNotes);
       }
+
+      setShowResponseModal(false);
+      setResponseText('');
+      setResolutionNotes('');
+      fetchQueries(); // Refresh the list
     } catch (error) {
       console.error('Failed to submit response:', error);
       alert('Failed to submit response');

@@ -162,18 +162,54 @@ class CacheConnection:
             return 0
 
 
+
+    async def init_db(self):
+        """Initialize database schema from SQL file"""
+        if not self.pool:
+            logger.warning("Cannot initialize DB: No connection pool")
+            return
+
+        try:
+            # Get path to schema.sql (assumed to be in same directory as this file)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            schema_path = os.path.join(current_dir, "schema.sql")
+            
+            if os.path.exists(schema_path):
+                with open(schema_path, "r") as f:
+                    schema_sql = f.read()
+                
+                async with self.pool.acquire() as conn:
+                    await conn.execute(schema_sql)
+                logger.info("Database schema initialized successfully")
+                
+                # Also try to initialize medical images schema if it exists
+                images_schema_path = os.path.join(current_dir, "medical_images_schema.sql")
+                if os.path.exists(images_schema_path):
+                    with open(images_schema_path, "r") as f:
+                        images_schema_sql = f.read()
+                    async with self.pool.acquire() as conn:
+                        await conn.execute(images_schema_sql)
+                    logger.info("Medical images schema initialized successfully")
+            else:
+                logger.warning(f"Schema file not found at {schema_path}")
+        except Exception as e:
+            logger.error(f"Failed to initialize database schema: {e}")
+
+
 # Global instances
 db = DatabaseConnection()
 cache = CacheConnection()
 
 
 async def startup_db():
-    """Startup event handler for FastAPI"""
+    """Initialize database and cache connections"""
     await db.connect()
     await cache.connect()
+    # await db.init_db()  # Temporarily disabled - tables should already exist
 
 
 async def shutdown_db():
     """Shutdown event handler for FastAPI"""
     await db.disconnect()
     await cache.disconnect()
+

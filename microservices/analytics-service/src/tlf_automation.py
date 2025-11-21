@@ -183,6 +183,10 @@ def generate_ae_summary_table(
     """
     df = pd.DataFrame(ae_data)
 
+    # Check if TreatmentArm column exists
+    if "TreatmentArm" not in df.columns:
+        raise ValueError("AE data must include 'TreatmentArm' column. Please regenerate AE data with updated data generation service.")
+
     # Get unique subjects per arm
     arms = df["TreatmentArm"].unique()
     arm_subjects = {arm: df[df["TreatmentArm"] == arm]["SubjectID"].nunique() for arm in arms}

@@ -48,12 +48,14 @@ export function DataGeneration() {
   const [aeData, setAeData] = useState<any[]>([]);
   const [aeMetadata, setAeMetadata] = useState<any>(null);
   const [aeN, setAeN] = useState(30);
-
   // Real data state
   const [realDataLoaded, setRealDataLoaded] = useState(false);
   const [realVitalsCount, setRealVitalsCount] = useState(0);
   const [realDemoCount, setRealDemoCount] = useState(0);
   const [realAeCount, setRealAeCount] = useState(0);
+
+  // Dataset Name state
+  const [datasetName, setDatasetName] = useState("");
 
   const methods = [
     { id: "mvn", name: "MVN", speed: "~29K records/sec" },
@@ -267,9 +269,9 @@ export function DataGeneration() {
     try {
       // Save vitals as the primary dataset for now
       // In a real app, we might save all domains linked together
-      const datasetName = `Study-${indication}-${phase}-${new Date().toISOString().slice(0, 10)}`;
+      const nameToUse = datasetName.trim() || `Study-${indication}-${phase}-${new Date().toISOString().slice(0, 10)}`;
       await dataGenerationApi.saveGeneratedData(
-        datasetName,
+        nameToUse,
         "vitals",
         vitalsData,
         {
@@ -814,7 +816,20 @@ export function DataGeneration() {
               </div>
 
               {/* Study Parameters */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <Label>Dataset Name (Optional)</Label>
+                  <Input
+                    type="text"
+                    placeholder="e.g., My Hypertension Study"
+                    value={datasetName}
+                    onChange={(e) => setDatasetName(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Custom name for the generated dataset
+                  </p>
+                </div>
                 <div>
                   <Label>Subjects Per Arm</Label>
                   <Input

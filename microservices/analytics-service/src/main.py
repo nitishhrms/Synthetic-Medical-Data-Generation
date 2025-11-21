@@ -539,7 +539,14 @@ async def generate_rbqm(request: RBQMRequest):
     """
     try:
         vitals_df = pd.DataFrame(request.vitals_data)
-        queries_df = pd.DataFrame(request.queries_data)
+
+        # Handle empty queries_data gracefully
+        if request.queries_data and len(request.queries_data) > 0:
+            queries_df = pd.DataFrame(request.queries_data)
+        else:
+            # Create empty DataFrame with expected columns to avoid KeyErrors
+            queries_df = pd.DataFrame(columns=["SubjectID", "CheckID", "Field", "Message"])
+
         ae_df = pd.DataFrame(request.ae_data) if request.ae_data else None
 
         summary_md, site_summary_df, kris = generate_rbqm_summary(
@@ -556,6 +563,8 @@ async def generate_rbqm(request: RBQMRequest):
             kris=kris
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # Print full traceback to console for debugging
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"RBQM generation failed: {str(e)}"
@@ -2766,15 +2775,21 @@ async def generate_all_tlf(request: TLFRequest):
     - Training (showing expected output format)
     """
     try:
+        # Validate that demographics_data is not empty
+        if not request.demographics_data or len(request.demographics_data) == 0:
+            raise ValueError("demographics_data is required and cannot be empty")
+
         result = generate_all_tlf_tables(
             demographics_data=request.demographics_data,
-            ae_data=request.ae_data,
-            vitals_data=request.vitals_data,
-            survival_data=request.survival_data
+            ae_data=request.ae_data if request.ae_data else [],
+            vitals_data=request.vitals_data if request.vitals_data else [],
+            survival_data=request.survival_data if request.survival_data else []
         )
         # Wrap tables in a "tables" object for frontend compatibility
         return convert_numpy_types({"tables": result})
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # Print full traceback to console for debugging
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"TLF generation failed: {str(e)}"
