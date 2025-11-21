@@ -13,7 +13,7 @@ interface ServiceStatus {
 
 export function SystemCheck() {
   const [services, setServices] = useState<ServiceStatus[]>([
-    { name: "Data Generation", url: "http://localhost:8002", status: "checking" },
+    { name: "Data Generation", url: "http://localhost:8001", status: "checking" },
     { name: "Analytics", url: "http://localhost:8003", status: "checking" },
     { name: "EDC", url: "http://localhost:8004", status: "checking" },
     { name: "Security", url: "http://localhost:8005", status: "checking" },
@@ -40,10 +40,10 @@ export function SystemCheck() {
           prev.map((s, idx) =>
             idx === i
               ? {
-                  ...s,
-                  status: response.ok ? "online" : "offline",
-                  error: response.ok ? undefined : `HTTP ${response.status}`,
-                }
+                ...s,
+                status: response.ok ? "online" : "offline",
+                error: response.ok ? undefined : `HTTP ${response.status}`,
+              }
               : s
           )
         );
@@ -53,10 +53,10 @@ export function SystemCheck() {
           prev.map((s, idx) =>
             idx === i
               ? {
-                  ...s,
-                  status: "offline" as const,
-                  error: error instanceof Error ? error.message : "Connection failed",
-                }
+                ...s,
+                status: "offline" as const,
+                error: error instanceof Error ? error.message : "Connection failed",
+              }
               : s
           )
         );

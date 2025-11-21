@@ -76,7 +76,7 @@ export function DaftAnalytics() {
     setError(null);
     try {
       // Load sample data from the data generation service
-      const response = await fetch("http://localhost:8002/generate/mvn", {
+      const response = await fetch("http://localhost:8001/generate/mvn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ n_per_arm: 50, target_effect: -5.0 }),

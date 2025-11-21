@@ -54,7 +54,7 @@ export function Settings() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Data Generation Service</Label>
-              <Input value="http://localhost:8002" disabled />
+              <Input value="http://localhost:8001" disabled />
             </div>
             <div className="space-y-2">
               <Label>Analytics Service</Label>

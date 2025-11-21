@@ -5,7 +5,7 @@
  * for use in the Analytics dashboard visualizations.
  */
 
-const API_BASE_URL = 'http://localhost:8002';
+const API_BASE_URL = 'http://localhost:8001';
 
 export interface AgeDistribution {
     range: string;
