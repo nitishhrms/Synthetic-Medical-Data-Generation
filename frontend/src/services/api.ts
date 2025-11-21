@@ -58,7 +58,11 @@ function getAuthHeaders(): HeadersInit {
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "An error occurred" }));
-    throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
+    let errorMessage = error.detail;
+    if (Array.isArray(error.detail)) {
+      errorMessage = error.detail.map((e: any) => `${e.loc.join(".")}: ${e.msg}`).join("\n");
+    }
+    throw new Error(errorMessage || `HTTP ${response.status}: ${response.statusText}`);
   }
   return response.json();
 }
@@ -396,8 +400,23 @@ export const dataGenerationApi = {
         seed: params.seed ?? 42,
         method: params.method ?? "mvn",
         use_duration: params.use_duration ?? true,
+        dropout_rate: params.dropout_rate,
+        missing_data_rate: params.missing_data_rate,
+        site_heterogeneity: params.site_heterogeneity,
       }),
     });
+    console.log("Generating Comprehensive Study with payload:", JSON.stringify({
+      indication: params.indication || "hypertension",
+      phase: params.phase || "Phase 3",
+      n_per_arm: params.n_per_arm ?? 50,
+      target_effect: params.target_effect ?? -5.0,
+      seed: params.seed ?? 42,
+      method: params.method ?? "mvn",
+      use_duration: params.use_duration ?? true,
+      dropout_rate: params.dropout_rate,
+      missing_data_rate: params.missing_data_rate,
+      site_heterogeneity: params.site_heterogeneity,
+    }, null, 2));
     return handleResponse(response);
   },
 
@@ -485,6 +504,24 @@ export const dataGenerationApi = {
 
   async loadLatestData(datasetType: string): Promise<any> {
     const response = await fetch(`${DATA_GEN_SERVICE}/data/load/${datasetType}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async loadDataById(datasetId: number): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/load/id/${datasetId}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async listDatasets(datasetType?: string, limit: number = 50, offset: number = 0): Promise<any> {
+    const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
+    if (datasetType) {
+      params.append('dataset_type', datasetType);
+    }
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/list?${params}`, {
       headers: getAuthHeaders(),
     });
     return handleResponse(response);

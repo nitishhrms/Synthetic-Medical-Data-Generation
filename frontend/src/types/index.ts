@@ -14,7 +14,7 @@ export interface VitalsRecord {
 }
 
 // Generation Methods
-export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm" | "bayesian" | "mice" | "diffusion";
+export type GenerationMethod = "mvn" | "bootstrap" | "rules" | "llm" | "bayesian" | "mice" | "diffusion" | "mvn-aact" | "bootstrap-aact" | "bayesian-aact" | "mice-aact";
 
 // Generation Request
 export interface GenerationRequest {
@@ -468,6 +468,14 @@ export interface ComprehensiveStudyRequest {
   seed?: number;
   method?: "mvn" | "bootstrap" | "rules" | "diffusion";
   use_duration?: boolean;
+  dropout_rate?: number;
+  missing_data_rate?: number;
+  site_heterogeneity?: number;
+  include_vitals?: boolean;
+  include_demographics?: boolean;
+  include_ae?: boolean;
+  include_labs?: boolean;
+  use_aact?: boolean;
 }
 
 export interface ComprehensiveStudyResponse {

@@ -1414,6 +1414,10 @@ class ComprehensiveStudyRequest(BaseModel):
     use_aact: bool = Field(default=True, description="Use AACT-enhanced generators (recommended)")
     use_duration: bool = Field(default=True, description="Use AACT actual duration for visit scheduling")
     seed: int = Field(default=42, description="Random seed for reproducibility")
+    # New Simulation Parameters
+    dropout_rate: Optional[float] = Field(default=None, ge=0.0, le=0.5, description="Subject dropout rate (0.0-0.5)")
+    missing_data_rate: Optional[float] = Field(default=None, ge=0.0, le=0.3, description="Missing data rate (0.0-0.3)")
+    site_heterogeneity: float = Field(default=0.3, ge=0.0, le=1.0, description="Site variability (0.0=uniform, 1.0=highly skewed)")
 
 class ComprehensiveStudyResponse(BaseModel):
     """Response model for comprehensive study data"""
@@ -1844,6 +1848,12 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
         for i, subj in enumerate(subject_ids):
             treatment_arms[subj] = "Active" if i < request.n_per_arm else "Placebo"
 
+        # DEBUG: Log treatment arm distribution
+        active_count = sum(1 for v in treatment_arms.values() if v == "Active")
+        placebo_count = sum(1 for v in treatment_arms.values() if v == "Placebo")
+        print(f"DEBUG: generate_comprehensive_study - n_per_arm={request.n_per_arm}, total_subjects={total_subjects}")
+        print(f"DEBUG: Treatment Arms - Active: {active_count}, Placebo: {placebo_count}")
+
         # 1.3 Determine Visit Schedule from AACT (if using AACT)
         visit_schedule = None
         if request.use_aact:
@@ -1933,61 +1943,9 @@ async def generate_comprehensive_study(request: ComprehensiveStudyRequest):
                         n_per_arm=request.n_per_arm,
                         target_effect=request.target_effect,
                         seed=request.seed,
-                        n_steps=50,  # Default diffusion steps
-                        subject_ids=subject_ids,          # 🔑 Coordinated
-                        visit_schedule=visit_schedule,     # 🔑 Coordinated
-                        treatment_arms=treatment_arms      # 🔑 Coordinated
-                    )
-            else:
-                # Use original generators (fallback when AACT disabled)
-                if request.method == "mvn":
-                    vitals_df = generate_vitals_mvn(
-                        n_per_arm=request.n_per_arm,
-                        target_effect=request.target_effect,
-                        seed=request.seed
-                    )
-                elif request.method == "rules":
-                    vitals_df = generate_vitals_rules(
-                        n_per_arm=request.n_per_arm,
-                        target_effect=request.target_effect,
-                        seed=request.seed
-                    )
-                elif request.method == "diffusion":
-                    vitals_df = generate_with_simple_diffusion(
-                        n_per_arm=request.n_per_arm,
-                        target_effect=request.target_effect,
-                        seed=request.seed,
-                        n_steps=50,
-                        subject_ids=subject_ids,          # 🔑 Coordinated
-                        visit_schedule=visit_schedule,     # 🔑 Coordinated
-                        treatment_arms=treatment_arms      # 🔑 Coordinated
-                    )
-                else:  # bootstrap (fallback without AACT - create synthetic baseline)
-                    # Create synthetic baseline from default statistics
-                    import pandas as pd
-                    rng = np.random.default_rng(request.seed)
-                    baseline_rows = []
-                    baseline_subjects = 50
-                    for i in range(baseline_subjects):
-                        sid = f"BASE-{i+1:03d}"
-                        arm = "Active" if i < baseline_subjects // 2 else "Placebo"
-                        for visit in VISITS[:4]:
-                            sbp = int(np.clip(rng.normal(140, 15), 95, 200))
-                            dbp = int(np.clip(rng.normal(85, 10), 55, 130))
-                            hr = int(np.clip(rng.normal(72, 10), 50, 120))
-                            temp = float(np.clip(rng.normal(36.7, 0.3), 35.0, 40.0))
-                            baseline_rows.append([sid, visit, arm, sbp, dbp, hr, temp])
-
-                    baseline_df = pd.DataFrame(
-                        baseline_rows,
-                        columns=["SubjectID", "VisitName", "TreatmentArm", "SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
-                    )
-
-                    vitals_df = generate_vitals_bootstrap(
-                        training_df=baseline_df,
-                        n_per_arm=request.n_per_arm,
-                        target_effect=request.target_effect,
-                        seed=request.seed
+                        subject_ids=subject_ids,
+                        visit_schedule=visit_schedule,
+                        treatment_arms=treatment_arms
                     )
 
             response_data["vitals"] = vitals_df.to_dict(orient="records")
@@ -2611,8 +2569,7 @@ async def portfolio_analytics():
     }
 
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+
 # ============================================================================
 # Data Persistence Endpoints
 # ============================================================================
@@ -2654,3 +2611,43 @@ async def load_latest_data(dataset_type: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to load data: {str(e)}"
         )
+
+@app.get("/data/load/id/{dataset_id}", response_model=LoadDataResponse)
+async def load_data_by_id(dataset_id: int):
+    """Load a specific dataset by ID"""
+    try:
+        dataset = await db.get_dataset_by_id(dataset_id)
+        if not dataset:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No data found for ID: {dataset_id}"
+            )
+        return dataset
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load data: {str(e)}"
+        )
+
+@app.get("/data/list", response_model=Dict[str, Any])
+async def list_datasets(dataset_type: Optional[str] = None, limit: int = 50, offset: int = 0):
+    """List all saved datasets"""
+    try:
+        datasets = await db.list_datasets(dtype=dataset_type, limit=limit, offset=offset)
+        return {
+            "datasets": datasets,
+            "count": len(datasets),
+            "limit": limit,
+            "offset": offset
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list datasets: {str(e)}"
+        )
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8002)

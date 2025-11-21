@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { dataGenerationApi } from "@/services/api";
+import { dataGenerationApi, analyticsApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
 import { Download, Loader2, AlertCircle, Activity, Users, FlaskConical, AlertTriangle, Database } from "lucide-react";
 
@@ -38,6 +38,11 @@ export function DataGeneration() {
   const [labsData, setLabsData] = useState<any[]>([]);
   const [labsMetadata, setLabsMetadata] = useState<any>(null);
   const [labsN, setLabsN] = useState(100);
+
+  // Advanced Simulation Parameters
+  const [dropoutRate, setDropoutRate] = useState(0.15);
+  const [missingDataRate, setMissingDataRate] = useState(0.08);
+  const [siteHeterogeneity, setSiteHeterogeneity] = useState(0.3);
 
   // AE state
   const [aeData, setAeData] = useState<any[]>([]);
@@ -215,6 +220,74 @@ export function DataGeneration() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportSDTM = async (domain: "vitals" | "demographics" | "labs" | "ae") => {
+    try {
+      let response;
+      switch (domain) {
+        case "vitals":
+          response = await analyticsApi.exportSDTM(vitalsData);
+          break;
+        case "demographics":
+          response = await analyticsApi.exportDemographicsSDTM(demographicsData);
+          break;
+        case "labs":
+          response = await analyticsApi.exportLabsSDTM(labsData);
+          break;
+        case "ae":
+          response = await analyticsApi.exportAESDTM(aeData);
+          break;
+      }
+
+      // Download the response as JSON (or CSV if backend supports it)
+      const blob = new Blob([JSON.stringify(response, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${domain}_sdtm.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+    } catch (err: any) {
+      setError(`Failed to export ${domain} to SDTM: ${err.message}`);
+    }
+  };
+
+  const handleSaveDataset = async () => {
+    if (vitalsData.length === 0) {
+      setError("No data to save");
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      // Save vitals as the primary dataset for now
+      // In a real app, we might save all domains linked together
+      const datasetName = `Study-${indication}-${phase}-${new Date().toISOString().slice(0, 10)}`;
+      await dataGenerationApi.saveGeneratedData(
+        datasetName,
+        "vitals",
+        vitalsData,
+        {
+          method: selectedMethod,
+          indication,
+          phase,
+          n_per_arm: nPerArm,
+          records: vitalsData.length,
+          subjects: nPerArm * 2
+        }
+      );
+
+      alert("Dataset saved successfully! You can now load it from the Dashboard or Analytics tab.");
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to save dataset");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -782,6 +855,64 @@ export function DataGeneration() {
                 </div>
               </div>
 
+              {/* Advanced Simulation Parameters */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-3">
+                  <Activity className="h-4 w-4 text-slate-600" />
+                  <h3 className="font-semibold text-slate-900">Advanced Simulation Scenarios</h3>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label>Dropout Rate ({(dropoutRate * 100).toFixed(0)}%)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="range"
+                        min="0"
+                        max="0.5"
+                        step="0.01"
+                        value={dropoutRate}
+                        onChange={(e) => setDropoutRate(parseFloat(e.target.value))}
+                        className="mt-1"
+                      />
+                      <span className="text-sm w-12">{(dropoutRate * 100).toFixed(0)}%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Subject attrition over time</p>
+                  </div>
+                  <div>
+                    <Label>Missing Data ({(missingDataRate * 100).toFixed(0)}%)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="range"
+                        min="0"
+                        max="0.3"
+                        step="0.01"
+                        value={missingDataRate}
+                        onChange={(e) => setMissingDataRate(parseFloat(e.target.value))}
+                        className="mt-1"
+                      />
+                      <span className="text-sm w-12">{(missingDataRate * 100).toFixed(0)}%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Random missing values</p>
+                  </div>
+                  <div>
+                    <Label>Site Heterogeneity ({(siteHeterogeneity * 100).toFixed(0)}%)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={siteHeterogeneity}
+                        onChange={(e) => setSiteHeterogeneity(parseFloat(e.target.value))}
+                        className="mt-1"
+                      />
+                      <span className="text-sm w-12">{(siteHeterogeneity * 100).toFixed(0)}%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Variability between sites</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Generate Button */}
               <Button
                 className="w-full"
@@ -793,11 +924,14 @@ export function DataGeneration() {
                     const response = await dataGenerationApi.generateComprehensiveStudy({
                       n_per_arm: nPerArm,
                       target_effect: targetEffect,
-                      method: selectedMethod,
+                      method: selectedMethod as any,
                       indication,
                       phase,
                       include_vitals: true,
                       include_demographics: true,
+                      dropout_rate: dropoutRate,
+                      missing_data_rate: missingDataRate,
+                      site_heterogeneity: siteHeterogeneity,
                       include_ae: true,
                       include_labs: true,
                       use_aact: true,
@@ -910,6 +1044,9 @@ export function DataGeneration() {
                   </Button>
                   <Button onClick={() => downloadCSV(aeData, "adverse_events.csv")} variant="outline" size="sm">
                     <Download className="h-3 w-3 mr-1" /> AE CSV
+                  </Button>
+                  <Button onClick={handleSaveDataset} variant="default" size="sm" className="ml-auto bg-blue-600 hover:bg-blue-700">
+                    <Database className="h-3 w-3 mr-1" /> Save Dataset
                   </Button>
                 </div>
               </CardContent>

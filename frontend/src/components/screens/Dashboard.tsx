@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, BarChart3, Database, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Activity, BarChart3, Database, Users, FolderOpen, Calendar, FileText } from "lucide-react";
 import type { Screen } from "@/components/layout/NavigationRail";
 import { useData } from "@/contexts/DataContext";
+import { dataGenerationApi } from "@/services/api";
 
 interface DashboardProps {
   onNavigate?: (screen: Screen) => void;
@@ -15,7 +17,7 @@ interface ServiceStatus {
 }
 
 export function Dashboard({ onNavigate }: DashboardProps) {
-  const { generatedData, qualityMetrics } = useData();
+  const { generatedData, qualityMetrics, setGeneratedData, setGenerationMethod } = useData();
   const [services, setServices] = useState<ServiceStatus[]>([
     { name: "Data Generation", port: 8002, status: "checking" },
     { name: "Analytics", port: 8003, status: "checking" },
@@ -23,6 +25,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     { name: "EDC Service", port: 8004, status: "checking" },
     { name: "Quality", port: 8006, status: "checking" },
   ]);
+  const [savedDatasets, setSavedDatasets] = useState<any[]>([]);
+  const [isLoadingDatasets, setIsLoadingDatasets] = useState(false);
 
   useEffect(() => {
     // Check service health on mount
@@ -47,7 +51,34 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     };
 
     checkServices();
+    loadSavedDatasets();
   }, []);
+
+  const loadSavedDatasets = async () => {
+    setIsLoadingDatasets(true);
+    try {
+      const result = await dataGenerationApi.listDatasets();
+      setSavedDatasets(result.datasets || []);
+    } catch (err) {
+      console.error("Failed to load saved datasets:", err);
+    } finally {
+      setIsLoadingDatasets(false);
+    }
+  };
+
+  const loadDataset = async (datasetType: string) => {
+    try {
+      const result = await dataGenerationApi.loadLatestData(datasetType);
+      if (result && result.data) {
+        setGeneratedData(result.data);
+        if (result.metadata?.method) {
+          setGenerationMethod(result.metadata.method);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load dataset:", err);
+    }
+  };
 
   // Calculate stats from actual data
   const generatedRecordsCount = generatedData?.length || 0;
@@ -150,6 +181,73 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           );
         })}
       </div>
+
+      {/* Saved Datasets Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FolderOpen className="h-5 w-5" />
+            Saved Datasets
+          </CardTitle>
+          <CardDescription>
+            Previously generated datasets - click to load
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingDatasets ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Loading saved datasets...
+            </div>
+          ) : savedDatasets.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No saved datasets yet. Generate data to see it here.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {savedDatasets.slice(0, 10).map((dataset) => (
+                <div
+                  key={dataset.id}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{dataset.dataset_name}</p>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(dataset.created_at).toLocaleDateString()}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Database className="h-3 w-3" />
+                          {dataset.record_count} records
+                        </span>
+                        {dataset.metadata?.method && (
+                          <span className="px-2 py-0.5 bg-primary/10 text-primary rounded">
+                            {dataset.metadata.method}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => loadDataset(dataset.dataset_type)}
+                  >
+                    Load
+                  </Button>
+                </div>
+              ))}
+              {savedDatasets.length > 10 && (
+                <p className="text-xs text-muted-foreground text-center py-2">
+                  Showing 10 of {savedDatasets.length} datasets
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>

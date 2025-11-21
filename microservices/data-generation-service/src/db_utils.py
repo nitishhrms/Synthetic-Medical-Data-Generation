@@ -147,6 +147,69 @@ class DatabaseConnection:
             "created_at": row["created_at"]
         }
 
+    async def get_dataset_by_id(self, dataset_id: int):
+        """Get a specific dataset by ID"""
+        if not self.pool:
+            raise RuntimeError("Database not connected")
+            
+        query = """
+        SELECT id, dataset_name, dataset_type, data, metadata, created_at
+        FROM generated_datasets
+        WHERE id = $1
+        """
+        row = await self.fetchrow(query, dataset_id)
+        if not row:
+            return None
+            
+        import json
+        return {
+            "id": row["id"],
+            "dataset_name": row["dataset_name"],
+            "dataset_type": row["dataset_type"],
+            "data": json.loads(row["data"]) if isinstance(row["data"], str) else row["data"],
+            "metadata": json.loads(row["metadata"]) if row["metadata"] and isinstance(row["metadata"], str) else row["metadata"],
+            "created_at": row["created_at"]
+        }
+    
+    async def list_datasets(self, dtype: str = None, limit: int = 50, offset: int = 0):
+        """List all datasets, optionally filtered by type"""
+        if not self.pool:
+            raise RuntimeError("Database not connected")
+        
+        if dtype:
+            query = """
+            SELECT id, dataset_name, dataset_type, metadata, created_at,
+                   jsonb_array_length(data) as record_count
+            FROM generated_datasets
+            WHERE dataset_type = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+            """
+            rows = await self.fetch(query, dtype, limit, offset)
+        else:
+            query = """
+            SELECT id, dataset_name, dataset_type, metadata, created_at,
+                   jsonb_array_length(data) as record_count
+            FROM generated_datasets
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+            """
+            rows = await self.fetch(query, limit, offset)
+        
+        import json
+        return [
+            {
+                "id": row["id"],
+                "dataset_name": row["dataset_name"],
+                "dataset_type": row["dataset_type"],
+                "metadata": json.loads(row["metadata"]) if row["metadata"] and isinstance(row["metadata"], str) else row["metadata"],
+                "created_at": row["created_at"],
+                "record_count": row["record_count"]
+            }
+            for row in rows
+        ]
+
+
 
 class CacheConnection:
     """Async Redis cache manager"""

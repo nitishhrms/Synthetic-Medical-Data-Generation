@@ -54,6 +54,7 @@ const generateNormalData = (mean: number, std: number, count: number = 1000) => 
 export function Analytics() {
   const {
     generatedData,
+    setGeneratedData,
     pilotData,
     setPilotData,
     week12Stats,
@@ -88,6 +89,11 @@ export function Analytics() {
   // Survival Analysis State
   const [survivalData, setSurvivalData] = useState<any>(null);
   const [isLoadingSurvival, setIsLoadingSurvival] = useState(false);
+
+  // Saved Datasets State
+  const [savedDatasets, setSavedDatasets] = useState<any[]>([]);
+  const [isLoadingDatasets, setIsLoadingDatasets] = useState(false);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
 
   // Load pilot data on mount
   useEffect(() => {
@@ -130,6 +136,40 @@ export function Analytics() {
     }
   };
 
+  const loadSavedDatasets = async () => {
+    setIsLoadingDatasets(true);
+    try {
+      const result = await dataGenerationApi.listDatasets();
+      setSavedDatasets(result.datasets || []);
+    } catch (err) {
+      console.error("Failed to load saved datasets:", err);
+    } finally {
+      setIsLoadingDatasets(false);
+    }
+  };
+
+  const handleDatasetSelect = async (datasetIdStr: string) => {
+    setSelectedDatasetId(datasetIdStr);
+    setIsLoading(true);
+    try {
+      const datasetId = parseInt(datasetIdStr);
+      const result = await dataGenerationApi.loadDataById(datasetId);
+      if (result && result.data) {
+        setGeneratedData(result.data);
+      }
+    } catch (err) {
+      console.error("Failed to load dataset:", err);
+      setError("Failed to load selected dataset");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load saved datasets on mount
+  useEffect(() => {
+    loadSavedDatasets();
+  }, []);
+
 
   const runAnalysis = async () => {
     if (!generatedData) {
@@ -139,6 +179,16 @@ export function Analytics() {
 
     // Auto-detect the final visit from the data using smart chronological sorting
     const uniqueVisits = [...new Set(generatedData.map(r => r.VisitName))];
+
+    // DEBUG: Log data distribution
+    const visitCounts: Record<string, { Active: number, Placebo: number, Other: number }> = {};
+    generatedData.forEach(r => {
+      if (!visitCounts[r.VisitName]) visitCounts[r.VisitName] = { Active: 0, Placebo: 0, Other: 0 };
+      if (r.TreatmentArm === "Active") visitCounts[r.VisitName].Active++;
+      else if (r.TreatmentArm === "Placebo") visitCounts[r.VisitName].Placebo++;
+      else visitCounts[r.VisitName].Other++;
+    });
+    console.log("Analytics: Data Distribution by Visit:", visitCounts);
 
     // Function to convert visit name to days for sorting
     const visitToDays = (visit: string): number => {
@@ -154,13 +204,28 @@ export function Analytics() {
       return 999999; // Unknown visits go to end
     };
 
-    // Sort visits chronologically and take the last one
+    // Sort visits chronologically
     const sortedVisits = uniqueVisits.sort((a, b) => visitToDays(a) - visitToDays(b));
-    let finalVisit = sortedVisits[sortedVisits.length - 1];
 
-    // Fallback: if no match found in visitOrder, use the last unique visit
+    // Find the latest visit that exists in BOTH arms
+    let finalVisit = "";
+
+    // Check each visit from last to first
+    for (let i = sortedVisits.length - 1; i >= 0; i--) {
+      const visit = sortedVisits[i];
+      const counts = visitCounts[visit];
+
+      // Check if both arms have sufficient data (at least 1 record, ideally more)
+      if (counts && counts.Active > 0 && counts.Placebo > 0) {
+        finalVisit = visit;
+        break;
+      }
+    }
+
+    // Fallback: if no common visit found, use the last unique visit (original behavior)
     if (!finalVisit && uniqueVisits.length > 0) {
       finalVisit = uniqueVisits[uniqueVisits.length - 1];
+      console.warn("Could not find a common final visit for both arms. Defaulting to last available visit:", finalVisit);
     }
 
     if (!finalVisit) {
@@ -168,7 +233,7 @@ export function Analytics() {
       return;
     }
 
-    console.log(`Analytics: Auto-detected final visit as "${finalVisit}" from available visits:`, uniqueVisits);
+    console.log(`Analytics: Auto-detected final visit as "${finalVisit}" (common to both arms) from available visits:`, uniqueVisits);
 
     // Store detected final visit for UI display
     setDetectedFinalVisit(finalVisit);
@@ -888,6 +953,30 @@ export function Analytics() {
             <Database className="h-3 w-3" />
             Dataset: AACT (400K+ trials)
           </Badge>
+
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Select Dataset:</span>
+            <Select
+              value={selectedDatasetId}
+              onValueChange={handleDatasetSelect}
+              disabled={isLoadingDatasets}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder={isLoadingDatasets ? "Loading..." : "Select a dataset"} />
+              </SelectTrigger>
+              <SelectContent>
+                {savedDatasets.length === 0 ? (
+                  <SelectItem value="none" disabled>No saved datasets</SelectItem>
+                ) : (
+                  savedDatasets.map((dataset) => (
+                    <SelectItem key={dataset.id} value={dataset.id.toString()}>
+                      {dataset.dataset_name} ({dataset.record_count} records)
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <p className="text-muted-foreground mt-2">
           Comprehensive statistical analysis, quality metrics, and visualization suite for clinical trial data

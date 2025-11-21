@@ -18,10 +18,6 @@ import { DataEntry } from "@/components/screens/DataEntry";
 import SurvivalAnalysis from "@/pages/SurvivalAnalysis";
 import AdamGeneration from "@/pages/AdamGeneration";
 import TLFAutomation from "@/pages/TLFAutomation";
-import { MethodComparison } from "@/pages/MethodComparison";
-import { DemographicsAnalytics } from "@/pages/DemographicsAnalytics";
-import { LabsAnalytics } from "@/pages/LabsAnalytics";
-import { AdverseEventsAnalytics } from "@/pages/AdverseEventsAnalytics";
 import { TopAppBar } from "@/components/layout/TopAppBar";
 import { NavigationRail, type Screen } from "@/components/layout/NavigationRail";
 
@@ -71,29 +67,13 @@ function AppContent() {
         return <DataGeneration />;
       case "analytics":
         return <Analytics />;
-      case "method-comparison":
-        return <MethodComparison />;
-      case "demographics":
-        return <DemographicsAnalytics />;
-      case "labs":
-        return <LabsAnalytics />;
-      case "adverse-events":
-        return <AdverseEventsAnalytics />;
       case "survival":
         return <SurvivalAnalysis />;
       case "adam":
         return <AdamGeneration />;
       case "tlf":
         return <TLFAutomation />;
-      case "aact-benchmarking":
-        return (
-          <div className="p-6">
-            <div className="text-center py-12">
-              <h2 className="text-2xl font-bold mb-4">AACT Benchmarking</h2>
-              <p className="text-muted-foreground">Coming soon - Clinical trial benchmarking against AACT database</p>
-            </div>
-          </div>
-        );
+
       case "quality":
         return <QualityDashboard />;
       case "trial-planning":
