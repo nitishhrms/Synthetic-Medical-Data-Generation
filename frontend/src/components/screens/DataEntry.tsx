@@ -18,7 +18,12 @@ interface Subject {
   status: string;
 }
 
-export function DataEntry() {
+interface DataEntryProps {
+  selectedSubjectId?: string | null;
+  selectedQueryId?: number | null;
+}
+
+export function DataEntry({ selectedSubjectId, selectedQueryId }: DataEntryProps) {
   const [activeTab, setActiveTab] = useState<DataEntryTab>('enroll');
   const [studies, setStudies] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -76,10 +81,30 @@ export function DataEntry() {
     triglycerides: ''
   });
 
+  // Query integration
+  const [relatedQueries, setRelatedQueries] = useState<any[]>([]);
+  const [highlightedQueryId, setHighlightedQueryId] = useState<number | null>(null);
+  // Load data on mount
   useEffect(() => {
     loadStudies();
     loadSubjects();
-  }, []);
+
+    // If selectedSubjectId is provided, pre-fill and switch to vitals tab
+    if (selectedSubjectId) {
+      setVitalsForm(prev => ({ ...prev, subject_id: selectedSubjectId || '' }));
+      setLabsForm(prev => ({ ...prev, subject_id: selectedSubjectId || '' }));
+      setDemoForm(prev => ({ ...prev, subject_id: selectedSubjectId || '' }));
+
+      // If there's also a selectedQueryId, switch to vitals tab
+      if (selectedQueryId) {
+        setActiveTab('vitals');
+        setHighlightedQueryId(selectedQueryId);
+
+        // Fetch queries for this subject
+        fetchQueriesForSubject(selectedSubjectId);
+      }
+    }
+  }, [selectedSubjectId, selectedQueryId]);
 
   const loadStudies = async () => {
     try {
@@ -222,13 +247,13 @@ export function DataEntry() {
 
       // Convert numeric fields
       ['hemoglobin', 'hematocrit', 'wbc', 'platelets', 'glucose', 'creatinine',
-       'bun', 'alt', 'ast', 'bilirubin', 'total_cholesterol', 'ldl', 'hdl', 'triglycerides'].forEach(field => {
-        if (labData[field]) {
-          labData[field] = parseFloat(labData[field]);
-        } else {
-          labData[field] = null;
-        }
-      });
+        'bun', 'alt', 'ast', 'bilirubin', 'total_cholesterol', 'ldl', 'hdl', 'triglycerides'].forEach(field => {
+          if (labData[field]) {
+            labData[field] = parseFloat(labData[field]);
+          } else {
+            labData[field] = null;
+          }
+        });
 
       const res = await fetch('http://localhost:8004/labs', {
         method: 'POST',
@@ -256,6 +281,56 @@ export function DataEntry() {
       setLoading(false);
     }
   };
+
+  const fetchQueriesForSubject = async (subjectId: string) => {
+    try {
+      const res = await fetch(`http://localhost:8001/queries?subject_id=${subjectId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRelatedQueries(data.queries || data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch queries:', error);
+    }
+  };
+
+  const handleAutoRepair = async (queryId: number) => {
+    try {
+      setLoading(true);
+      setMessage({ type: 'success', text: 'Applying auto-repair...' });
+
+      const res = await fetch(`http://localhost:8001/queries/${queryId}/repair`, {
+        method: 'POST'
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setMessage({
+          type: 'success',
+          text: `Auto-repair applied! ${data.rows_updated} records updated. Query status: ${data.query_status}`
+        });
+
+        // Refresh queries
+        if (selectedSubjectId) {
+          await fetchQueriesForSubject(selectedSubjectId);
+        }
+      } else {
+        throw new Error('Auto-repair failed');
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Auto-repair failed' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch queries when selectedSubjectId changes
+  useEffect(() => {
+    if (selectedSubjectId) {
+      fetchQueriesForSubject(selectedSubjectId);
+    }
+  }, [selectedSubjectId]);
+
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -457,6 +532,53 @@ export function DataEntry() {
                   />
                 </div>
               </div>
+
+              {/* Related Queries Section */}
+              {selectedSubjectId && relatedQueries.length > 0 && (
+                <div className="mt-6 pt-6 border-t">
+                  <h3 className="font-medium text-lg mb-4 flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-orange-600" />
+                    Related Data Queries ({relatedQueries.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {relatedQueries.map((query: any) => (
+                      <div
+                        key={query.query_id}
+                        className={`border rounded-lg p-4 ${highlightedQueryId === query.query_id ? 'border-orange-500 bg-orange-50 dark:bg-orange-950/20' : 'border-gray-200'
+                          }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant={query.severity === 'CRITICAL' ? 'destructive' : 'default'}>
+                                {query.severity || 'WARNING'}
+                              </Badge>
+                              <Badge variant="outline">{query.status || 'Open'}</Badge>
+                              <span className="text-sm text-muted-foreground">{query.field_name || 'General'}</span>
+                            </div>
+                            <p className="text-sm mb-2">{query.query_text}</p>
+                            {query.created_at && (
+                              <p className="text-xs text-muted-foreground">
+                                Created: {new Date(query.created_at).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                          {query.status !== 'closed' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleAutoRepair(query.query_id)}
+                              disabled={loading}
+                            >
+                              Auto-Repair
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end">
                 <Button onClick={handleRecordVitals} disabled={loading}>

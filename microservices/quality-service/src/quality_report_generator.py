@@ -155,7 +155,7 @@ class QualityReportGenerator:
         # Table of CI coverage by variable
         lines.append("### Coverage by Variable")
         lines.append("")
-        lines.append("| Variable | Real Mean ± SE | 95% CI | Coverage | CART Standard |")
+        lines.append("| Variable | Real Mean ± SD | 95% CI | Coverage | CART Standard |")
         lines.append("|----------|----------------|--------|----------|---------------|")
 
         for col, metrics in ci_coverage['by_column'].items():
@@ -163,7 +163,7 @@ class QualityReportGenerator:
             cart_status = "✅" if metrics['meets_cart_standard'] else "❌"
 
             lines.append(
-                f"| {col} | {metrics['real_mean']:.2f} ± {metrics['real_se']:.2f} | "
+                f"| {col} | {metrics['real_mean']:.2f} ± {metrics['real_std']:.2f} | "
                 f"{ci_str} | {metrics['coverage_95_pct']:.1f}% | {cart_status} {metrics['quality']} |"
             )
 

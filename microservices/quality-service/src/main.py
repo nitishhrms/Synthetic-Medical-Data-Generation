@@ -60,6 +60,13 @@ if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
     warnings.warn("CORS wildcard enabled in production - security risk!", UserWarning)
 
+# Explicitly add localhost for development to avoid credential issues with wildcard
+if os.getenv("ENVIRONMENT") != "production":
+    # Remove wildcard if present, as it conflicts with allow_credentials=True in browsers
+    if "*" in ALLOWED_ORIGINS:
+        ALLOWED_ORIGINS.remove("*")
+    ALLOWED_ORIGINS.extend(["http://localhost:3000", "http://127.0.0.1:3000"])
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -173,6 +180,27 @@ async def validate_with_edit_checks(request: EditChecksRequest):
             total_checks = len(spec.get("rules", []))
         else:
             total_checks = 0
+
+        queries = [
+            {
+                "rule": row.get("CheckID", ""),
+                "severity": row.get("Severity", "").lower(),
+                "message": row.get("Message", "")
+            }
+            for _, row in queries_df.iterrows()
+        ]
+
+        # Calculate quality score (1.0 = perfect, 0.0 = all checks failed)
+        quality_score = 1.0 - (len(queries) / (total_records * total_checks)) if total_checks > 0 and total_records > 0 else 1.0
+        quality_score = max(0.0, quality_score)
+
+        return EditChecksResponse(
+            total_records=total_records,
+            total_checks=total_checks,
+            violations=queries,
+            quality_score=round(quality_score, 3),
+            passed=len(queries) == 0
+        )
 
         # Format violations
         violations = []
@@ -370,6 +398,41 @@ class QualityReportRequest(BaseModel):
     privacy_metrics: Optional[Dict[str, Any]] = Field(default=None, description="Pre-computed privacy metrics")
     generation_time_ms: Optional[float] = Field(default=None, description="Time taken to generate (ms)")
 
+import numpy as np
+
+def convert_numpy_types(obj: Any) -> Any:
+    """
+    Recursively convert numpy types to native Python types for JSON serialization.
+    Handles dicts, lists, numpy arrays, and individual numpy values.
+    """
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, np.ndarray):
+        return convert_numpy_types(obj.tolist())
+    elif isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+        val = float(obj)
+        # Handle NaN/Inf which are valid in Python JSON but might cause issues in some clients
+        # or if allow_nan=False is enforced (which seems to be the case here).
+        # Convert to None (null in JSON) for maximum compatibility.
+        if np.isnan(val) or np.isinf(val):
+            return None
+        return val
+    elif isinstance(obj, (np.bool_)):
+        return bool(obj)
+    elif isinstance(obj, np.void):
+        return None
+    elif pd.isna(obj):
+        return None
+    elif isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+        # Handle standard python float NaN/Inf as well
+        return None
+    else:
+        return obj
+
 @app.post("/privacy/assess/comprehensive")
 async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
     """
@@ -390,21 +453,13 @@ async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
     - Detailed privacy metrics
     - Overall safety recommendation
     - Actionable guidance for improvement
-
-    **Example**:
-    ```json
-    {
-      "real_data": [...],
-      "synthetic_data": [...],
-      "quasi_identifiers": ["Age", "Gender", "Race"],
-      "sensitive_attributes": ["SystolicBP", "Diagnosis"]
-    }
-    ```
+    Comprehensive privacy assessment including k-anonymity, l-diversity,
+    and re-identification risk.
     """
     if not PRIVACY_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Privacy assessment not available. Install anonymeter: pip install anonymeter"
+            detail="Privacy assessment module not available (anonymeter not installed)"
         )
 
     try:
@@ -426,8 +481,11 @@ async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
             sensitive_attributes=request.sensitive_attributes
         )
 
+        # Convert NumPy types to native Python types for JSON serialization
+        safe_report = convert_numpy_types(report)
+
         return {
-            "privacy_assessment": report,
+            "privacy_assessment": safe_report,
             "timestamp": datetime.utcnow().isoformat(),
             "service": "quality-service",
             "privacy_module_version": "1.0.0"

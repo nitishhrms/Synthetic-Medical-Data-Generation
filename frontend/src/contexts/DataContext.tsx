@@ -7,6 +7,28 @@ import type {
   PCAComparisonResponse,
   ValidationResponse,
 } from "@/types";
+
+// Planning Scenario Type
+export interface PlanningScenario {
+  id?: string;
+  name?: string;
+  timestamp?: string;
+  // Feasibility Parameters
+  nPerArm?: number;
+  targetEffect?: number;
+  power?: number;
+  alpha?: number;
+  stdDev?: number;
+  dropoutRate?: number;
+  allocationRatio?: number;
+  testType?: "two-sided" | "one-sided";
+  // Results
+  requiredN?: number;
+  cohensD?: number;
+  feasibilityGrade?: string;
+  // Source
+  source?: "feasibility" | "what-if" | "virtual-control" | "template";
+}
 import { dataGenerationApi } from "@/services/api";
 
 interface DataContextType {
@@ -36,6 +58,10 @@ interface DataContextType {
   validationResults: ValidationResponse | null;
   setValidationResults: (results: ValidationResponse | null) => void;
 
+  // Planning Scenario
+  planningScenario: PlanningScenario | null;
+  setPlanningScenario: (scenario: PlanningScenario | null) => void;
+
   // Helper function to clear all data
   clearAllData: () => void;
 }
@@ -51,6 +77,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [qualityMetrics, setQualityMetrics] = useState<QualityAssessmentResponse | null>(null);
   const [pcaComparison, setPcaComparison] = useState<PCAComparisonResponse | null>(null);
   const [validationResults, setValidationResults] = useState<ValidationResponse | null>(null);
+  const [planningScenario, setPlanningScenario] = useState<PlanningScenario | null>(null);
 
   // Load persisted data on mount
   useEffect(() => {
@@ -96,6 +123,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setQualityMetrics(null);
     setPcaComparison(null);
     setValidationResults(null);
+    setPlanningScenario(null);
   };
 
   return (
@@ -117,6 +145,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setPcaComparison,
         validationResults,
         setValidationResults,
+        planningScenario,
+        setPlanningScenario,
         clearAllData,
       }}
     >

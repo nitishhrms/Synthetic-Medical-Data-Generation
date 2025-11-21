@@ -1,21 +1,27 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { RefreshCw, AlertCircle, CheckCircle2, Clock, XCircle, FileText } from "lucide-react";
 
 interface Query {
     query_id: number;
     subject_id: string;
-    field_name: string;
     query_text: string;
-    severity: 'CRITICAL' | 'WARNING' | 'INFO';
-    status: 'Open' | 'Responded' | 'Closed';
-    check_id?: string;
+    field_name: string;
+    severity: string;
+    status: string;
     created_at?: string;
+    responded_at?: string;
+    check_id?: number;
 }
 
-export function Queries() {
+interface QueriesProps {
+    onNavigateToDataEntry?: (subjectId: string, queryId?: number) => void;
+}
+
+export function Queries({ onNavigateToDataEntry }: QueriesProps) {
     const [queries, setQueries] = useState<Query[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -57,7 +63,7 @@ export function Queries() {
         if (!status) return <AlertCircle className="h-4 w-4 text-orange-600" />;
         const s = status.toLowerCase();
         switch (s) {
-            case 'closed': return <CheckCircle className="h-4 w-4 text-green-600" />;
+            case 'closed': return <CheckCircle2 className="h-4 w-4 text-green-600" />;
             case 'responded': return <Clock className="h-4 w-4 text-blue-600" />;
             default: return <AlertCircle className="h-4 w-4 text-orange-600" />;
         }
@@ -167,11 +173,20 @@ export function Queries() {
                                         </div>
                                     </div>
                                     <p className="text-sm mb-2">{q.query_text}</p>
-                                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                        <span>Field: <span className="font-mono">{q.field_name}</span></span>
-                                        {q.created_at && (
-                                            <span>Created: {new Date(q.created_at).toLocaleString()}</span>
-                                        )}
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                            <span>Field: <span className="font-mono">{q.field_name}</span></span>
+                                            {q.created_at && (
+                                                <span>Created: {new Date(q.created_at).toLocaleString()}</span>
+                                            )}
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => onNavigateToDataEntry?.(q.subject_id, q.query_id)}
+                                        >
+                                            View Subject Data
+                                        </Button>
                                     </div>
                                 </div>
                             ))}

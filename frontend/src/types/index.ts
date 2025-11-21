@@ -189,7 +189,7 @@ export interface SYNDATAMetricsResponse {
       by_variable: { [key: string]: number };
     };
     cross_classification: {
-      utility_score: number;
+      overall_score: number;
       joint_distribution_similarity: number;
     };
     ci_coverage: {

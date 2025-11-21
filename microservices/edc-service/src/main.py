@@ -815,6 +815,153 @@ async def close_query(query_id: int, request: QueryCloseRequest, user_id: int = 
 
     return {"query_id": query_id, "status": "closed"}
 
+
+@app.get("/queries/{query_id}/context")
+async def get_query_context(query_id: int):
+    """
+    Get query with full subject and vitals context
+    
+    Returns query details along with subject information and recent vitals data
+    for display in DataEntry screen
+    """
+    try:
+        # Get query details
+        query = await db.fetchrow("SELECT * FROM queries WHERE query_id = $1", query_id)
+        if not query:
+            raise HTTPException(status_code=404, detail="Query not found")
+        
+        # Get subject details
+        subject = await db.fetchrow("SELECT * FROM subjects WHERE subject_id = $1", query['subject_id'])
+        if not subject:
+            raise HTTPException(status_code=404, detail="Subject not found")
+        
+        # Get recent vitals for this subject
+        vitals = await db.fetch("""
+            SELECT 
+                vs.vital_id,
+                vs.visit_date,
+                vs.systolic_bp,
+                vs.diastolic_bp,
+                vs.heart_rate,
+                vs.temperature,
+                vs.data_batch
+            FROM vital_signs vs
+            JOIN patients p ON vs.patient_id = p.patient_id
+            WHERE p.subject_number = $1
+            ORDER BY vs.visit_date DESC
+            LIMIT 20
+        """, query['subject_id'])
+        
+        return {
+            "query": dict(query),
+            "subject": dict(subject),
+            "vitals": [dict(v) for v in vitals] if vitals else []
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get query context: {str(e)}")
+
+
+@app.post("/queries/{query_id}/repair")
+async def trigger_repair_from_query(query_id: int):
+    """
+    Trigger auto-repair for vitals data related to a query
+    
+    Fetches subject's vitals data, applies auto-repair logic,
+    updates database, and logs the action in query history
+    """
+    try:
+        # Get query details
+        query = await db.fetchrow("SELECT * FROM queries WHERE query_id = $1", query_id)
+        if not query:
+            raise HTTPException(status_code=404, detail="Query not found")
+        
+        subject_id = query['subject_id']
+        
+        # Fetch subject vitals as DataFrame
+        vitals = await db.fetch("""
+            SELECT 
+                p.subject_number as SubjectID,
+                vs.visit_date as VisitName,
+                p.treatment_arm as TreatmentArm,
+                vs.systolic_bp as SystolicBP,
+                vs.diastolic_bp as DiastolicBP,
+                vs.heart_rate as HeartRate,
+                vs.temperature as Temperature,
+                vs.vital_id
+            FROM vital_signs vs
+            JOIN patients p ON vs.patient_id = p.patient_id
+            WHERE p.subject_number = $1
+            ORDER BY vs.visit_date
+        """, subject_id)
+        
+        if not vitals or len(vitals) == 0:
+            raise HTTPException(status_code=404, detail="No vitals data found for subject")
+        
+        # Convert to DataFrame
+        vitals_dict = [dict(v) for v in vitals]
+        df = pd.DataFrame(vitals_dict)
+        
+        # Rename columns to match auto_repair expectations (PascalCase)
+        df = df.rename(columns={
+            'subjectid': 'SubjectID',
+            'visitname': 'VisitName',
+            'treatmentarm': 'TreatmentArm',
+            'systolicbp': 'SystolicBP',
+            'diastolicbp': 'DiastolicBP',
+            'heartrate': 'HeartRate',
+            'temperature': 'Temperature'
+        })
+        
+        # Apply auto-repair
+        repaired_df = auto_repair_vitals(df)
+        
+        # Update database with repaired values
+        rows_updated = 0
+        for idx, row in repaired_df.iterrows():
+            await db.execute("""
+                UPDATE vital_signs
+                SET systolic_bp = $1,
+                    diastolic_bp = $2,
+                    heart_rate = $3,
+                    temperature = $4
+                WHERE vital_id = $5
+            """, 
+            int(row['SystolicBP']), 
+            int(row['DiastolicBP']), 
+            int(row['HeartRate']), 
+            float(row['Temperature']),
+            row['vital_id'])
+            rows_updated += 1
+        
+        # Add query history entry
+        await db.execute("""
+            INSERT INTO query_history (query_id, action, user_id, notes)
+            VALUES ($1, 'auto_repair_applied', 1, 'System auto-repaired vitals data')
+        """, query_id)
+        
+        # Update query status to 'responded' if it was open
+        if query['status'] == 'open':
+            await db.execute("""
+                UPDATE queries
+                SET status = 'responded',
+                    response_text = 'Auto-repair applied to vitals data',
+                    responded_by = 1,
+                    responded_at = NOW()
+                WHERE query_id = $1
+            """, query_id)
+        
+        return {
+            "message": "Repair applied successfully",
+            "rows_updated": rows_updated,
+            "query_status": "responded"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to repair data: {str(e)}")
+
 # ============================================================================
 # Form Definitions Endpoints
 # ============================================================================

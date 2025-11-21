@@ -22,8 +22,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
     { name: "Data Generation", port: 8002, status: "checking" },
     { name: "Analytics", port: 8003, status: "checking" },
     { name: "Security", port: 8005, status: "checking" },
-    { name: "EDC Service", port: 8004, status: "checking" },
-    { name: "Quality", port: 8006, status: "checking" },
+    { name: "EDC Service", port: 8001, status: "checking" },
+    { name: "Quality", port: 8004, status: "checking" },
   ]);
   const [savedDatasets, setSavedDatasets] = useState<any[]>([]);
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(false);

@@ -13,11 +13,11 @@ interface ServiceStatus {
 
 export function SystemCheck() {
   const [services, setServices] = useState<ServiceStatus[]>([
-    { name: "Data Generation", url: "http://localhost:8001", status: "checking" },
+    { name: "Data Generation", url: "http://localhost:8002", status: "checking" },
     { name: "Analytics", url: "http://localhost:8003", status: "checking" },
-    { name: "EDC", url: "http://localhost:8004", status: "checking" },
+    { name: "EDC", url: "http://localhost:8001", status: "checking" },
     { name: "Security", url: "http://localhost:8005", status: "checking" },
-    { name: "Quality", url: "http://localhost:8006", status: "checking" },
+    { name: "Quality", url: "http://localhost:8004", status: "checking" },
   ]);
 
   const checkServices = async () => {

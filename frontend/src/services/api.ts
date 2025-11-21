@@ -36,7 +36,7 @@ import type {
 // API Configuration
 // ============================================================================
 
-const DATA_GEN_SERVICE = import.meta.env.VITE_DATA_GEN_URL || "http://localhost:8001";
+const DATA_GEN_SERVICE = import.meta.env.VITE_DATA_GEN_URL || "http://localhost:8002";
 const ANALYTICS_SERVICE = import.meta.env.VITE_ANALYTICS_URL || "http://localhost:8003";
 const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8001";
 const SECURITY_SERVICE = import.meta.env.VITE_SECURITY_URL || "http://localhost:8005";
@@ -310,7 +310,7 @@ export const dataGenerationApi = {
         phase: params.phase || "Phase 3",
       }),
     });
-    const data = await handleResponse(response);
+    const data = await handleResponse<any[]>(response);
     // Return in expected format with metadata
     return {
       data,
@@ -334,7 +334,7 @@ export const dataGenerationApi = {
         use_duration: true,
       }),
     });
-    const data = await handleResponse(response);
+    const data = await handleResponse<any[]>(response);
     // Backend returns array directly, wrap it in expected format
     return {
       data,
@@ -357,7 +357,7 @@ export const dataGenerationApi = {
         phase: params.phase || "Phase 2",
       }),
     });
-    const data = await handleResponse(response);
+    const data = await handleResponse<any[]>(response);
     // Backend returns array directly, wrap it in expected format
     return {
       data,
@@ -526,6 +526,79 @@ export const dataGenerationApi = {
       headers: getAuthHeaders(),
     });
     return handleResponse(response);
+  },
+
+  // ============================================================================
+  // Planning Scenario Persistence
+  // ============================================================================
+
+  /**
+   * Save Planning Scenario
+   *
+   * Saves a trial planning scenario (feasibility assessment, what-if analysis, etc.)
+   * to the database for future reference and comparison.
+   *
+   * Use Cases:
+   * - Save feasibility assessment results for documentation
+   * - Store what-if scenario analyses for comparison
+   * - Archive planning decisions for regulatory submissions
+   * - Track trial design evolution over time
+   *
+   * @param scenarioName - Descriptive name (e.g., "Phase 2 Feasibility - 80% Power")
+   * @param scenarioData - Planning parameters and results (PlanningScenario object)
+   * @param metadata - Additional context (source, user notes, template used, etc.)
+   * @returns Promise with saved scenario ID and confirmation
+   */
+  async savePlanningScenario(scenarioName: string, scenarioData: any, metadata?: any): Promise<any> {
+    return this.saveGeneratedData(
+      scenarioName,
+      "planning_scenario",
+      [scenarioData], // Wrap in array for consistency with data persistence API
+      {
+        ...metadata,
+        saved_at: new Date().toISOString(),
+        scenario_type: scenarioData.source || "unknown"
+      }
+    );
+  },
+
+  /**
+   * Load Latest Planning Scenario
+   *
+   * Retrieves the most recently saved planning scenario from the database.
+   * Useful for quickly resuming work on the latest trial design.
+   *
+   * @returns Promise with latest planning scenario data
+   */
+  async loadLatestPlanningScenario(): Promise<any> {
+    return this.loadLatestData("planning_scenario");
+  },
+
+  /**
+   * List All Planning Scenarios
+   *
+   * Retrieves a list of all saved planning scenarios for selection and comparison.
+   * Enables users to browse planning history and load specific scenarios.
+   *
+   * @param limit - Maximum number of scenarios to return (default: 50)
+   * @param offset - Pagination offset (default: 0)
+   * @returns Promise with array of saved planning scenarios
+   */
+  async listPlanningScenarios(limit: number = 50, offset: number = 0): Promise<any> {
+    return this.listDatasets("planning_scenario", limit, offset);
+  },
+
+  /**
+   * Load Planning Scenario by ID
+   *
+   * Retrieves a specific planning scenario by its database ID.
+   * Used when user selects a scenario from the history/list.
+   *
+   * @param scenarioId - Database ID of the planning scenario
+   * @returns Promise with the specific planning scenario data
+   */
+  async loadPlanningScenarioById(scenarioId: number): Promise<any> {
+    return this.loadDataById(scenarioId);
   },
 };
 
@@ -1194,7 +1267,7 @@ export const qualityApi = {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        generation_method: method,
+        method_name: method,  // Changed from generation_method to method_name
         real_data: realData,
         synthetic_data: syntheticData
       }),
@@ -1319,7 +1392,7 @@ export const medicalImagingApi = {
       method: "GET",
       headers: getAuthHeaders(),
     });
-    const result = await handleResponse(response);
+    const result = await handleResponse<{ images?: any[] }>(response);
     return result.images || [];
   },
 

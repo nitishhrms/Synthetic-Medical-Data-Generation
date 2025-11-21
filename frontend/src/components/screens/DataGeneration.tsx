@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { useData } from "@/contexts/DataContext";
 import { Download, Loader2, AlertCircle, Activity, Users, FlaskConical, AlertTriangle, Database } from "lucide-react";
 
 export function DataGeneration() {
-  const { setGeneratedData, setPilotData } = useData();
+  const { setGeneratedData, setPilotData, planningScenario, setPlanningScenario } = useData();
 
   // Common state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -56,6 +56,52 @@ export function DataGeneration() {
 
   // Dataset Name state
   const [datasetName, setDatasetName] = useState("");
+
+  /**
+   * Auto-Fill Form from Planning Parameters
+   *
+   * This effect runs when the component mounts or when planningScenario changes.
+   * If a user clicked "Apply to Generation" from the Trial Planning screen,
+   * the planning parameters will be stored in DataContext and automatically
+   * pre-fill this form.
+   *
+   * Workflow:
+   * 1. User completes feasibility assessment in Planning screen
+   * 2. Clicks "Apply to Generation" → planningScenario saved to context
+   * 3. Navigates to this screen → useEffect detects planningScenario
+   * 4. Form fields auto-populate with recommended values
+   * 5. User can review and adjust before generating data
+   * 6. After use, we clear the planningScenario to prevent re-applying on next visit
+   */
+  useEffect(() => {
+    if (planningScenario) {
+      console.log("📋 Applying planning parameters to form:", planningScenario);
+
+      // Pre-fill form fields with planning scenario values
+      if (planningScenario.nPerArm) {
+        setNPerArm(planningScenario.nPerArm);
+      }
+      if (planningScenario.targetEffect) {
+        setTargetEffect(planningScenario.targetEffect);
+      }
+      if (planningScenario.dropoutRate) {
+        setDropoutRate(planningScenario.dropoutRate);
+      }
+
+      // Show notification to user that planning parameters were applied
+      const message = `✅ Planning parameters applied!\n` +
+        `• Sample size: ${planningScenario.nPerArm || 'N/A'} per arm\n` +
+        `• Target effect: ${planningScenario.targetEffect || 'N/A'} mmHg\n` +
+        `• Expected power: ${planningScenario.power ? (planningScenario.power * 100).toFixed(0) + '%' : 'N/A'}\n\n` +
+        `Review the parameters below and click "Generate Complete Study" when ready.`;
+
+      alert(message);
+
+      // Clear the planning scenario from context so it doesn't re-apply
+      // on subsequent visits to this screen
+      setPlanningScenario(null);
+    }
+  }, [planningScenario, setPlanningScenario]);
 
   const methods = [
     { id: "mvn", name: "MVN", speed: "~29K records/sec" },

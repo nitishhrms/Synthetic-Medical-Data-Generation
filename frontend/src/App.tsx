@@ -27,6 +27,17 @@ function AppContent() {
   const [activeScreen, setActiveScreen] = useState<Screen>("dashboard");
   const [showSystemCheck, setShowSystemCheck] = useState(false);
 
+  // State for passing data between screens
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [selectedQueryId, setSelectedQueryId] = useState<number | null>(null);
+
+  // Navigation handler with data
+  const navigateToDataEntry = (subjectId: string, queryId?: number) => {
+    setSelectedSubjectId(subjectId);
+    setSelectedQueryId(queryId || null);
+    setActiveScreen("data-entry");
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -57,6 +68,7 @@ function AppContent() {
         </div>
       );
     }
+
     return <Login onShowSystemCheck={() => setShowSystemCheck(true)} />;
   }
 
@@ -86,9 +98,9 @@ function AppContent() {
       case "medical-imaging":
         return <MedicalImaging />;
       case "queries":
-        return <Queries />;
+        return <Queries onNavigateToDataEntry={navigateToDataEntry} />;
       case "data-entry":
-        return <DataEntry />;
+        return <DataEntry selectedSubjectId={selectedSubjectId} selectedQueryId={selectedQueryId} />;
       case "ai-monitor":
         return <AIMedicalMonitor />;
       case "studies":

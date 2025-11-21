@@ -215,6 +215,7 @@ class SYNDATAMetrics:
         return {
             "by_column": coverage_results,
             "overall_score": round(overall_score, 3),
+            "by_variable": {col: c["coverage_score"] for col, c in coverage_results.items()},  # Frontend expects by_variable
             "interpretation": self._interpret_support_coverage(overall_score)
         }
 
@@ -272,6 +273,23 @@ class SYNDATAMetrics:
 
             results['treatment_x_bp_category'] = self._cross_classify_two_vars_df(
                 real_with_bp, synth_with_bp, 'TreatmentArm', 'BP_Category'
+            )
+        
+        # 3. Fallback: SystolicBP × DiastolicBP (Binned) - ALWAYS RUN if vitals exist
+        # This ensures we have a utility score even if categorical columns are missing
+        if 'SystolicBP' in self.real_data.columns and 'DiastolicBP' in self.real_data.columns:
+            # Bin both variables
+            real_sbp_cat = pd.cut(self.real_data['SystolicBP'], bins=3, labels=['Low', 'Medium', 'High'])
+            synth_sbp_cat = pd.cut(self.synthetic_data['SystolicBP'], bins=3, labels=['Low', 'Medium', 'High'])
+            
+            real_dbp_cat = pd.cut(self.real_data['DiastolicBP'], bins=3, labels=['Low', 'Medium', 'High'])
+            synth_dbp_cat = pd.cut(self.synthetic_data['DiastolicBP'], bins=3, labels=['Low', 'Medium', 'High'])
+            
+            real_binned = pd.DataFrame({'SBP_Group': real_sbp_cat, 'DBP_Group': real_dbp_cat})
+            synth_binned = pd.DataFrame({'SBP_Group': synth_sbp_cat, 'DBP_Group': synth_dbp_cat})
+            
+            results['sbp_x_dbp_binned'] = self._cross_classify_two_vars_df(
+                real_binned, synth_binned, 'SBP_Group', 'DBP_Group'
             )
 
         # Overall cross-classification score
@@ -361,21 +379,24 @@ class SYNDATAMetrics:
             real_vals = self.real_data[col].dropna()
             synth_vals = self.synthetic_data[col].dropna()
 
-            # Compute 95% CI from real data
+            # Compute 95% prediction interval from real data
+            # Use STANDARD DEVIATION (SD) not Standard Error (SE)
+            # SE is for confidence interval of the MEAN
+            # SD is for prediction interval where INDIVIDUAL VALUES fall
             real_mean = real_vals.mean()
-            real_se = real_vals.sem()  # Standard error of mean
-            ci_lower = real_mean - 1.96 * real_se
-            ci_upper = real_mean + 1.96 * real_se
+            real_std = real_vals.std()  # Use SD for individual predictions
+            ci_lower = real_mean - 1.96 * real_std
+            ci_upper = real_mean + 1.96 * real_std
 
             # Check how many synthetic values fall within CI
             within_ci = synth_vals.between(ci_lower, ci_upper)
             coverage_pct = (within_ci.sum() / len(synth_vals)) * 100 if len(synth_vals) > 0 else 0
 
             # Also compute 90% and 99% CIs for completeness
-            ci_90_lower = real_mean - 1.645 * real_se
-            ci_90_upper = real_mean + 1.645 * real_se
-            ci_99_lower = real_mean - 2.576 * real_se
-            ci_99_upper = real_mean + 2.576 * real_se
+            ci_90_lower = real_mean - 1.645 * real_std
+            ci_90_upper = real_mean + 1.645 * real_std
+            ci_99_lower = real_mean - 2.576 * real_std
+            ci_99_upper = real_mean + 2.576 * real_std
 
             coverage_90 = (synth_vals.between(ci_90_lower, ci_90_upper).sum() / len(synth_vals)) * 100
             coverage_99 = (synth_vals.between(ci_99_lower, ci_99_upper).sum() / len(synth_vals)) * 100
@@ -392,7 +413,7 @@ class SYNDATAMetrics:
 
             ci_results[col] = {
                 "real_mean": round(real_mean, 2),
-                "real_se": round(real_se, 2),
+                "real_std": round(real_std, 2),  # Changed from real_se to real_std
                 "ci_95": [round(ci_lower, 2), round(ci_upper, 2)],
                 "ci_90": [round(ci_90_lower, 2), round(ci_90_upper, 2)],
                 "ci_99": [round(ci_99_lower, 2), round(ci_99_upper, 2)],
@@ -416,7 +437,10 @@ class SYNDATAMetrics:
             "average_coverage_95": round(avg_coverage, 2),
             "cart_compliant_variables": cart_compliant,
             "cart_compliance_pct": round(cart_compliance_pct, 2),
-            "overall_score": round(safe_float(avg_coverage / 100, 0.0), 3),
+            "overall_coverage": round(safe_float(avg_coverage / 100, 0.0), 3),  # Frontend expects overall_coverage
+            "overall_score": round(safe_float(avg_coverage / 100, 0.0), 3),  # Keep for backwards compat
+            "by_variable": {col: c["coverage_95_pct"] / 100 for col, c in ci_results.items()},  # Frontend expects by_variable
+            "meets_cart_standard": cart_compliant > 0,
             "interpretation": self._interpret_ci_coverage(avg_coverage, cart_compliance_pct)
         }
 

@@ -510,12 +510,12 @@ export function AdverseEventsAnalytics() {
                             cx="50%"
                             cy="50%"
                             labelLine={false}
-                            label={(entry) => `${entry.soc}: ${entry.count}`}
+                            label={(entry: any) => `${entry.soc}: ${entry.count}`}
                             outerRadius={120}
                             fill="#8884d8"
                             dataKey="count"
                           >
-                            {socData.soc_distribution.map((entry: any, index: number) => (
+                            {socData.soc_distribution.map((_entry: any, index: number) => (
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>

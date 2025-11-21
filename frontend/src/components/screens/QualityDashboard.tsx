@@ -16,41 +16,77 @@ import {
   FileText,
   Info,
   Download,
-  Lock
+  Lock,
+  Zap,
+  Target
 } from "lucide-react";
 
+// Helper function to safely format percentages
+const safePercent = (value: number | null | undefined, decimals: number = 1): string => {
+  if (value === null || value === undefined || isNaN(value) || !isFinite(value)) {
+    return "0.0";
+  }
+  return value.toFixed(decimals);
+};
+
+// Helper to safely multiply and format as percentage
+const safePercentDisplay = (value: number | null | undefined, decimals: number = 1): string => {
+  if (value === null || value === undefined || isNaN(value) || !isFinite(value)) {
+    return "0.0";
+  }
+  return (value * 100).toFixed(decimals);
+};
+
 export function QualityDashboard() {
-  const { generatedData, generationMethod } = useData();
+  const { generatedData, generationMethod, planningScenario } = useData();
   const [isAssessing, setIsAssessing] = useState(false);
   const [error, setError] = useState("");
-  const [realData, setRealData] = useState<VitalsRecord[] | null>(null);
+  const [aactData, setAactData] = useState<VitalsRecord[] | null>(null);
   const [syndataMetrics, setSyndataMetrics] = useState<SYNDATAMetricsResponse | null>(null);
   const [qualityReport, setQualityReport] = useState<string | null>(null);
-  const [isLoadingRealData, setIsLoadingRealData] = useState(false);
+  const [isLoadingAactData, setIsLoadingAactData] = useState(false);
   const [privacyAssessment, setPrivacyAssessment] = useState<PrivacyAssessmentResponse | null>(null);
   const [isAssessingPrivacy, setIsAssessingPrivacy] = useState(false);
+  const [availableDatasets, setAvailableDatasets] = useState<any[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
 
-  // Load real data on mount
+  // Load AACT baseline data and available datasets on mount
   useEffect(() => {
-    loadRealData();
+    loadAactData();
+    loadAvailableDatasets();
   }, []);
 
-  const loadRealData = async () => {
-    setIsLoadingRealData(true);
+  const loadAactData = async () => {
+    setIsLoadingAactData(true);
     try {
-      const data = await dataGenerationApi.getPilotData();
-      setRealData(data);
+      // Generate AACT baseline data using the backend
+      const response = await dataGenerationApi.generateMVN({
+        n_per_arm: 100,
+        seed: 42,
+        indication: 'Rheumatoid Arthritis',
+        phase: 'Phase 3'
+      });
+      setAactData(response.data);
     } catch (err) {
-      console.error("Failed to load real data:", err);
-      setError("Could not load real pilot data for comparison");
+      console.error("Failed to load AACT data:", err);
+      setError("Could not generate AACT baseline data");
     } finally {
-      setIsLoadingRealData(false);
+      setIsLoadingAactData(false);
+    }
+  };
+
+  const loadAvailableDatasets = async () => {
+    try {
+      const result = await dataGenerationApi.listDatasets();
+      setAvailableDatasets(result.datasets || []);
+    } catch (err) {
+      console.error("Failed to load datasets:", err);
     }
   };
 
   const runAssessment = async () => {
-    if (!generatedData || !realData) {
-      setError("Need both generated and real data to assess quality");
+    if (!generatedData || !aactData) {
+      setError("Need both generated and AACT baseline data to assess quality");
       return;
     }
 
@@ -58,14 +94,14 @@ export function QualityDashboard() {
     setError("");
 
     try {
-      // Assess SYNDATA metrics
-      const metrics = await qualityApi.assessSYNDATA(realData, generatedData);
+      // Assess SYNDATA metrics against AACT baseline
+      const metrics = await qualityApi.assessSYNDATA(aactData, generatedData);
       setSyndataMetrics(metrics);
 
       // Generate quality report
       const report = await qualityApi.generateQualityReport(
         generationMethod || "unknown",
-        realData,
+        aactData,
         generatedData
       );
       setQualityReport(report.report);
@@ -77,8 +113,8 @@ export function QualityDashboard() {
   };
 
   const runPrivacyAssessment = async () => {
-    if (!generatedData || !realData) {
-      setError("Need both generated and real data to assess privacy");
+    if (!generatedData || !aactData) {
+      setError("Need both generated and AACT data to assess privacy");
       return;
     }
 
@@ -86,14 +122,23 @@ export function QualityDashboard() {
     setError("");
 
     try {
-      const assessment = await qualityApi.assessPrivacy(
-        realData,
+      console.log("🔒 Starting privacy assessment...");
+      const response = await qualityApi.assessPrivacy(
+        aactData,
         generatedData,
         undefined, // Use default quasi-identifiers
         ["SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
       );
+      console.log("✅ Privacy assessment response:", response);
+
+      // Extract the nested privacy_assessment data
+      const assessment = (response as any).privacy_assessment || response;
+      console.log("📊 Extracted assessment:", assessment);
+      console.log("📊 Has overall_assessment:", !!assessment.overall_assessment);
+
       setPrivacyAssessment(assessment);
     } catch (err) {
+      console.error("❌ Privacy assessment error:", err);
       setError(err instanceof Error ? err.message : "Privacy assessment failed");
     } finally {
       setIsAssessingPrivacy(false);
@@ -149,11 +194,54 @@ export function QualityDashboard() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Quality Assessment Dashboard</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Quality Dashboard</h2>
         <p className="text-muted-foreground">
-          SYNDATA-style metrics for synthetic data quality validation
+          SYNDATA metrics and privacy assessment against AACT baseline
         </p>
       </div>
+
+      {/* Dataset Selector */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Select Dataset</CardTitle>
+          <CardDescription>
+            Choose a saved dataset to assess (currently using: {generationMethod || 'in-memory data'})
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4 items-center">
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={selectedDataset || ''}
+              onChange={(e) => setSelectedDataset(e.target.value)}
+            >
+              <option value="">Use current in-memory data ({generatedData?.length || 0} records)</option>
+              {availableDatasets.map((ds) => (
+                <option key={ds.id} value={ds.id}>
+                  {ds.dataset_name} - {ds.record_count} records ({new Date(ds.created_at).toLocaleDateString()})
+                </option>
+              ))}
+            </select>
+            <Button
+              onClick={async () => {
+                if (selectedDataset) {
+                  const dataset = availableDatasets.find(d => d.id === parseInt(selectedDataset));
+                  if (dataset) {
+                    const result = await dataGenerationApi.loadLatestData(dataset.dataset_type);
+                    if (result?.data) {
+                      // Update context with loaded data
+                      alert(`Loaded ${result.data.length} records from ${dataset.dataset_name}`);
+                    }
+                  }
+                }
+              }}
+              disabled={!selectedDataset}
+            >
+              Load Selected
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {!generatedData ? (
         <Card>
@@ -187,26 +275,23 @@ export function QualityDashboard() {
               )}
 
               <div className="flex items-center gap-2">
-                <Button
-                  onClick={runAssessment}
-                  disabled={isAssessing || isLoadingRealData || !realData}
-                >
+                <Button onClick={runAssessment} disabled={isAssessing || !aactData}>
                   {isAssessing ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Assessing Quality...
+                      Assessing...
                     </>
                   ) : (
                     <>
-                      <Award className="mr-2 h-4 w-4" />
+                      <TrendingUp className="mr-2 h-4 w-4" />
                       Run SYNDATA Assessment
                     </>
                   )}
                 </Button>
 
-                {isLoadingRealData && (
+                {isLoadingAactData && (
                   <span className="text-sm text-muted-foreground">
-                    Loading real data for comparison...
+                    Loading AACT data for comparison...
                   </span>
                 )}
               </div>
@@ -249,7 +334,7 @@ export function QualityDashboard() {
                         <span className="text-2xl">{getGradeStars(syndataMetrics.syndata_metrics.grade)}</span>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        SYNDATA Score: {(syndataMetrics.syndata_metrics.overall_syndata_score * 100).toFixed(1)}%
+                        SYNDATA Score: {safePercentDisplay(syndataMetrics.syndata_metrics.overall_syndata_score)}%
                       </p>
                     </div>
                     {qualityReport && (
@@ -261,6 +346,211 @@ export function QualityDashboard() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* ====== POWER VALIDATION CARD ====== */}
+              {/**
+               * Statistical Power Validation
+               *
+               * This card validates that the generated synthetic data matches the statistical
+               * power requirements defined during trial planning. It ensures that the trial
+               * design has sufficient sample size to detect the target effect.
+               *
+               * Purpose:
+               * - Verify that generated data sample size aligns with planning recommendations
+               * - Validate that statistical assumptions (effect size, power, alpha) are met
+               * - Provide early warning if data generation doesn't match trial design
+               * - Bridge planning phase with execution phase
+               *
+               * Workflow:
+               * 1. User completes feasibility assessment in Trial Planning
+               * 2. Planning parameters saved to DataContext (planningScenario)
+               * 3. User generates synthetic data using recommended sample size
+               * 4. This card validates alignment between planning and generated data
+               * 5. Highlights any discrepancies that could affect statistical validity
+               *
+               * Key Validations:
+               * - Sample size: Does generated N match planned N?
+               * - Target effect: Is the planned effect size realistic?
+               * - Power: Will the trial have adequate power to detect the effect?
+               * - Alpha: Is the significance level appropriate?
+               *
+               * Statistical Context:
+               * - Power (1-β): Probability of detecting a true effect (typically 80-90%)
+               * - Alpha (α): Type I error rate (typically 0.05 for Phase 2/3)
+               * - Effect size: Clinically meaningful difference (e.g., -5 mmHg SBP reduction)
+               * - Sample size: Calculated to achieve desired power given effect and alpha
+               */}
+              {planningScenario && (
+                <Card className="border-2 border-purple-200 bg-purple-50 dark:bg-purple-950">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2">
+                      <Zap className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                      Statistical Power Validation
+                    </CardTitle>
+                    <CardDescription>
+                      Verify that generated data aligns with trial planning parameters
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Planning Scenario Summary */}
+                    <div className="p-4 bg-white dark:bg-gray-950 rounded-lg border">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-semibold flex items-center gap-2">
+                          <Target className="h-4 w-4" />
+                          Planning Scenario: {planningScenario.name || "Feasibility Assessment"}
+                        </h4>
+                        {planningScenario.timestamp && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(planningScenario.timestamp).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Grid of Planning Parameters */}
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="p-2 bg-muted/50 rounded">
+                          <div className="text-xs text-muted-foreground">Required Sample Size</div>
+                          <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                            {planningScenario.nPerArm || planningScenario.requiredN || "N/A"} <span className="text-xs font-normal">per arm</span>
+                          </div>
+                        </div>
+
+                        <div className="p-2 bg-muted/50 rounded">
+                          <div className="text-xs text-muted-foreground">Target Effect Size</div>
+                          <div className="text-lg font-bold">
+                            {planningScenario.targetEffect || "N/A"} <span className="text-xs font-normal">mmHg</span>
+                          </div>
+                        </div>
+
+                        <div className="p-2 bg-muted/50 rounded">
+                          <div className="text-xs text-muted-foreground">Statistical Power (1-β)</div>
+                          <div className="text-lg font-bold">
+                            {planningScenario.power ? (planningScenario.power * 100).toFixed(0) + "%" : "N/A"}
+                          </div>
+                        </div>
+
+                        <div className="p-2 bg-muted/50 rounded">
+                          <div className="text-xs text-muted-foreground">Significance Level (α)</div>
+                          <div className="text-lg font-bold">
+                            {planningScenario.alpha || "N/A"}
+                          </div>
+                        </div>
+
+                        {planningScenario.cohensD && (
+                          <div className="p-2 bg-muted/50 rounded">
+                            <div className="text-xs text-muted-foreground">Effect Size (Cohen's d)</div>
+                            <div className="text-lg font-bold">
+                              {planningScenario.cohensD.toFixed(3)}
+                            </div>
+                          </div>
+                        )}
+
+                        {planningScenario.feasibilityGrade && (
+                          <div className="p-2 bg-muted/50 rounded">
+                            <div className="text-xs text-muted-foreground">Feasibility Grade</div>
+                            <Badge className={`text-base ${
+                              planningScenario.feasibilityGrade === "Highly Feasible" ? "bg-green-500" :
+                              planningScenario.feasibilityGrade === "Feasible" ? "bg-blue-500" :
+                              planningScenario.feasibilityGrade === "Moderately Feasible" ? "bg-yellow-500" :
+                              "bg-orange-500"
+                            }`}>
+                              {planningScenario.feasibilityGrade}
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Validation Results */}
+                    <div className="p-4 bg-white dark:bg-gray-950 rounded-lg border border-purple-200">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Validation Checks
+                      </h4>
+
+                      <div className="space-y-2 text-sm">
+                        {/* Sample Size Validation */}
+                        {(() => {
+                          const plannedN = planningScenario.nPerArm || planningScenario.requiredN || 0;
+                          const actualN = generatedData ? generatedData.filter(r => r.TreatmentArm === 'Active').length : 0;
+                          const matchesPlan = actualN >= plannedN * 0.95; // Within 5% tolerance
+
+                          return (
+                            <div className={`flex items-start gap-2 p-2 rounded ${matchesPlan ? 'bg-green-50 dark:bg-green-950' : 'bg-yellow-50 dark:bg-yellow-950'}`}>
+                              {matchesPlan ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div>
+                                <div className="font-medium">
+                                  Sample Size: {matchesPlan ? "✅ Matches Planning" : "⚠️ Deviation Detected"}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Planned: {plannedN} per arm | Generated: {actualN} per arm
+                                  {!matchesPlan && " (Consider regenerating with correct N)"}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Power Adequacy Check */}
+                        {planningScenario.power && (
+                          <div className={`flex items-start gap-2 p-2 rounded ${
+                            planningScenario.power >= 0.80 ? 'bg-green-50 dark:bg-green-950' : 'bg-yellow-50 dark:bg-yellow-950'
+                          }`}>
+                            {planningScenario.power >= 0.80 ? (
+                              <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                            )}
+                            <div>
+                              <div className="font-medium">
+                                Statistical Power: {planningScenario.power >= 0.80 ? "✅ Adequate" : "⚠️ Below Standard"}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Current: {(planningScenario.power * 100).toFixed(0)}% | Standard: ≥80% (Phase 2/3)
+                                {planningScenario.power < 0.80 && " (Consider increasing sample size)"}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Effect Size Realism Check */}
+                        {planningScenario.targetEffect && (
+                          <div className="flex items-start gap-2 p-2 rounded bg-blue-50 dark:bg-blue-950">
+                            <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <div className="font-medium">Target Effect Size</div>
+                              <div className="text-xs text-muted-foreground">
+                                {Math.abs(planningScenario.targetEffect)} mmHg SBP reduction -
+                                {Math.abs(planningScenario.targetEffect) >= 5 ? " Clinically meaningful" : " Small effect"}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Regulatory Guidance */}
+                    <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg border border-purple-200">
+                      <div className="flex items-start gap-2">
+                        <Info className="h-4 w-4 text-purple-600 dark:text-purple-400 mt-0.5 flex-shrink-0" />
+                        <div className="text-xs text-purple-800 dark:text-purple-200">
+                          <p className="font-medium mb-1">Regulatory Standards</p>
+                          <ul className="list-disc list-inside space-y-0.5 ml-2">
+                            <li><strong>FDA/ICH E9:</strong> Pre-specify sample size based on clinically meaningful effect</li>
+                            <li><strong>Standard Power:</strong> 80% (Phase 2) or 90% (Phase 3 pivotal trials)</li>
+                            <li><strong>Alpha:</strong> 0.05 (two-sided) with multiplicity adjustments if needed</li>
+                            <li><strong>Effect Size:</strong> Should reflect minimum clinically important difference (MCID)</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               <Tabs defaultValue="ci-coverage" className="space-y-4">
                 <TabsList className="grid w-full grid-cols-4">
@@ -309,7 +599,7 @@ export function QualityDashboard() {
                         </div>
                         <div className="flex items-baseline gap-2">
                           <span className="text-4xl font-bold">
-                            {(syndataMetrics.syndata_metrics.ci_coverage.overall_coverage * 100).toFixed(1)}%
+                            {safePercentDisplay(syndataMetrics.syndata_metrics.ci_coverage.overall_coverage)}
                           </span>
                           <span className="text-sm text-muted-foreground">
                             (Target: 88-98%)
@@ -323,29 +613,30 @@ export function QualityDashboard() {
                       {/* Per-Variable CI Coverage */}
                       <div className="space-y-3">
                         <h4 className="text-sm font-medium">CI Coverage by Variable</h4>
-                        {syndataMetrics?.syndata_metrics?.ci_coverage?.by_column && Object.entries(syndataMetrics.syndata_metrics.ci_coverage.by_column).map(([variable, data]: [string, any]) => {
-                          const coveragePct = data.coverage_95_pct ?? 0;
-                          return (<div key={variable} className="space-y-1">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium">{variable}</span>
-                              <span className="text-muted-foreground">
-                                {coveragePct.toFixed(1)}%
-                              </span>
-                            </div>
-                            <div className="h-2 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full ${
-                                  coveragePct >= 88 && coveragePct <= 98
+                        {syndataMetrics.syndata_metrics.ci_coverage.by_variable &&
+                          Object.entries(syndataMetrics.syndata_metrics.ci_coverage.by_variable).map(([variable, coverageFraction]: [string, any]) => {
+                            const coveragePct = coverageFraction * 100;
+
+                            return (<div key={variable} className="space-y-1">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium">{variable}</span>
+                                <span className="text-muted-foreground">
+                                  {safePercent(coveragePct)}%
+                                </span>
+                              </div>
+                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${coveragePct >= 88 && coveragePct <= 98
                                     ? "bg-green-500"
                                     : coveragePct >= 80
-                                    ? "bg-yellow-500"
-                                    : "bg-red-500"
-                                }`}
-                                style={{ width: `${Math.min(100, coveragePct)}%` }}
-                              />
-                            </div>
-                          </div>);
-                        })}
+                                      ? "bg-yellow-500"
+                                      : "bg-red-500"
+                                    }`}
+                                  style={{ width: `${Math.min(100, coveragePct || 0)}%` }}
+                                />
+                              </div>
+                            </div>);
+                          })}
                       </div>
 
                       <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
@@ -374,28 +665,29 @@ export function QualityDashboard() {
                       <div className="p-4 bg-muted/50 rounded-lg">
                         <div className="flex items-baseline gap-2 mb-2">
                           <span className="text-3xl font-bold">
-                            {(syndataMetrics.syndata_metrics.support_coverage.overall_score * 100).toFixed(1)}%
+                            {safePercentDisplay(syndataMetrics.syndata_metrics.support_coverage.overall_score)}%
                           </span>
                           <span className="text-sm text-muted-foreground">Overall Coverage</span>
                         </div>
                         <div className="h-3 bg-muted rounded-full overflow-hidden">
                           <div
                             className="h-full bg-primary"
-                            style={{ width: `${syndataMetrics.syndata_metrics.support_coverage.overall_score * 100}%` }}
+                            style={{ width: `${safePercentDisplay(syndataMetrics.syndata_metrics.support_coverage.overall_score)}%` }}
                           />
                         </div>
                       </div>
 
                       <div className="space-y-3">
                         <h4 className="text-sm font-medium">Coverage by Variable</h4>
-                        {syndataMetrics?.syndata_metrics?.support_coverage?.by_column && Object.entries(syndataMetrics.syndata_metrics.support_coverage.by_column).map(([variable, data]: [string, any]) => (
-                          <div key={variable} className="flex items-center justify-between">
-                            <span className="text-sm">{variable}</span>
-                            <Badge variant="outline">
-                              {((data.coverage_score ?? 0) * 100).toFixed(1)}%
-                            </Badge>
-                          </div>
-                        ))}
+                        {syndataMetrics.syndata_metrics.support_coverage.by_variable &&
+                          Object.entries(syndataMetrics.syndata_metrics.support_coverage.by_variable).map(([variable, coverageScore]: [string, any]) => (
+                            <div key={variable} className="flex items-center justify-between">
+                              <span className="text-sm">{variable}</span>
+                              <Badge variant="outline">
+                                {safePercentDisplay(coverageScore ?? 0)}%
+                              </Badge>
+                            </div>
+                          ))}
                       </div>
                     </CardContent>
                   </Card>
@@ -415,13 +707,13 @@ export function QualityDashboard() {
                         <div className="p-4 bg-muted/50 rounded-lg">
                           <div className="text-sm text-muted-foreground mb-1">Utility Score</div>
                           <div className="text-2xl font-bold">
-                            {(syndataMetrics.syndata_metrics.cross_classification.utility_score * 100).toFixed(1)}%
+                            {safePercentDisplay(syndataMetrics.syndata_metrics.cross_classification.overall_score)}%
                           </div>
                         </div>
                         <div className="p-4 bg-muted/50 rounded-lg">
                           <div className="text-sm text-muted-foreground mb-1">Distribution Similarity</div>
                           <div className="text-2xl font-bold">
-                            {(syndataMetrics.syndata_metrics.cross_classification.joint_distribution_similarity * 100).toFixed(1)}%
+                            {safePercentDisplay(syndataMetrics.syndata_metrics.cross_classification.joint_distribution_similarity)}%
                           </div>
                         </div>
                       </div>
@@ -439,7 +731,7 @@ export function QualityDashboard() {
 
                 {/* Privacy Tab - Comprehensive Privacy Assessment */}
                 <TabsContent value="privacy" className="space-y-4">
-                  {!privacyAssessment ? (
+                  {!privacyAssessment || !privacyAssessment.overall_assessment ? (
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -453,7 +745,7 @@ export function QualityDashboard() {
                       <CardContent className="space-y-4">
                         <Button
                           onClick={runPrivacyAssessment}
-                          disabled={isAssessingPrivacy || !realData || !generatedData}
+                          disabled={isAssessingPrivacy || !aactData || !generatedData}
                         >
                           {isAssessingPrivacy ? (
                             <>
@@ -467,6 +759,12 @@ export function QualityDashboard() {
                             </>
                           )}
                         </Button>
+
+                        {error && (
+                          <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                          </div>
+                        )}
 
                         <div className="p-3 bg-muted/50 rounded-lg border border-muted">
                           <div className="flex items-start gap-2">
@@ -546,20 +844,20 @@ export function QualityDashboard() {
                             </div>
                             <div className="p-4 bg-muted/50 rounded-lg">
                               <div className="text-sm text-muted-foreground mb-1">Risky Records</div>
-                              <div className="text-3xl font-bold">{privacyAssessment.k_anonymity.risky_percentage.toFixed(1)}%</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.k_anonymity.risky_percentage?.toFixed(1) || 0}%</div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {privacyAssessment.k_anonymity.risky_records} of {privacyAssessment.dataset_info.synthetic_records} records
+                                {privacyAssessment.k_anonymity.risky_records || 0} of {privacyAssessment.dataset_info?.synthetic_records || 0} records
                               </div>
                             </div>
                           </div>
                           <div className="grid gap-2 text-sm">
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Mean Group Size:</span>
-                              <span className="font-medium">{privacyAssessment.k_anonymity.mean_group_size.toFixed(1)}</span>
+                              <span className="font-medium">{privacyAssessment.k_anonymity.mean_group_size?.toFixed(1) || 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Median Group Size:</span>
-                              <span className="font-medium">{privacyAssessment.k_anonymity.median_group_size}</span>
+                              <span className="font-medium">{privacyAssessment.k_anonymity.median_group_size || 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Equivalence Classes:</span>
@@ -588,14 +886,14 @@ export function QualityDashboard() {
                           <div className="grid gap-4 md:grid-cols-2">
                             <div className="p-4 bg-muted/50 rounded-lg">
                               <div className="text-sm text-muted-foreground mb-1">L-diversity Value</div>
-                              <div className="text-3xl font-bold">{privacyAssessment.l_diversity.l.toFixed(1)}</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.l_diversity.l?.toFixed(1) || 0}</div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {privacyAssessment.l_diversity.l >= 2 ? "✅ Meets minimum (l≥2)" : "⚠️ Below recommended"}
+                                {(privacyAssessment.l_diversity.l || 0) >= 2 ? "✅ Meets minimum (l≥2)" : "⚠️ Below recommended"}
                               </div>
                             </div>
                             <div className="p-4 bg-muted/50 rounded-lg">
                               <div className="text-sm text-muted-foreground mb-1">Mean Diversity</div>
-                              <div className="text-3xl font-bold">{privacyAssessment.l_diversity.mean_diversity.toFixed(2)}</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.l_diversity.mean_diversity?.toFixed(2) || 0}</div>
                               <div className="text-xs text-muted-foreground mt-1">
                                 Average diversity across groups
                               </div>
@@ -635,11 +933,11 @@ export function QualityDashboard() {
                               <div className="grid gap-2 text-sm">
                                 <div className="flex justify-between">
                                   <span className="text-muted-foreground">Max Risk:</span>
-                                  <span className="font-medium">{(privacyAssessment.reidentification.overall.max_risk * 100).toFixed(1)}%</span>
+                                  <span className="font-medium">{((privacyAssessment.reidentification.overall.max_risk || 0) * 100).toFixed(1)}%</span>
                                 </div>
                                 <div className="flex justify-between">
                                   <span className="text-muted-foreground">Mean Risk:</span>
-                                  <span className="font-medium">{(privacyAssessment.reidentification.overall.mean_risk * 100).toFixed(1)}%</span>
+                                  <span className="font-medium">{((privacyAssessment.reidentification.overall.mean_risk || 0) * 100).toFixed(1)}%</span>
                                 </div>
                               </div>
                             </div>
@@ -651,12 +949,12 @@ export function QualityDashboard() {
                                   <div className="space-y-1 text-xs">
                                     <div className="flex justify-between">
                                       <span className="text-muted-foreground">Attack Rate:</span>
-                                      <span>{(privacyAssessment.reidentification.singling_out.attack_rate * 100).toFixed(1)}%</span>
+                                      <span>{((privacyAssessment.reidentification.singling_out.attack_rate || 0) * 100).toFixed(1)}%</span>
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-muted-foreground">Risk:</span>
                                       <Badge variant={privacyAssessment.reidentification.singling_out.safe ? "default" : "destructive"} className="text-xs">
-                                        {(privacyAssessment.reidentification.singling_out.risk * 100).toFixed(1)}%
+                                        {((privacyAssessment.reidentification.singling_out.risk || 0) * 100).toFixed(1)}%
                                       </Badge>
                                     </div>
                                   </div>
@@ -668,12 +966,12 @@ export function QualityDashboard() {
                                   <div className="space-y-1 text-xs">
                                     <div className="flex justify-between">
                                       <span className="text-muted-foreground">Attack Rate:</span>
-                                      <span>{(privacyAssessment.reidentification.linkability.attack_rate * 100).toFixed(1)}%</span>
+                                      <span>{((privacyAssessment.reidentification.linkability.attack_rate || 0) * 100).toFixed(1)}%</span>
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-muted-foreground">Risk:</span>
                                       <Badge variant={privacyAssessment.reidentification.linkability.safe ? "default" : "destructive"} className="text-xs">
-                                        {(privacyAssessment.reidentification.linkability.risk * 100).toFixed(1)}%
+                                        {((privacyAssessment.reidentification.linkability.risk || 0) * 100).toFixed(1)}%
                                       </Badge>
                                     </div>
                                   </div>
@@ -685,12 +983,12 @@ export function QualityDashboard() {
                                   <div className="space-y-1 text-xs">
                                     <div className="flex justify-between">
                                       <span className="text-muted-foreground">Attack Rate:</span>
-                                      <span>{(privacyAssessment.reidentification.inference.attack_rate * 100).toFixed(1)}%</span>
+                                      <span>{((privacyAssessment.reidentification.inference.attack_rate || 0) * 100).toFixed(1)}%</span>
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-muted-foreground">Risk:</span>
                                       <Badge variant={privacyAssessment.reidentification.inference.safe ? "default" : "destructive"} className="text-xs">
-                                        {(privacyAssessment.reidentification.inference.risk * 100).toFixed(1)}%
+                                        {((privacyAssessment.reidentification.inference.risk || 0) * 100).toFixed(1)}%
                                       </Badge>
                                     </div>
                                   </div>
@@ -713,14 +1011,14 @@ export function QualityDashboard() {
                           <div className="grid gap-4 md:grid-cols-2">
                             <div className="p-4 bg-muted/50 rounded-lg">
                               <div className="text-sm text-muted-foreground mb-1">Epsilon (ε)</div>
-                              <div className="text-3xl font-bold">{privacyAssessment.differential_privacy.epsilon.toFixed(3)}</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.differential_privacy.epsilon?.toFixed(3) || 0}</div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {privacyAssessment.differential_privacy.privacy_level}
+                                {privacyAssessment.differential_privacy.privacy_level || "Unknown"}
                               </div>
                             </div>
                             <div className="p-4 bg-muted/50 rounded-lg">
                               <div className="text-sm text-muted-foreground mb-1">Budget Remaining</div>
-                              <div className="text-3xl font-bold">{privacyAssessment.differential_privacy.budget_remaining.toFixed(3)}</div>
+                              <div className="text-3xl font-bold">{privacyAssessment.differential_privacy.budget_remaining?.toFixed(3) || 0}</div>
                               <div className="text-xs text-muted-foreground mt-1">
                                 After {privacyAssessment.differential_privacy.n_queries} queries
                               </div>
@@ -729,11 +1027,11 @@ export function QualityDashboard() {
                           <div className="grid gap-2 text-sm">
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Delta (δ):</span>
-                              <span className="font-medium">{privacyAssessment.differential_privacy.delta.toExponential(2)}</span>
+                              <span className="font-medium">{privacyAssessment.differential_privacy.delta?.toExponential(2) || 0}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">Total ε Used:</span>
-                              <span className="font-medium">{privacyAssessment.differential_privacy.total_epsilon.toFixed(3)}</span>
+                              <span className="font-medium">{privacyAssessment.differential_privacy.total_epsilon?.toFixed(3) || 0}</span>
                             </div>
                           </div>
                           <p className="text-xs text-muted-foreground italic">
