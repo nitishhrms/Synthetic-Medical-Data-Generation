@@ -84,3 +84,23 @@ tmp/
 temp/
 *.tmp
 nul 
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+tfplan
+tfplan-*
+terraform.exe
+*.exe
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc

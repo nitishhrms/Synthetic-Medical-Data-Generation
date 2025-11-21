@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: clinical-trials
+  labels:
+    app: analytics-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: analytics-service
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+        tier: backend
+    spec:
+      containers:
+      - name: analytics-service
+        image: 432180555044.dkr.ecr.us-east-1.amazonaws.com/clinical-trials/analytics-service:latest
+        ports:
+        - containerPort: 8003
+          name: http
+        env:
+        - name: PORT
+          value: "8003"
+        envFrom:
+        - configMapRef:
+            name: clinical-config
+        - secretRef:
+            name: clinical-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: clinical-trials
+  labels:
+    app: analytics-service
+spec:
+  type: ClusterIP
+  selector:
+    app: analytics-service
+  ports:
+  - port: 8003
+    targetPort: 8003
+    protocol: TCP
+    name: http

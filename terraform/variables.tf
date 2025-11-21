@@ -44,3 +44,29 @@ variable "tags" {
     Repository  = "synthetictrial-enterprise"
   }
 }
+
+# ========== EKS VARIABLES ==========
+
+variable "eks_node_instance_type" {
+  description = "EC2 instance type for EKS nodes"
+  type        = string
+  default     = "t3.medium"  # 2 vCPU, 4GB RAM - good for staging
+}
+
+variable "eks_desired_nodes" {
+  description = "Desired number of EKS worker nodes"
+  type        = number
+  default     = 2  # Start small for staging
+}
+
+variable "eks_min_nodes" {
+  description = "Minimum number of EKS worker nodes"
+  type        = number
+  default     = 1
+}
+
+variable "eks_max_nodes" {
+  description = "Maximum number of EKS worker nodes"
+  type        = number
+  default     = 5  # Allow scaling up for load testing
+}

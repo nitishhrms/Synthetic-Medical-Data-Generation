@@ -16,7 +16,12 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
+  region  = var.aws_region
+  profile = "terraform-developer"  # Use the profile from AWS credentials
+
+  default_tags {
+    tags = var.tags
+  }
 }
 
 # ========== DATA SOURCES ==========
@@ -183,7 +188,7 @@ resource "aws_db_instance" "postgres" {
   identifier = "clinical-trials-db"
 
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15"
   instance_class = var.db_instance_class
 
   allocated_storage     = 100
@@ -197,7 +202,7 @@ resource "aws_db_instance" "postgres" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
 
-  backup_retention_period = 7
+  backup_retention_period = 1  # Free tier supports 0-7, using 1 for safety
   backup_window          = "03:00-04:00"
   maintenance_window     = "sun:04:00-sun:05:00"
 
@@ -253,8 +258,8 @@ resource "aws_security_group" "redis" {
 
 # ElastiCache Redis
 resource "aws_elasticache_replication_group" "redis" {
-  replication_group_id       = "clinical-redis"
-  replication_group_description = "Redis cache for clinical trials"
+  replication_group_id = "clinical-redis"
+  description          = "Redis cache for clinical trials"
 
   engine               = "redis"
   node_type            = var.redis_node_type

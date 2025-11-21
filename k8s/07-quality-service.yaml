@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quality-service
+  namespace: clinical-trials
+  labels:
+    app: quality-service
+    tier: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: quality-service
+  template:
+    metadata:
+      labels:
+        app: quality-service
+        tier: backend
+    spec:
+      containers:
+      - name: quality-service
+        image: 432180555044.dkr.ecr.us-east-1.amazonaws.com/clinical-trials/quality-service:latest
+        ports:
+        - containerPort: 8004
+          name: http
+        env:
+        - name: PORT
+          value: "8004"
+        envFrom:
+        - configMapRef:
+            name: clinical-config
+        - secretRef:
+            name: clinical-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quality-service
+  namespace: clinical-trials
+  labels:
+    app: quality-service
+spec:
+  type: ClusterIP
+  selector:
+    app: quality-service
+  ports:
+  - port: 8004
+    targetPort: 8004
+    protocol: TCP
+    name: http
