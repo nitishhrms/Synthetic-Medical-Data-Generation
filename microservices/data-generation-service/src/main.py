@@ -2587,6 +2587,18 @@ async def save_generated_data(request: SaveDataRequest):
             metadata=request.metadata
         )
         return {"success": True, "id": dataset_id, "message": "Data saved successfully"}
+    except RuntimeError as e:
+        # Database not connected - return warning but don't fail
+        if "Database not connected" in str(e):
+            return {
+                "success": False, 
+                "id": None, 
+                "message": "Data not saved (database not configured). Data is available in memory for this session."
+            }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save data: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2604,6 +2616,14 @@ async def load_latest_data(dataset_type: str):
                 detail=f"No data found for type: {dataset_type}"
             )
         return dataset
+    except RuntimeError as e:
+        # Database not connected - return helpful message
+        if "Database not connected" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No persisted data available (database not configured). Please generate new data."
+            )
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -2642,6 +2662,20 @@ async def list_datasets(dataset_type: Optional[str] = None, limit: int = 50, off
             "limit": limit,
             "offset": offset
         }
+    except RuntimeError as e:
+        # Database not connected - return empty list
+        if "Database not connected" in str(e):
+            return {
+                "datasets": [],
+                "count": 0,
+                "limit": limit,
+                "offset": offset,
+                "message": "No persisted data available (database not configured)"
+            }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list datasets: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2650,4 +2684,4 @@ async def list_datasets(dataset_type: Optional[str] = None, limit: int = 50, off
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -1,7 +1,25 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(python quick_patch.py:*)",
+      "Bash(python:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker:*)",
+      "Bash(start /B python -m uvicorn:*)",
+      "Bash(tee:*)",
+      "Bash(timeout:*)",
+      "Bash(nul)",
+      "Bash(curl:*)",
+      "Bash(ping:*)",
+      "Bash(echo:*)",
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(find:*)",
+      "Bash(taskkill:*)",
+      "Bash(cat:*)",
+      "Bash(docker-compose build:*)"
     ],
     "deny": [],
     "ask": []

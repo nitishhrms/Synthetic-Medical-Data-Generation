@@ -1387,69 +1387,11 @@
             "median_months": 4.0,
             "mean_months": 13.202279202279202,
             "n_studies": 351
-          },
-          "age": {
-            "median_years": 58.0,
-            "mean_years": 59.5,
-            "n_studies": 482
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 52.0,
-            "female_percentage": 48.0,
-            "n_studies": 482
           }
         },
         "Phase 2": {
           "actual_duration": {
             "n_studies": 667
-          },
-          "age": {
-            "median_years": 58.0,
-            "mean_years": 59.5,
-            "n_studies": 684
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 52.0,
-            "female_percentage": 48.0,
-            "n_studies": 684
-          }
-        },
-        "Phase 3": {
-          "age": {
-            "median_years": 58.0,
-            "mean_years": 59.5,
-            "n_studies": 1025
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 52.0,
-            "female_percentage": 48.0,
-            "n_studies": 1025
-          },
-          "actual_duration": {
-            "median_months": 24.0,
-            "mean_months": 26.5,
-            "n_studies": 1025
-          }
-        },
-        "Phase 4": {
-          "age": {
-            "median_years": 58.0,
-            "mean_years": 59.5,
-            "n_studies": 1018
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 52.0,
-            "female_percentage": 48.0,
-            "n_studies": 1018
-          },
-          "actual_duration": {
-            "median_months": 24.0,
-            "mean_months": 26.5,
-            "n_studies": 1018
           }
         }
       },
@@ -2155,51 +2097,6 @@
       },
       "baseline_characteristics": {
         "Phase 3": {
-          "Age": {
-            "<65": 0.62,
-            ">=65": 0.38
-          },
-          "Disease Severity": {
-            "Stage 1": 0.35,
-            "Stage 2": 0.5,
-            "Stage 3": 0.15
-          },
-          "Prior Treatment": {
-            "Treatment Naive": 0.25,
-            "Previously Treated": 0.75
-          }
-        },
-        "Phase 1": {
-          "Age": {
-            "<65": 0.62,
-            ">=65": 0.38
-          },
-          "Disease Severity": {
-            "Stage 1": 0.35,
-            "Stage 2": 0.5,
-            "Stage 3": 0.15
-          },
-          "Prior Treatment": {
-            "Treatment Naive": 0.25,
-            "Previously Treated": 0.75
-          }
-        },
-        "Phase 2": {
-          "Age": {
-            "<65": 0.62,
-            ">=65": 0.38
-          },
-          "Disease Severity": {
-            "Stage 1": 0.35,
-            "Stage 2": 0.5,
-            "Stage 3": 0.15
-          },
-          "Prior Treatment": {
-            "Treatment Naive": 0.25,
-            "Previously Treated": 0.75
-          }
-        },
-        "Phase 4": {
           "Age": {
             "<65": 0.62,
             ">=65": 0.38
@@ -3592,17 +3489,6 @@
             "median_months": 6.0,
             "mean_months": 11.288079470198676,
             "n_studies": 1208
-          },
-          "age": {
-            "median_years": 56.0,
-            "mean_years": 57.8,
-            "n_studies": 1713
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 54.0,
-            "female_percentage": 46.0,
-            "n_studies": 1713
           }
         },
         "Phase 2": {
@@ -3610,17 +3496,6 @@
             "median_months": 15.0,
             "mean_months": 23.367617107942973,
             "n_studies": 982
-          },
-          "age": {
-            "median_years": 56.0,
-            "mean_years": 57.8,
-            "n_studies": 1455
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 54.0,
-            "female_percentage": 46.0,
-            "n_studies": 1455
           }
         },
         "Phase 3": {
@@ -3628,17 +3503,6 @@
             "median_months": 19.0,
             "mean_months": 24.91350964974982,
             "n_studies": 1399
-          },
-          "age": {
-            "median_years": 56.0,
-            "mean_years": 57.8,
-            "n_studies": 2020
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 54.0,
-            "female_percentage": 46.0,
-            "n_studies": 2020
           }
         },
         "Phase 4": {
@@ -3646,17 +3510,6 @@
             "median_months": 22.0,
             "mean_months": 26.45870809484873,
             "n_studies": 1223
-          },
-          "age": {
-            "median_years": 56.0,
-            "mean_years": 57.8,
-            "n_studies": 1916
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 54.0,
-            "female_percentage": 46.0,
-            "n_studies": 1916
           }
         }
       },
@@ -4359,72 +4212,6 @@
             "percentage": 0.020485175202156335
           }
         ]
-      },
-      "baseline_characteristics": {
-        "Phase 1": {
-          "Age": {
-            "<65": 0.68,
-            ">=65": 0.32
-          },
-          "HbA1c Level": {
-            "<7.5%": 0.3,
-            "7.5-9.0%": 0.45,
-            ">9.0%": 0.25
-          },
-          "Diabetes Duration": {
-            "<5 years": 0.35,
-            "5-10 years": 0.4,
-            ">10 years": 0.25
-          }
-        },
-        "Phase 2": {
-          "Age": {
-            "<65": 0.68,
-            ">=65": 0.32
-          },
-          "HbA1c Level": {
-            "<7.5%": 0.3,
-            "7.5-9.0%": 0.45,
-            ">9.0%": 0.25
-          },
-          "Diabetes Duration": {
-            "<5 years": 0.35,
-            "5-10 years": 0.4,
-            ">10 years": 0.25
-          }
-        },
-        "Phase 3": {
-          "Age": {
-            "<65": 0.68,
-            ">=65": 0.32
-          },
-          "HbA1c Level": {
-            "<7.5%": 0.3,
-            "7.5-9.0%": 0.45,
-            ">9.0%": 0.25
-          },
-          "Diabetes Duration": {
-            "<5 years": 0.35,
-            "5-10 years": 0.4,
-            ">10 years": 0.25
-          }
-        },
-        "Phase 4": {
-          "Age": {
-            "<65": 0.68,
-            ">=65": 0.32
-          },
-          "HbA1c Level": {
-            "<7.5%": 0.3,
-            "7.5-9.0%": 0.45,
-            ">9.0%": 0.25
-          },
-          "Diabetes Duration": {
-            "<5 years": 0.35,
-            "5-10 years": 0.4,
-            ">10 years": 0.25
-          }
-        }
       }
     },
     "cancer": {
@@ -5827,17 +5614,6 @@
             "median_months": 35.0,
             "mean_months": 40.86818791946309,
             "n_studies": 3725
-          },
-          "age": {
-            "median_years": 62.0,
-            "mean_years": 63.5,
-            "n_studies": 11260
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 51.0,
-            "female_percentage": 49.0,
-            "n_studies": 11260
           }
         },
         "Phase 2": {
@@ -5845,17 +5621,6 @@
             "median_months": 38.0,
             "mean_months": 44.08643775686067,
             "n_studies": 7543
-          },
-          "age": {
-            "median_years": 62.0,
-            "mean_years": 63.5,
-            "n_studies": 19681
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 51.0,
-            "female_percentage": 49.0,
-            "n_studies": 19681
           }
         },
         "Phase 3": {
@@ -5863,17 +5628,6 @@
             "median_months": 44.0,
             "mean_months": 55.00643863179074,
             "n_studies": 2485
-          },
-          "age": {
-            "median_years": 62.0,
-            "mean_years": 63.5,
-            "n_studies": 5861
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 51.0,
-            "female_percentage": 49.0,
-            "n_studies": 5861
           }
         },
         "Phase 4": {
@@ -5881,17 +5635,6 @@
             "median_months": 28.0,
             "mean_months": 33.290766208251476,
             "n_studies": 509
-          },
-          "age": {
-            "median_years": 62.0,
-            "mean_years": 63.5,
-            "n_studies": 1124
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 51.0,
-            "female_percentage": 49.0,
-            "n_studies": 1124
           }
         }
       },
@@ -6594,72 +6337,6 @@
             "percentage": 0.017189079878665317
           }
         ]
-      },
-      "baseline_characteristics": {
-        "Phase 1": {
-          "Age": {
-            "<65": 0.55,
-            ">=65": 0.45
-          },
-          "Disease Stage": {
-            "Stage I/II": 0.3,
-            "Stage III": 0.4,
-            "Stage IV": 0.3
-          },
-          "ECOG Performance Status": {
-            "0": 0.4,
-            "1": 0.45,
-            "2": 0.15
-          }
-        },
-        "Phase 2": {
-          "Age": {
-            "<65": 0.55,
-            ">=65": 0.45
-          },
-          "Disease Stage": {
-            "Stage I/II": 0.3,
-            "Stage III": 0.4,
-            "Stage IV": 0.3
-          },
-          "ECOG Performance Status": {
-            "0": 0.4,
-            "1": 0.45,
-            "2": 0.15
-          }
-        },
-        "Phase 3": {
-          "Age": {
-            "<65": 0.55,
-            ">=65": 0.45
-          },
-          "Disease Stage": {
-            "Stage I/II": 0.3,
-            "Stage III": 0.4,
-            "Stage IV": 0.3
-          },
-          "ECOG Performance Status": {
-            "0": 0.4,
-            "1": 0.45,
-            "2": 0.15
-          }
-        },
-        "Phase 4": {
-          "Age": {
-            "<65": 0.55,
-            ">=65": 0.45
-          },
-          "Disease Stage": {
-            "Stage I/II": 0.3,
-            "Stage III": 0.4,
-            "Stage IV": 0.3
-          },
-          "ECOG Performance Status": {
-            "0": 0.4,
-            "1": 0.45,
-            "2": 0.15
-          }
-        }
       }
     },
     "oncology": {
@@ -7692,17 +7369,6 @@
             "median_months": 31.5,
             "mean_months": 33.088235294117645,
             "n_studies": 34
-          },
-          "age": {
-            "median_years": 62.0,
-            "mean_years": 63.5,
-            "n_studies": 49
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 51.0,
-            "female_percentage": 49.0,
-            "n_studies": 49
           }
         },
         "Phase 2": {
@@ -7710,17 +7376,6 @@
             "median_months": 24.0,
             "mean_months": 28.90909090909091,
             "n_studies": 11
-          },
-          "age": {
-            "median_years": 62.0,
-            "mean_years": 63.5,
-            "n_studies": 18
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 51.0,
-            "female_percentage": 49.0,
-            "n_studies": 18
           }
         },
         "Phase 3": {
@@ -7728,17 +7383,6 @@
             "median_months": 35.0,
             "mean_months": 35.0,
             "n_studies": 2
-          },
-          "age": {
-            "median_years": 62.0,
-            "mean_years": 63.5,
-            "n_studies": 7
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 51.0,
-            "female_percentage": 49.0,
-            "n_studies": 7
           }
         },
         "Phase 4": {
@@ -7746,17 +7390,6 @@
             "median_months": 27.0,
             "mean_months": 42.5,
             "n_studies": 4
-          },
-          "age": {
-            "median_years": 62.0,
-            "mean_years": 63.5,
-            "n_studies": 10
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 51.0,
-            "female_percentage": 49.0,
-            "n_studies": 10
           }
         }
       },
@@ -8352,72 +7985,6 @@
             "percentage": 0.1
           }
         ]
-      },
-      "baseline_characteristics": {
-        "Phase 1": {
-          "Age": {
-            "<65": 0.55,
-            ">=65": 0.45
-          },
-          "Disease Stage": {
-            "Stage I/II": 0.3,
-            "Stage III": 0.4,
-            "Stage IV": 0.3
-          },
-          "ECOG Performance Status": {
-            "0": 0.4,
-            "1": 0.45,
-            "2": 0.15
-          }
-        },
-        "Phase 2": {
-          "Age": {
-            "<65": 0.55,
-            ">=65": 0.45
-          },
-          "Disease Stage": {
-            "Stage I/II": 0.3,
-            "Stage III": 0.4,
-            "Stage IV": 0.3
-          },
-          "ECOG Performance Status": {
-            "0": 0.4,
-            "1": 0.45,
-            "2": 0.15
-          }
-        },
-        "Phase 3": {
-          "Age": {
-            "<65": 0.55,
-            ">=65": 0.45
-          },
-          "Disease Stage": {
-            "Stage I/II": 0.3,
-            "Stage III": 0.4,
-            "Stage IV": 0.3
-          },
-          "ECOG Performance Status": {
-            "0": 0.4,
-            "1": 0.45,
-            "2": 0.15
-          }
-        },
-        "Phase 4": {
-          "Age": {
-            "<65": 0.55,
-            ">=65": 0.45
-          },
-          "Disease Stage": {
-            "Stage I/II": 0.3,
-            "Stage III": 0.4,
-            "Stage IV": 0.3
-          },
-          "ECOG Performance Status": {
-            "0": 0.4,
-            "1": 0.45,
-            "2": 0.15
-          }
-        }
       }
     },
     "cardiovascular": {
@@ -9789,17 +9356,6 @@
             "median_months": 12.0,
             "mean_months": 19.19607843137255,
             "n_studies": 102
-          },
-          "age": {
-            "median_years": 65.0,
-            "mean_years": 66.2,
-            "n_studies": 147
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 58.0,
-            "female_percentage": 42.0,
-            "n_studies": 147
           }
         },
         "Phase 2": {
@@ -9807,17 +9363,6 @@
             "median_months": 23.5,
             "mean_months": 35.94642857142857,
             "n_studies": 112
-          },
-          "age": {
-            "median_years": 65.0,
-            "mean_years": 66.2,
-            "n_studies": 198
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 58.0,
-            "female_percentage": 42.0,
-            "n_studies": 198
           }
         },
         "Phase 3": {
@@ -9825,17 +9370,6 @@
             "median_months": 43.0,
             "mean_months": 51.2828947368421,
             "n_studies": 152
-          },
-          "age": {
-            "median_years": 65.0,
-            "mean_years": 66.2,
-            "n_studies": 325
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 58.0,
-            "female_percentage": 42.0,
-            "n_studies": 325
           }
         },
         "Phase 4": {
@@ -9843,17 +9377,6 @@
             "median_months": 28.0,
             "mean_months": 33.733333333333334,
             "n_studies": 180
-          },
-          "age": {
-            "median_years": 65.0,
-            "mean_years": 66.2,
-            "n_studies": 282
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 58.0,
-            "female_percentage": 42.0,
-            "n_studies": 282
           }
         }
       },
@@ -10556,72 +10079,6 @@
             "percentage": 0.016025641025641024
           }
         ]
-      },
-      "baseline_characteristics": {
-        "Phase 1": {
-          "Age": {
-            "<65": 0.45,
-            ">=65": 0.55
-          },
-          "NYHA Class": {
-            "I": 0.25,
-            "II": 0.45,
-            "III": 0.25,
-            "IV": 0.05
-          },
-          "Prior MI": {
-            "Yes": 0.35,
-            "No": 0.65
-          }
-        },
-        "Phase 2": {
-          "Age": {
-            "<65": 0.45,
-            ">=65": 0.55
-          },
-          "NYHA Class": {
-            "I": 0.25,
-            "II": 0.45,
-            "III": 0.25,
-            "IV": 0.05
-          },
-          "Prior MI": {
-            "Yes": 0.35,
-            "No": 0.65
-          }
-        },
-        "Phase 3": {
-          "Age": {
-            "<65": 0.45,
-            ">=65": 0.55
-          },
-          "NYHA Class": {
-            "I": 0.25,
-            "II": 0.45,
-            "III": 0.25,
-            "IV": 0.05
-          },
-          "Prior MI": {
-            "Yes": 0.35,
-            "No": 0.65
-          }
-        },
-        "Phase 4": {
-          "Age": {
-            "<65": 0.45,
-            ">=65": 0.55
-          },
-          "NYHA Class": {
-            "I": 0.25,
-            "II": 0.45,
-            "III": 0.25,
-            "IV": 0.05
-          },
-          "Prior MI": {
-            "Yes": 0.35,
-            "No": 0.65
-          }
-        }
       }
     },
     "heart failure": {
@@ -11991,17 +11448,6 @@
             "median_months": 11.5,
             "mean_months": 20.067164179104477,
             "n_studies": 134
-          },
-          "age": {
-            "median_years": 68.0,
-            "mean_years": 69.1,
-            "n_studies": 212
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 60.0,
-            "female_percentage": 40.0,
-            "n_studies": 212
           }
         },
         "Phase 2": {
@@ -12009,17 +11455,6 @@
             "median_months": 21.0,
             "mean_months": 25.43103448275862,
             "n_studies": 290
-          },
-          "age": {
-            "median_years": 68.0,
-            "mean_years": 69.1,
-            "n_studies": 471
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 60.0,
-            "female_percentage": 40.0,
-            "n_studies": 471
           }
         },
         "Phase 3": {
@@ -12027,17 +11462,6 @@
             "median_months": 36.0,
             "mean_months": 39.41630901287554,
             "n_studies": 233
-          },
-          "age": {
-            "median_years": 68.0,
-            "mean_years": 69.1,
-            "n_studies": 409
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 60.0,
-            "female_percentage": 40.0,
-            "n_studies": 409
           }
         },
         "Phase 4": {
@@ -12045,17 +11469,6 @@
             "median_months": 31.0,
             "mean_months": 35.32971014492754,
             "n_studies": 276
-          },
-          "age": {
-            "median_years": 68.0,
-            "mean_years": 69.1,
-            "n_studies": 538
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 60.0,
-            "female_percentage": 40.0,
-            "n_studies": 538
           }
         }
       },
@@ -12758,72 +12171,6 @@
             "percentage": 0.02208835341365462
           }
         ]
-      },
-      "baseline_characteristics": {
-        "Phase 1": {
-          "Age": {
-            "<65": 0.35,
-            ">=65": 0.65
-          },
-          "NYHA Class": {
-            "I": 0.15,
-            "II": 0.4,
-            "III": 0.35,
-            "IV": 0.1
-          },
-          "Ejection Fraction": {
-            "<40%": 0.6,
-            ">=40%": 0.4
-          }
-        },
-        "Phase 2": {
-          "Age": {
-            "<65": 0.35,
-            ">=65": 0.65
-          },
-          "NYHA Class": {
-            "I": 0.15,
-            "II": 0.4,
-            "III": 0.35,
-            "IV": 0.1
-          },
-          "Ejection Fraction": {
-            "<40%": 0.6,
-            ">=40%": 0.4
-          }
-        },
-        "Phase 3": {
-          "Age": {
-            "<65": 0.35,
-            ">=65": 0.65
-          },
-          "NYHA Class": {
-            "I": 0.15,
-            "II": 0.4,
-            "III": 0.35,
-            "IV": 0.1
-          },
-          "Ejection Fraction": {
-            "<40%": 0.6,
-            ">=40%": 0.4
-          }
-        },
-        "Phase 4": {
-          "Age": {
-            "<65": 0.35,
-            ">=65": 0.65
-          },
-          "NYHA Class": {
-            "I": 0.15,
-            "II": 0.4,
-            "III": 0.35,
-            "IV": 0.1
-          },
-          "Ejection Fraction": {
-            "<40%": 0.6,
-            ">=40%": 0.4
-          }
-        }
       }
     },
     "asthma": {
@@ -14105,17 +13452,6 @@
             "median_months": 7.0,
             "mean_months": 12.23793103448276,
             "n_studies": 290
-          },
-          "age": {
-            "median_years": 42.0,
-            "mean_years": 44.5,
-            "n_studies": 341
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 45.0,
-            "female_percentage": 55.0,
-            "n_studies": 341
           }
         },
         "Phase 2": {
@@ -14123,17 +13459,6 @@
             "median_months": 13.0,
             "mean_months": 18.20042643923241,
             "n_studies": 469
-          },
-          "age": {
-            "median_years": 42.0,
-            "mean_years": 44.5,
-            "n_studies": 632
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 45.0,
-            "female_percentage": 55.0,
-            "n_studies": 632
           }
         },
         "Phase 3": {
@@ -14141,17 +13466,6 @@
             "median_months": 20.0,
             "mean_months": 23.966063348416288,
             "n_studies": 442
-          },
-          "age": {
-            "median_years": 42.0,
-            "mean_years": 44.5,
-            "n_studies": 591
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 45.0,
-            "female_percentage": 55.0,
-            "n_studies": 591
           }
         },
         "Phase 4": {
@@ -14159,17 +13473,6 @@
             "median_months": 22.0,
             "mean_months": 24.752238805970148,
             "n_studies": 335
-          },
-          "age": {
-            "median_years": 42.0,
-            "mean_years": 44.5,
-            "n_studies": 481
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 45.0,
-            "female_percentage": 55.0,
-            "n_studies": 481
           }
         }
       },
@@ -14871,68 +14174,6 @@
             "percentage": 0.01549053356282272
           }
         ]
-      },
-      "baseline_characteristics": {
-        "Phase 1": {
-          "Age": {
-            "<65": 0.85,
-            ">=65": 0.15
-          },
-          "Asthma Severity": {
-            "Mild": 0.3,
-            "Moderate": 0.5,
-            "Severe": 0.2
-          },
-          "Atopic Status": {
-            "Atopic": 0.6,
-            "Non-atopic": 0.4
-          }
-        },
-        "Phase 2": {
-          "Age": {
-            "<65": 0.85,
-            ">=65": 0.15
-          },
-          "Asthma Severity": {
-            "Mild": 0.3,
-            "Moderate": 0.5,
-            "Severe": 0.2
-          },
-          "Atopic Status": {
-            "Atopic": 0.6,
-            "Non-atopic": 0.4
-          }
-        },
-        "Phase 3": {
-          "Age": {
-            "<65": 0.85,
-            ">=65": 0.15
-          },
-          "Asthma Severity": {
-            "Mild": 0.3,
-            "Moderate": 0.5,
-            "Severe": 0.2
-          },
-          "Atopic Status": {
-            "Atopic": 0.6,
-            "Non-atopic": 0.4
-          }
-        },
-        "Phase 4": {
-          "Age": {
-            "<65": 0.85,
-            ">=65": 0.15
-          },
-          "Asthma Severity": {
-            "Mild": 0.3,
-            "Moderate": 0.5,
-            "Severe": 0.2
-          },
-          "Atopic Status": {
-            "Atopic": 0.6,
-            "Non-atopic": 0.4
-          }
-        }
       }
     },
     "copd": {
@@ -16245,17 +15486,6 @@
             "median_months": 6.0,
             "mean_months": 10.289855072463768,
             "n_studies": 69
-          },
-          "age": {
-            "median_years": 65.0,
-            "mean_years": 66.8,
-            "n_studies": 90
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 55.0,
-            "female_percentage": 45.0,
-            "n_studies": 90
           }
         },
         "Phase 2": {
@@ -16263,17 +15493,6 @@
             "median_months": 12.0,
             "mean_months": 17.036036036036037,
             "n_studies": 111
-          },
-          "age": {
-            "median_years": 65.0,
-            "mean_years": 66.8,
-            "n_studies": 165
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 55.0,
-            "female_percentage": 45.0,
-            "n_studies": 165
           }
         },
         "Phase 3": {
@@ -16281,17 +15500,6 @@
             "median_months": 16.0,
             "mean_months": 20.084745762711865,
             "n_studies": 118
-          },
-          "age": {
-            "median_years": 65.0,
-            "mean_years": 66.8,
-            "n_studies": 163
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 55.0,
-            "female_percentage": 45.0,
-            "n_studies": 163
           }
         },
         "Phase 4": {
@@ -16299,17 +15507,6 @@
             "median_months": 22.0,
             "mean_months": 25.353448275862068,
             "n_studies": 116
-          },
-          "age": {
-            "median_years": 65.0,
-            "mean_years": 66.8,
-            "n_studies": 185
-          },
-          "gender": {
-            "all_percentage": 100.0,
-            "male_percentage": 55.0,
-            "female_percentage": 45.0,
-            "n_studies": 185
           }
         }
       },
@@ -17010,76 +16207,6 @@
             "percentage": 0.020833333333333332
           }
         ]
-      },
-      "baseline_characteristics": {
-        "Phase 1": {
-          "Age": {
-            "<65": 0.4,
-            ">=65": 0.6
-          },
-          "GOLD Stage": {
-            "I": 0.15,
-            "II": 0.45,
-            "III": 0.3,
-            "IV": 0.1
-          },
-          "Smoking Status": {
-            "Current": 0.35,
-            "Former": 0.6,
-            "Never": 0.05
-          }
-        },
-        "Phase 2": {
-          "Age": {
-            "<65": 0.4,
-            ">=65": 0.6
-          },
-          "GOLD Stage": {
-            "I": 0.15,
-            "II": 0.45,
-            "III": 0.3,
-            "IV": 0.1
-          },
-          "Smoking Status": {
-            "Current": 0.35,
-            "Former": 0.6,
-            "Never": 0.05
-          }
-        },
-        "Phase 3": {
-          "Age": {
-            "<65": 0.4,
-            ">=65": 0.6
-          },
-          "GOLD Stage": {
-            "I": 0.15,
-            "II": 0.45,
-            "III": 0.3,
-            "IV": 0.1
-          },
-          "Smoking Status": {
-            "Current": 0.35,
-            "Former": 0.6,
-            "Never": 0.05
-          }
-        },
-        "Phase 4": {
-          "Age": {
-            "<65": 0.4,
-            ">=65": 0.6
-          },
-          "GOLD Stage": {
-            "I": 0.15,
-            "II": 0.45,
-            "III": 0.3,
-            "IV": 0.1
-          },
-          "Smoking Status": {
-            "Current": 0.35,
-            "Former": 0.6,
-            "Never": 0.05
-          }
-        }
       }
     }
   },
