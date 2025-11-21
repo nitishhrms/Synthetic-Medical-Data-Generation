@@ -80,6 +80,22 @@ class OutlierDetectionRequest(BaseModel):
     column: str = Field(default="SystolicBP", description="Column to check for outliers")
     method: str = Field(default="iqr", description="Method: 'iqr' or 'zscore'")
 
+class KaplanMeierRequest(BaseModel):
+    """Request model for Kaplan-Meier analysis"""
+    data: List[Dict[str, Any]]
+    time_col: str = Field(default="Time", description="Column containing time to event")
+    event_col: str = Field(default="Event", description="Column containing event status (1=event, 0=censored)")
+    group_col: str = Field(default="TreatmentArm", description="Column to group by")
+
+class LogRankRequest(BaseModel):
+    """Request model for Log-Rank test"""
+    data: List[Dict[str, Any]]
+    time_col: str = Field(default="Time", description="Column containing time to event")
+    event_col: str = Field(default="Event", description="Column containing event status")
+    group_col: str = Field(default="TreatmentArm", description="Column to group by")
+    group1: str = Field(default="Active", description="Name of first group")
+    group2: str = Field(default="Placebo", description="Name of second group")
+
 class DerivedColumnRequest(BaseModel):
     """Request model for adding derived columns"""
     data: List[Dict[str, Any]]
@@ -479,6 +495,56 @@ async def detect_outliers(request: OutlierDetectionRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error detecting outliers: {str(e)}")
+
+@app.post("/daft/survival-analysis/kaplan-meier")
+async def compute_kaplan_meier(request: KaplanMeierRequest):
+    """
+    Compute Kaplan-Meier survival estimates
+    """
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(request.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.compute_kaplan_meier(
+            time_col=request.time_col,
+            event_col=request.event_col,
+            group_col=request.group_col
+        )
+
+        return {
+            "status": "success",
+            "kaplan_meier": results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error computing Kaplan-Meier: {str(e)}")
+
+@app.post("/daft/survival-analysis/log-rank")
+async def compute_log_rank(request: LogRankRequest):
+    """
+    Compute Log-Rank test between two groups
+    """
+    try:
+        processor = DaftMedicalDataProcessor()
+        df = processor.load_from_dict(request.data)
+
+        aggregator = DaftAggregator(df)
+        results = aggregator.compute_log_rank_test(
+            time_col=request.time_col,
+            event_col=request.event_col,
+            group_col=request.group_col,
+            group1=request.group1,
+            group2=request.group2
+        )
+
+        return {
+            "status": "success",
+            "log_rank_test": results,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error computing Log-Rank test: {str(e)}")
 
 # ==================== UDF Endpoints ====================
 

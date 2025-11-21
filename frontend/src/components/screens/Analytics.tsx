@@ -85,6 +85,10 @@ export function Analytics() {
   const [selectedMethodData, setSelectedMethodData] = useState<VitalsRecord[] | null>(null);
   const [isGeneratingComparison, setIsGeneratingComparison] = useState(false);
 
+  // Survival Analysis State
+  const [survivalData, setSurvivalData] = useState<any>(null);
+  const [isLoadingSurvival, setIsLoadingSurvival] = useState(false);
+
   // Load pilot data on mount
   useEffect(() => {
     if (!pilotData) {
@@ -254,6 +258,36 @@ export function Analytics() {
       setSelectedMethodData(null);
     } finally {
       setIsGeneratingComparison(false);
+    }
+  };
+
+  const runSurvivalAnalysis = async () => {
+    if (!generatedData) return;
+    setIsLoadingSurvival(true);
+    try {
+      // Prepare demographics data from generated data
+      const demographics = generatedData.reduce((acc: any[], curr) => {
+        if (!acc.find((d: any) => d.SubjectID === curr.SubjectID)) {
+          acc.push({
+            SubjectID: curr.SubjectID,
+            TreatmentArm: curr.TreatmentArm,
+          });
+        }
+        return acc;
+      }, []);
+
+      const response = await analyticsApi.comprehensiveSurvivalAnalysis({
+        demographics_data: demographics,
+        indication: "oncology",
+        median_survival_active: 18.0,
+        median_survival_placebo: 12.0
+      });
+      setSurvivalData(response);
+    } catch (err) {
+      console.error("Survival analysis failed:", err);
+      setError("Failed to run survival analysis");
+    } finally {
+      setIsLoadingSurvival(false);
     }
   };
 
@@ -949,8 +983,16 @@ export function Analytics() {
               Adverse Events
             </TabsTrigger>
             <TabsTrigger value="labs">
-              <FlaskConical className="h-4 w-4 mr-2" />
-              Labs
+              <div className="flex items-center gap-2">
+                <FlaskConical className="h-4 w-4" />
+                <span>Labs</span>
+              </div>
+            </TabsTrigger>
+            <TabsTrigger value="survival">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4" />
+                <span>Survival</span>
+              </div>
             </TabsTrigger>
             <TabsTrigger value="methods">
               <GitCompare className="h-4 w-4 mr-2" />
@@ -2553,6 +2595,130 @@ export function Analytics() {
           </TabsContent>
 
           {/* ====== METHODS TAB ====== */}
+          <TabsContent value="survival" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  Survival Analysis
+                </CardTitle>
+                <CardDescription>
+                  Kaplan-Meier survival estimates and log-rank test results.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!survivalData ? (
+                  <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                    <div className="p-4 bg-muted rounded-full">
+                      <Activity className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <div className="text-center space-y-2">
+                      <h3 className="font-medium">No Survival Data Generated</h3>
+                      <p className="text-sm text-muted-foreground max-w-md">
+                        Run a survival analysis to generate time-to-event data and calculate Kaplan-Meier curves.
+                      </p>
+                    </div>
+                    <Button onClick={runSurvivalAnalysis} disabled={isLoadingSurvival}>
+                      {isLoadingSurvival ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Running Analysis...
+                        </>
+                      ) : (
+                        "Run Survival Analysis"
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium">Hazard Ratio</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-2xl font-bold">
+                            {survivalData.hazard_ratio.hazard_ratio?.toFixed(2) || "N/A"}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {survivalData.hazard_ratio.interpretation}
+                          </p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium">Log-Rank Test</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-2xl font-bold">
+                            p = {survivalData.log_rank_test.p_value?.toFixed(4) || "N/A"}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {survivalData.log_rank_test.interpretation}
+                          </p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium">Median Survival</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-2xl font-bold">
+                            {survivalData.summary.median_survival_active?.toFixed(1)} vs {survivalData.summary.median_survival_placebo?.toFixed(1)} mo
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Active vs Placebo
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <div className="h-[400px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                          <XAxis
+                            dataKey="time"
+                            type="number"
+                            label={{ value: 'Time (Months)', position: 'insideBottom', offset: -5 }}
+                            domain={[0, 'auto']}
+                          />
+                          <YAxis
+                            label={{ value: 'Survival Probability', angle: -90, position: 'insideLeft' }}
+                            domain={[0, 1]}
+                          />
+                          <Tooltip
+                            formatter={(value: number) => value.toFixed(3)}
+                            labelFormatter={(label) => `Time: ${label} months`}
+                          />
+                          <Legend />
+                          <Line
+                            data={survivalData.kaplan_meier.active.km_curve}
+                            type="stepAfter"
+                            dataKey="survival_prob"
+                            name="Active"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                          <Line
+                            data={survivalData.kaplan_meier.placebo.km_curve}
+                            type="stepAfter"
+                            dataKey="survival_prob"
+                            name="Placebo"
+                            stroke="#ec4899"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="methods" className="space-y-6">
             <Card>
               <CardHeader>

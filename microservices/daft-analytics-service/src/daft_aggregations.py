@@ -8,6 +8,8 @@ from typing import List, Dict, Any, Optional
 import pandas as pd
 import numpy as np
 from scipy import stats
+from lifelines import KaplanMeierFitter
+from lifelines.statistics import logrank_test
 
 
 class DaftAggregator:
@@ -462,3 +464,99 @@ class DaftAggregator:
                 })
 
         return results
+
+    def compute_kaplan_meier(self, time_col: str = 'Time', event_col: str = 'Event', group_col: str = 'TreatmentArm') -> Dict[str, Any]:
+        """
+        Compute Kaplan-Meier survival estimates
+
+        Args:
+            time_col: Column containing time to event
+            event_col: Column containing event status (1=event, 0=censored)
+            group_col: Column to group by (e.g., TreatmentArm)
+
+        Returns:
+            Dictionary with Kaplan-Meier estimates by group
+        """
+        pdf = self.df.to_pandas()
+        kmf = KaplanMeierFitter()
+        
+        results = {}
+        
+        # Get unique groups
+        groups = pdf[group_col].unique()
+        
+        for group in groups:
+            mask = (pdf[group_col] == group)
+            group_data = pdf[mask]
+            
+            if len(group_data) > 0:
+                kmf.fit(group_data[time_col], group_data[event_col], label=str(group))
+                
+                # Get survival table
+                # survival_function_ returns a dataframe with time as index
+                timeline = kmf.timeline.tolist()
+                survival_probs = kmf.survival_function_[str(group)].tolist()
+                
+                # Confidence intervals
+                ci = kmf.confidence_interval_
+                ci_lower = ci[f'{group}_lower_0.95'].tolist()
+                ci_upper = ci[f'{group}_upper_0.95'].tolist()
+                
+                data_points = []
+                for t, s, l, u in zip(timeline, survival_probs, ci_lower, ci_upper):
+                    data_points.append({
+                        'time': float(t),
+                        'survival_prob': float(s),
+                        'ci_lower': float(l),
+                        'ci_upper': float(u)
+                    })
+                
+                results[str(group)] = {
+                    'median_survival_time': float(kmf.median_survival_time_) if not np.isinf(kmf.median_survival_time_) else None,
+                    'curve': data_points
+                }
+                
+        return results
+
+    def compute_log_rank_test(self, time_col: str = 'Time', event_col: str = 'Event', group_col: str = 'TreatmentArm', group1: str = 'Active', group2: str = 'Placebo') -> Dict[str, Any]:
+        """
+        Compute Log-Rank test between two groups
+
+        Args:
+            time_col: Column containing time to event
+            event_col: Column containing event status
+            group_col: Column to group by
+            group1: Name of first group
+            group2: Name of second group
+
+        Returns:
+            Dictionary with Log-Rank test results
+        """
+        pdf = self.df.to_pandas()
+        
+        mask1 = (pdf[group_col] == group1)
+        mask2 = (pdf[group_col] == group2)
+        
+        data1 = pdf[mask1]
+        data2 = pdf[mask2]
+        
+        if len(data1) == 0 or len(data2) == 0:
+            return {
+                'test_statistic': None,
+                'p_value': None,
+                'significant': False,
+                'message': 'Insufficient data for one or both groups'
+            }
+            
+        results = logrank_test(
+            data1[time_col], data2[time_col],
+            event_observed_A=data1[event_col], event_observed_B=data2[event_col]
+        )
+        
+        return {
+            'test_statistic': float(results.test_statistic),
+            'p_value': float(results.p_value),
+            'significant': bool(results.p_value < 0.05),
+            'group1': group1,
+            'group2': group2
+        }

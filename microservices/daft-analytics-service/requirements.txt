@@ -10,3 +10,4 @@ aiofiles==23.2.1
 httpx==0.25.1
 python-dotenv==1.0.0
 redis==5.0.1
+lifelines==0.28.0
