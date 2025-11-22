@@ -12,6 +12,19 @@ import type {
   Week12StatsRequest,
   Week12StatsResponse,
   PCAComparisonResponse,
+  SYNDATAMetricsResponse,
+  QualityReportResponse,
+  PrivacyAssessmentResponse,
+  VirtualControlArmRequest,
+  VirtualControlArmResponse,
+  AugmentControlArmRequest,
+  AugmentControlArmResponse,
+  WhatIfEnrollmentRequest,
+  WhatIfEnrollmentResponse,
+  WhatIfPatientMixRequest,
+  WhatIfPatientMixResponse,
+  FeasibilityAssessmentRequest,
+  FeasibilityAssessmentResponse,
 } from "@/types";
 
 // ============================================================================
@@ -20,9 +33,10 @@ import type {
 
 const DATA_GEN_SERVICE = import.meta.env.VITE_DATA_GEN_URL || "http://localhost:8002";
 const ANALYTICS_SERVICE = import.meta.env.VITE_ANALYTICS_URL || "http://localhost:8003";
-const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8004";
+const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8001";
 const SECURITY_SERVICE = import.meta.env.VITE_SECURITY_URL || "http://localhost:8005";
-const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8006";
+const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8004";
+const DAFT_SERVICE = import.meta.env.VITE_DAFT_URL || "http://localhost:8007";
 
 // ============================================================================
 // Helper Functions
@@ -86,11 +100,17 @@ export const authApi = {
 // ============================================================================
 
 export const dataGenerationApi = {
-  async generateMVN(params: GenerationRequest): Promise<GenerationResponse> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mvn`, {
+  async generateMVN(params: GenerationRequest & { indication?: string; phase?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mvn-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+      }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
     // Backend returns array directly, wrap it in expected format
@@ -100,21 +120,22 @@ export const dataGenerationApi = {
       metadata: {
         records: data.length,
         subjects: uniqueSubjects,
-        method: "mvn",
+        method: "mvn-aact",
       },
     };
   },
 
-  async generateBootstrap(params: GenerationRequest): Promise<GenerationResponse> {
-    // First, fetch pilot data to use as training data
-    const pilotData = await this.getPilotData();
-
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bootstrap`, {
+  async generateBootstrap(params: GenerationRequest & { indication?: string; phase?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bootstrap-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({
         ...params,
-        training_data: pilotData,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+        jitter_frac: 0.05,
       }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
@@ -124,16 +145,22 @@ export const dataGenerationApi = {
       metadata: {
         records: data.length,
         subjects: uniqueSubjects,
-        method: "bootstrap",
+        method: "bootstrap-aact",
       },
     };
   },
 
-  async generateRules(params: GenerationRequest): Promise<GenerationResponse> {
-    const response = await fetch(`${DATA_GEN_SERVICE}/generate/rules`, {
+  async generateRules(params: GenerationRequest & { indication?: string; phase?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/rules-aact`, {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        ...params,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+      }),
     });
     const data = await handleResponse<VitalsRecord[]>(response);
     const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
@@ -152,6 +179,211 @@ export const dataGenerationApi = {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async generateBayesian(params: GenerationRequest & { indication?: string; phase?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/bayesian-aact`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        ...params,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+      }),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "bayesian-aact",
+      },
+    };
+  },
+
+  async generateMICE(params: GenerationRequest & { indication?: string; phase?: string; missing_rate?: number; estimator?: string }): Promise<GenerationResponse> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/mice-aact`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        ...params,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+        missing_rate: params.missing_rate || 0.10,
+        estimator: params.estimator || "bayesian_ridge",
+      }),
+    });
+    const data = await handleResponse<VitalsRecord[]>(response);
+    const uniqueSubjects = new Set(data.map(r => r.SubjectID)).size;
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        subjects: uniqueSubjects,
+        method: "mice-aact",
+      },
+    };
+  },
+
+  async generateMillionScale(params: {
+    total_subjects: number;
+    chunk_size?: number;
+    target_effect?: number;
+    output_path?: string;
+    format?: string;
+  }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/million-scale`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async estimateMemory(params: { total_subjects: number; chunk_size: number }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/estimate-memory`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+    return handleResponse(response);
+  },
+
+  async getDaftStatus(): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/daft/status`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async generateDemographics(params: { n_subjects: number; seed?: number; indication?: string; phase?: string }): Promise<any> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/demographics-aact`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 42,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+      }),
+    });
+    const data = await handleResponse(response);
+    // Return in expected format with metadata
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "demographics-aact",
+      },
+    };
+  },
+
+  async generateLabs(params: { n_subjects: number; seed?: number; indication?: string; phase?: string }): Promise<any> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/labs-aact`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 42,
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        use_duration: true,
+      }),
+    });
+    const data = await handleResponse(response);
+    // Backend returns array directly, wrap it in expected format
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "labs-aact",
+      },
+    };
+  },
+
+  async generateAE(params: { n_subjects: number; seed?: number; indication?: string; phase?: string }): Promise<any> {
+    // Use AACT-enhanced endpoint by default for maximum realism
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/ae-aact`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_subjects: params.n_subjects,
+        seed: params.seed ?? 7,
+        indication: params.indication || "cancer",
+        phase: params.phase || "Phase 2",
+      }),
+    });
+    const data = await handleResponse(response);
+    // Backend returns array directly, wrap it in expected format
+    return {
+      data,
+      metadata: {
+        records: data.length,
+        method: "ae-aact",
+      },
+    };
+  },
+
+  async getRealVitalSigns(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-vitals`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealDemographics(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-demographics`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getRealAdverseEvents(): Promise<any[]> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/data/real-ae`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async generateComprehensiveStudy(params: {
+    n_per_arm?: number;
+    target_effect?: number;
+    method?: string;
+    indication?: string;
+    phase?: string;
+    include_vitals?: boolean;
+    include_demographics?: boolean;
+    include_ae?: boolean;
+    include_labs?: boolean;
+    use_aact?: boolean;
+    seed?: number;
+  }): Promise<any> {
+    const response = await fetch(`${DATA_GEN_SERVICE}/generate/comprehensive-study`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        n_per_arm: params.n_per_arm ?? 50,
+        target_effect: params.target_effect ?? -5.0,
+        method: params.method ?? "mvn",
+        indication: params.indication || "hypertension",
+        phase: params.phase || "Phase 3",
+        include_vitals: params.include_vitals ?? true,
+        include_demographics: params.include_demographics ?? true,
+        include_ae: params.include_ae ?? true,
+        include_labs: params.include_labs ?? true,
+        use_aact: params.use_aact ?? true,  // Use AACT by default
+        seed: params.seed ?? 42,
+      }),
     });
     return handleResponse(response);
   },
@@ -308,6 +540,136 @@ export const qualityApi = {
       method: "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify({ records: data }),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Trial Planning API
+// ============================================================================
+
+export const trialPlanningApi = {
+  async createVirtualControlArm(
+    request: VirtualControlArmRequest
+  ): Promise<VirtualControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/virtual-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async augmentControlArm(
+    request: AugmentControlArmRequest
+  ): Promise<AugmentControlArmResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/augment-control-arm`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfEnrollment(
+    request: WhatIfEnrollmentRequest
+  ): Promise<WhatIfEnrollmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/enrollment`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async whatIfPatientMix(
+    request: WhatIfPatientMixRequest
+  ): Promise<WhatIfPatientMixResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/what-if/patient-mix`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+
+  async assessFeasibility(
+    request: FeasibilityAssessmentRequest
+  ): Promise<FeasibilityAssessmentResponse> {
+    const response = await fetch(`${ANALYTICS_SERVICE}/trial-planning/feasibility`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return handleResponse(response);
+  },
+};
+
+// ============================================================================
+// Medical Imaging API
+// ============================================================================
+
+export const medicalImagingApi = {
+  async uploadImage(
+    file: File,
+    subjectId: string,
+    visitName?: string,
+    imageType?: string
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("subject_id", subjectId);
+    if (visitName) formData.append("visit_name", visitName);
+    if (imageType) formData.append("image_type", imageType);
+
+    const token = localStorage.getItem("token");
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${EDC_SERVICE}/imaging/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
+  async getSubjectImages(subjectId: string): Promise<any[]> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/subject/${subjectId}`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    const result = await handleResponse(response);
+    return result.images || [];
+  },
+
+  async getImageFile(imageId: number, thumbnail: boolean = false): Promise<Blob> {
+    const endpoint = thumbnail ? "thumbnail" : "file";
+    const response = await fetch(`${EDC_SERVICE}/imaging/${imageId}/${endpoint}`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
+    return response.blob();
+  },
+
+  async deleteImage(imageId: number): Promise<void> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/${imageId}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  async getStatus(): Promise<{ imaging_available: boolean; message?: string }> {
+    const response = await fetch(`${EDC_SERVICE}/imaging/status`, {
+      method: "GET",
+      headers: getAuthHeaders(),
     });
     return handleResponse(response);
   },
