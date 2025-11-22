@@ -1,19 +1,9 @@
 import { useMemo, useState } from "react";
-import {
-  ComposedChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Line,
-} from "recharts";
+import { BarChart, LineChart } from "@tremor/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, TrendingUp, Box } from "lucide-react";
+import { BarChart3, TrendingUp } from "lucide-react";
 
 interface DistributionChartProps {
   realData: number[];
@@ -34,17 +24,17 @@ export default function DistributionChart({
   wassersteinDistance,
   rmse,
 }: DistributionChartProps) {
-  const [chartType, setChartType] = useState<"histogram" | "boxplot" | "overlay">("histogram");
+  const [chartType, setChartType] = useState<"histogram" | "overlay">("histogram");
 
   // Calculate histogram bins
-  const histogramData = useMemo(() => {
+  const chartData = useMemo(() => {
     const allValues = [...realData, ...syntheticData];
     const min = Math.min(...allValues);
     const max = Math.max(...allValues);
     const binCount = 20;
     const binWidth = (max - min) / binCount;
 
-    const bins: { binStart: number; binEnd: number; real: number; synthetic: number }[] = [];
+    const data = [];
 
     for (let i = 0; i < binCount; i++) {
       const binStart = min + i * binWidth;
@@ -53,16 +43,18 @@ export default function DistributionChart({
       const realCount = realData.filter((v) => v >= binStart && v < binEnd).length;
       const syntheticCount = syntheticData.filter((v) => v >= binStart && v < binEnd).length;
 
-      bins.push({
-        binStart: Math.round(binStart * 10) / 10,
-        binEnd: Math.round(binEnd * 10) / 10,
-        real: realCount,
-        synthetic: syntheticCount,
+      // Create object with dynamic keys for Tremor
+      const binLabel = `${Math.round(binStart * 10) / 10}-${Math.round(binEnd * 10) / 10}`;
+
+      data.push({
+        range: binLabel,
+        "Real Data": realCount,
+        [syntheticMethodName]: syntheticCount,
       });
     }
 
-    return bins;
-  }, [realData, syntheticData]);
+    return data;
+  }, [realData, syntheticData, syntheticMethodName]);
 
   // Calculate summary statistics
   const stats = useMemo(() => {
@@ -90,28 +82,6 @@ export default function DistributionChart({
       synthetic: calcStats(syntheticData),
     };
   }, [realData, syntheticData]);
-
-  // Box plot data
-  const boxPlotData = useMemo(() => {
-    return [
-      {
-        name: "Real Data",
-        min: stats.real.min,
-        q1: stats.real.q1,
-        median: stats.real.median,
-        q3: stats.real.q3,
-        max: stats.real.max,
-      },
-      {
-        name: syntheticMethodName,
-        min: stats.synthetic.min,
-        q1: stats.synthetic.q1,
-        median: stats.synthetic.median,
-        q3: stats.synthetic.q3,
-        max: stats.synthetic.max,
-      },
-    ];
-  }, [stats, syntheticMethodName]);
 
   return (
     <Card className="border-2 border-blue-200">
@@ -143,7 +113,7 @@ export default function DistributionChart({
       <CardContent className="space-y-4">
         {/* Chart Type Selector */}
         <Tabs value={chartType} onValueChange={(v) => setChartType(v as any)} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="histogram" className="flex items-center gap-1">
               <BarChart3 className="h-4 w-4" />
               Histogram
@@ -152,106 +122,31 @@ export default function DistributionChart({
               <TrendingUp className="h-4 w-4" />
               Overlay
             </TabsTrigger>
-            <TabsTrigger value="boxplot" className="flex items-center gap-1">
-              <Box className="h-4 w-4" />
-              Box Plot
-            </TabsTrigger>
           </TabsList>
 
           {/* Histogram View */}
           <TabsContent value="histogram" className="mt-4">
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={histogramData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="binStart"
-                  label={{ value: variable + (unit ? ` (${unit})` : ""), position: "insideBottom", offset: -5 }}
-                />
-                <YAxis label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-white p-3 border rounded shadow-lg">
-                          <div className="font-semibold mb-2">
-                            Range: {data.binStart} - {data.binEnd} {unit}
-                          </div>
-                          <div className="text-sm space-y-1">
-                            <div className="text-green-700">Real: {data.real} records</div>
-                            <div className="text-blue-700">{syntheticMethodName}: {data.synthetic} records</div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Legend />
-                <Bar dataKey="real" fill="#10b981" name="Real Data" opacity={0.8} />
-                <Bar dataKey="synthetic" fill="#3b82f6" name={syntheticMethodName} opacity={0.8} />
-              </ComposedChart>
-            </ResponsiveContainer>
+            <BarChart
+              data={chartData}
+              index="range"
+              categories={["Real Data", syntheticMethodName]}
+              colors={["emerald", "blue"]}
+              yAxisWidth={40}
+              className="h-72"
+            />
           </TabsContent>
 
           {/* Overlay View */}
           <TabsContent value="overlay" className="mt-4">
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={histogramData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="binStart"
-                  label={{ value: variable + (unit ? ` (${unit})` : ""), position: "insideBottom", offset: -5 }}
-                />
-                <YAxis label={{ value: "Frequency", angle: -90, position: "insideLeft" }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="real" fill="#10b981" name="Real Data" opacity={0.4} />
-                <Bar dataKey="synthetic" fill="#3b82f6" name={syntheticMethodName} opacity={0.4} />
-                <Line type="monotone" dataKey="real" stroke="#059669" strokeWidth={2} name="Real Trend" dot={false} />
-                <Line
-                  type="monotone"
-                  dataKey="synthetic"
-                  stroke="#2563eb"
-                  strokeWidth={2}
-                  name="Synthetic Trend"
-                  dot={false}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </TabsContent>
-
-          {/* Box Plot View */}
-          <TabsContent value="boxplot" className="mt-4">
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={boxPlotData} layout="horizontal">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" label={{ value: variable + (unit ? ` (${unit})` : ""), position: "insideBottom", offset: -5 }} />
-                <YAxis dataKey="name" type="category" />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-white p-3 border rounded shadow-lg">
-                          <div className="font-semibold mb-2">{data.name}</div>
-                          <div className="text-sm space-y-1">
-                            <div>Min: {data.min} {unit}</div>
-                            <div>Q1: {data.q1} {unit}</div>
-                            <div className="font-bold">Median: {data.median} {unit}</div>
-                            <div>Q3: {data.q3} {unit}</div>
-                            <div>Max: {data.max} {unit}</div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                {/* This is a simplified box plot using error bars */}
-                <Bar dataKey="median" fill="#8884d8" />
-              </ComposedChart>
-            </ResponsiveContainer>
+            <LineChart
+              data={chartData}
+              index="range"
+              categories={["Real Data", syntheticMethodName]}
+              colors={["emerald", "blue"]}
+              yAxisWidth={40}
+              className="h-72"
+              connectNulls={true}
+            />
           </TabsContent>
         </Tabs>
 

@@ -1,11 +1,16 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BentoCard } from "@/components/ui/bento-card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+
+import { cn } from "@/lib/utils";
 import { dataGenerationApi, analyticsApi } from "@/services/api";
 import { useData } from "@/contexts/DataContext";
 import { Download, Loader2, AlertCircle, Activity, Users, FlaskConical, AlertTriangle, Database } from "lucide-react";
@@ -32,12 +37,12 @@ export function DataGeneration() {
   // Demographics state
   const [demographicsData, setDemographicsData] = useState<any[]>([]);
   const [demographicsMetadata, setDemographicsMetadata] = useState<any>(null);
-  const [demographicsN, setDemographicsN] = useState(100);
+
 
   // Labs state
   const [labsData, setLabsData] = useState<any[]>([]);
   const [labsMetadata, setLabsMetadata] = useState<any>(null);
-  const [labsN, setLabsN] = useState(100);
+
 
   // Advanced Simulation Parameters
   const [dropoutRate, setDropoutRate] = useState(0.15);
@@ -47,12 +52,7 @@ export function DataGeneration() {
   // AE state
   const [aeData, setAeData] = useState<any[]>([]);
   const [aeMetadata, setAeMetadata] = useState<any>(null);
-  const [aeN, setAeN] = useState(30);
-  // Real data state
-  const [realDataLoaded, setRealDataLoaded] = useState(false);
-  const [realVitalsCount, setRealVitalsCount] = useState(0);
-  const [realDemoCount, setRealDemoCount] = useState(0);
-  const [realAeCount, setRealAeCount] = useState(0);
+
 
   // Dataset Name state
   const [datasetName, setDatasetName] = useState("");
@@ -103,207 +103,7 @@ export function DataGeneration() {
     }
   }, [planningScenario, setPlanningScenario]);
 
-  const methods = [
-    { id: "mvn", name: "MVN", speed: "~29K records/sec" },
-    { id: "bootstrap", name: "Bootstrap", speed: "~140K records/sec" },
-    { id: "rules", name: "Rules", speed: "~80K records/sec" },
-    { id: "bayesian", name: "Bayesian", speed: "~5K records/sec" },
-    { id: "mice", name: "MICE", speed: "~3K records/sec" },
-    { id: "diffusion", name: "Diffusion", speed: "~10K records/sec" },
-  ];
 
-  const handleGenerateVitals = async () => {
-    setIsGenerating(true);
-    setError("");
-
-    try {
-      let response;
-      // Include AACT parameters for real-world data
-      const params = {
-        n_per_arm: nPerArm,
-        target_effect: targetEffect,
-        seed: 42,
-        indication,
-        phase,
-      };
-
-      switch (selectedMethod) {
-        case "mvn":
-          response = await dataGenerationApi.generateMVN(params);
-          break;
-        case "bootstrap":
-          response = await dataGenerationApi.generateBootstrap(params);
-          break;
-        case "rules":
-          response = await dataGenerationApi.generateRules(params);
-          break;
-        case "bayesian":
-          response = await dataGenerationApi.generateBayesian(params);
-          break;
-        case "mice":
-          response = await dataGenerationApi.generateMICE(params);
-          break;
-        case "diffusion":
-          response = await dataGenerationApi.generateDiffusion({
-            ...params,
-            n_steps: 50, // Default diffusion steps
-          });
-          break;
-        default:
-          throw new Error("Unknown method");
-      }
-
-      setVitalsData(response?.data ?? []);
-      setVitalsMetadata(response?.metadata ?? {});
-      setGeneratedData(response?.data ?? []);
-    } catch (err: any) {
-      setError(err?.message ?? "Generation failed");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleGenerateDemographics = async () => {
-    setIsGenerating(true);
-    setError("");
-
-    try {
-      const response = await dataGenerationApi.generateDemographics({
-        n_subjects: demographicsN,
-        seed: 42,
-        indication,
-        phase,
-      });
-
-      setDemographicsData(response?.data ?? []);
-      setDemographicsMetadata(response?.metadata ?? {});
-    } catch (err: any) {
-      setError(err?.message ?? "Demographics generation failed");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleGenerateLabs = async () => {
-    setIsGenerating(true);
-    setError("");
-
-    try {
-      const response = await dataGenerationApi.generateLabs({
-        n_subjects: labsN,
-        seed: 42
-      });
-
-      setLabsData(response?.data ?? []);
-      setLabsMetadata(response?.metadata ?? {});
-    } catch (err: any) {
-      setError(err?.message ?? "Labs generation failed");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleGenerateAE = async () => {
-    setIsGenerating(true);
-    setError("");
-
-    try {
-      const response = await dataGenerationApi.generateAE({
-        n_subjects: aeN,
-        seed: 7
-      });
-
-      setAeData(response?.data ?? []);
-      setAeMetadata(response?.metadata ?? {});
-    } catch (err: any) {
-      setError(err?.message ?? "AE generation failed");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleLoadRealData = async () => {
-    setIsGenerating(true);
-    setError("");
-
-    try {
-      const [vitals, demographics, ae] = await Promise.all([
-        dataGenerationApi.getRealVitalSigns(),
-        dataGenerationApi.getRealDemographics(),
-        dataGenerationApi.getRealAdverseEvents()
-      ]);
-
-      setRealVitalsCount((vitals ?? []).length);
-      setRealDemoCount((demographics ?? []).length);
-      setRealAeCount((ae ?? []).length);
-      setRealDataLoaded(true);
-      setPilotData(vitals ?? []);
-
-      alert(`Real CDISC data loaded:\n\nVitals: ${(vitals ?? []).length} records\nDemographics: ${(demographics ?? []).length} subjects\nAdverse Events: ${(ae ?? []).length} events`);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to load real data");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const downloadCSV = (data: any[], filename: string) => {
-    if (!data || (data ?? []).length === 0) {
-      alert("No data to download");
-      return;
-    }
-
-    const headers = Object.keys(data[0] ?? {});
-    const csvContent = [
-      headers.join(","),
-      ...(data ?? []).map(row => headers.map(h => row[h] ?? "").join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleExportSDTM = async (domain: "vitals" | "demographics" | "labs" | "ae") => {
-    try {
-      let response;
-      switch (domain) {
-        case "vitals":
-          response = await analyticsApi.exportSDTM(vitalsData);
-          break;
-        case "demographics":
-          response = await analyticsApi.exportDemographicsSDTM(demographicsData);
-          break;
-        case "labs":
-          response = await analyticsApi.exportLabsSDTM(labsData);
-          break;
-        case "ae":
-          response = await analyticsApi.exportAESDTM(aeData);
-          break;
-      }
-
-      // Download the response as JSON (or CSV if backend supports it)
-      const blob = new Blob([JSON.stringify(response, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${domain}_sdtm.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-    } catch (err: any) {
-      setError(`Failed to export ${domain} to SDTM: ${err.message}`);
-    }
-  };
 
   const handleSaveDataset = async () => {
     if (vitalsData.length === 0) {
@@ -338,6 +138,29 @@ export function DataGeneration() {
     }
   };
 
+  const downloadCSV = (data: any[], filename: string) => {
+    if (!data || (data ?? []).length === 0) {
+      alert("No data to download");
+      return;
+    }
+
+    const headers = Object.keys(data[0] ?? {});
+    const csvContent = [
+      headers.join(","),
+      ...(data ?? []).map(row => headers.map(h => row[h] ?? "").join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -347,30 +170,10 @@ export function DataGeneration() {
             Generate complete, coordinated clinical trial datasets with guaranteed consistency across all domains
           </p>
         </div>
-        <Button onClick={handleLoadRealData} variant="outline" disabled={isGenerating}>
-          {isGenerating ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <>
-              <Database className="h-4 w-4 mr-2" />
-              Load Real CDISC Data
-            </>
-          )}
-        </Button>
+        <div />
       </div>
 
-      {realDataLoaded && (
-        <Card className="border-green-500 bg-green-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-green-700">
-              <Activity className="h-5 w-5" />
-              <span className="font-medium">
-                Real data loaded: {realVitalsCount.toLocaleString()} vitals, {realDemoCount} demographics, {realAeCount} AEs
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
 
       {error && (
         <Card className="border-red-500 bg-red-50">
@@ -407,577 +210,201 @@ export function DataGeneration() {
           </TabsTrigger>
         </TabsList>
 
-        {/* VITALS TAB */}
-        <TabsContent value="vitals" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Vital Signs Data</CardTitle>
-              <CardDescription>View vitals generated from Complete Study tab (SBP, DBP, Heart Rate, Temperature)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Database className="h-4 w-4 text-blue-600" />
-                  <div className="text-sm text-blue-900">
-                    <p className="font-semibold">ℹ️ Data displayed from Complete Study generation</p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      Use the <strong>Complete Study ⭐</strong> tab to generate coordinated datasets with guaranteed consistency
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {vitalsMetadata && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                  <p className="font-medium text-green-900">✅ Generated</p>
-                  <p className="text-green-700">Records: {vitalsMetadata?.records ?? 0}</p>
-                  <p className="text-green-700">Subjects: {vitalsMetadata?.subjects ?? 0}</p>
-                </div>
-              )}
-
-              {!vitalsMetadata && (
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                  <p className="text-sm text-gray-600">No data generated yet. Please use the <strong>Complete Study ⭐</strong> tab to generate data.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {(vitalsData ?? []).length > 0 && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Data Preview</CardTitle>
-                    <CardDescription>Showing first 10 of {(vitalsData ?? []).length} records</CardDescription>
-                  </div>
-                  <Button onClick={() => downloadCSV(vitalsData, "vitals.csv")} variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download CSV
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Visit</TableHead>
-                      <TableHead>Arm</TableHead>
-                      <TableHead>SBP</TableHead>
-                      <TableHead>DBP</TableHead>
-                      <TableHead>HR</TableHead>
-                      <TableHead>Temp</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(vitalsData ?? []).slice(0, 10).map((row, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="font-mono text-sm">{row?.SubjectID ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.VisitName ?? 'N/A'}</TableCell>
-                        <TableCell>
-                          <Badge variant={(row?.TreatmentArm ?? "") === "Active" ? "default" : "secondary"}>
-                            {row?.TreatmentArm ?? 'N/A'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{row?.SystolicBP ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.DiastolicBP ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.HeartRate ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.Temperature?.toFixed?.(1) ?? 'N/A'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* DEMOGRAPHICS TAB */}
-        <TabsContent value="demographics" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Demographics Data</CardTitle>
-              <CardDescription>View demographics generated from Complete Study tab (Age, Gender, Race, Ethnicity, Height, Weight, BMI, Smoking Status)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Database className="h-4 w-4 text-blue-600" />
-                  <div className="text-sm text-blue-900">
-                    <p className="font-semibold">ℹ️ Data displayed from Complete Study generation</p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      Use the <strong>Complete Study ⭐</strong> tab to generate coordinated datasets with AACT real-world distributions
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-muted rounded-lg">
-                <h3 className="font-medium mb-2">Generated Fields:</h3>
-                <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>• Age (from AACT real distribution)</li>
-                  <li>• Gender (from AACT real ratio)</li>
-                  <li>• Race (from AACT baseline characteristics)</li>
-                  <li>• Ethnicity (Hispanic/Not Hispanic)</li>
-                  <li>• Height (gender-specific, cm)</li>
-                  <li>• Weight (age-correlated, kg)</li>
-                  <li>• BMI (auto-calculated)</li>
-                  <li>• Smoking Status</li>
-                </ul>
-              </div>
-
-              {demographicsMetadata && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                  <p className="font-medium text-green-900">✅ Generated</p>
-                  <p className="text-green-700">Subjects: {demographicsMetadata?.subjects ?? 0}</p>
-                  <p className="text-green-700">Records: {demographicsMetadata?.records ?? 0}</p>
-                </div>
-              )}
-
-              {!demographicsMetadata && (
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                  <p className="text-sm text-gray-600">No data generated yet. Please use the <strong>Complete Study ⭐</strong> tab to generate data.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {(demographicsData ?? []).length > 0 && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Demographics Preview</CardTitle>
-                    <CardDescription>Showing first 10 of {(demographicsData ?? []).length} subjects</CardDescription>
-                  </div>
-                  <Button onClick={() => downloadCSV(demographicsData, "demographics.csv")} variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download CSV
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Age</TableHead>
-                      <TableHead>Gender</TableHead>
-                      <TableHead>Race</TableHead>
-                      <TableHead>Height (cm)</TableHead>
-                      <TableHead>Weight (kg)</TableHead>
-                      <TableHead>BMI</TableHead>
-                      <TableHead>Smoking</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(demographicsData ?? []).slice(0, 10).map((row, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="font-mono text-sm">{row?.SubjectID ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.Age ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.Gender ?? 'N/A'}</TableCell>
-                        <TableCell className="text-xs">{row?.Race ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.Height_cm?.toFixed?.(1) ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.Weight_kg?.toFixed?.(1) ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.BMI?.toFixed?.(1) ?? 'N/A'}</TableCell>
-                        <TableCell className="text-xs">{row?.SmokingStatus ?? 'N/A'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* LABS TAB */}
-        <TabsContent value="labs" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Lab Results Data</CardTitle>
-              <CardDescription>View lab results generated from Complete Study tab (Hematology, Chemistry, and Lipid panels)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Database className="h-4 w-4 text-blue-600" />
-                  <div className="text-sm text-blue-900">
-                    <p className="font-semibold">ℹ️ Data displayed from Complete Study generation</p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      Use the <strong>Complete Study ⭐</strong> tab to generate coordinated datasets with shared visit schedules
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-muted rounded-lg">
-                <h3 className="font-medium mb-2">Generated Lab Tests:</h3>
-                <div className="text-sm space-y-2 text-muted-foreground">
-                  <div>
-                    <strong>Hematology:</strong> Hemoglobin, Hematocrit, WBC, Platelets
-                  </div>
-                  <div>
-                    <strong>Chemistry:</strong> Glucose, Creatinine, BUN, ALT, AST, Bilirubin
-                  </div>
-                  <div>
-                    <strong>Lipids:</strong> Total Chol, LDL, HDL, Triglycerides
-                  </div>
-                </div>
-              </div>
-
-              {labsMetadata && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                  <p className="font-medium text-green-900">✅ Generated</p>
-                  <p className="text-green-700">Subjects: {labsMetadata?.subjects ?? 0}</p>
-                  <p className="text-green-700">Records: {labsMetadata?.records ?? 0}</p>
-                  <p className="text-green-700">Visits: {labsMetadata?.visits_per_subject ?? 0} per subject</p>
-                </div>
-              )}
-
-              {!labsMetadata && (
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                  <p className="text-sm text-gray-600">No data generated yet. Please use the <strong>Complete Study ⭐</strong> tab to generate data.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {(labsData ?? []).length > 0 && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Labs Preview</CardTitle>
-                    <CardDescription>Showing first 10 of {(labsData ?? []).length} lab records</CardDescription>
-                  </div>
-                  <Button onClick={() => downloadCSV(labsData, "labs.csv")} variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download CSV
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Subject</TableHead>
-                        <TableHead>Visit</TableHead>
-                        <TableHead>Hgb</TableHead>
-                        <TableHead>WBC</TableHead>
-                        <TableHead>Glucose</TableHead>
-                        <TableHead>Creatinine</TableHead>
-                        <TableHead>ALT</TableHead>
-                        <TableHead>Chol</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(labsData ?? []).slice(0, 10).map((row, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="font-mono text-sm">{row?.SubjectID ?? 'N/A'}</TableCell>
-                          <TableCell className="text-xs">{row?.VisitName ?? 'N/A'}</TableCell>
-                          <TableCell>{row?.Hemoglobin?.toFixed?.(1) ?? 'N/A'}</TableCell>
-                          <TableCell>{row?.WBC?.toFixed?.(1) ?? 'N/A'}</TableCell>
-                          <TableCell>{row?.Glucose?.toFixed?.(0) ?? 'N/A'}</TableCell>
-                          <TableCell>{row?.Creatinine?.toFixed?.(2) ?? 'N/A'}</TableCell>
-                          <TableCell>{row?.ALT?.toFixed?.(0) ?? 'N/A'}</TableCell>
-                          <TableCell>{row?.TotalCholesterol?.toFixed?.(0) ?? 'N/A'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* ADVERSE EVENTS TAB */}
-        <TabsContent value="ae" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Adverse Events Data</CardTitle>
-              <CardDescription>View adverse events generated from Complete Study tab (MedDRA coding, severity, and causality)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Database className="h-4 w-4 text-blue-600" />
-                  <div className="text-sm text-blue-900">
-                    <p className="font-semibold">ℹ️ Data displayed from Complete Study generation</p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      Use the <strong>Complete Study ⭐</strong> tab to generate coordinated datasets with phase-appropriate AE rates
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-muted rounded-lg">
-                <h3 className="font-medium mb-2">Generated AE Data:</h3>
-                <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li>• AE Terms (Neutropenia, Nausea, etc.)</li>
-                  <li>• Body System (SOC - MedDRA)</li>
-                  <li>• Seriousness (Y/N)</li>
-                  <li>• Causality/Relationship (Y/N)</li>
-                  <li>• Outcome (RESOLVED/ONGOING/FATAL)</li>
-                  <li>• Includes mandatory serious/related events</li>
-                </ul>
-              </div>
-
-              {aeMetadata && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                  <p className="font-medium text-green-900">✅ Generated</p>
-                  <p className="text-green-700">AE Records: {aeMetadata?.records ?? (aeData ?? []).length}</p>
-                </div>
-              )}
-
-              {!aeMetadata && (
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                  <p className="text-sm text-gray-600">No data generated yet. Please use the <strong>Complete Study ⭐</strong> tab to generate data.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {(aeData ?? []).length > 0 && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>AE Preview</CardTitle>
-                    <CardDescription>Showing first 10 of {(aeData ?? []).length} adverse events</CardDescription>
-                  </div>
-                  <Button onClick={() => downloadCSV(aeData, "adverse_events.csv")} variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
-                    Download CSV
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>AE Term</TableHead>
-                      <TableHead>Body System</TableHead>
-                      <TableHead>Serious</TableHead>
-                      <TableHead>Related</TableHead>
-                      <TableHead>Outcome</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(aeData ?? []).slice(0, 10).map((row, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="font-mono text-sm">{row?.SubjectID ?? 'N/A'}</TableCell>
-                        <TableCell>{row?.AETerm ?? 'N/A'}</TableCell>
-                        <TableCell className="text-xs">{row?.BodySystem ?? 'N/A'}</TableCell>
-                        <TableCell>
-                          <Badge variant={(row?.Serious ?? "") === "Y" ? "destructive" : "secondary"}>
-                            {row?.Serious ?? 'N/A'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={(row?.Related ?? "") === "Y" ? "default" : "secondary"}>
-                            {row?.Related ?? 'N/A'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs">{row?.Outcome ?? 'N/A'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
         {/* COMPLETE STUDY TAB */}
-        <TabsContent value="complete" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>🎯 Complete Study Generation (Recommended)</CardTitle>
-              <CardDescription>
-                Generate all domains simultaneously with guaranteed data consistency
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Key Benefit Callout */}
-              <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-300 rounded-lg">
-                <div className="flex items-start gap-2">
-                  <Database className="h-5 w-5 text-green-600 mt-0.5" />
-                  <div className="text-sm text-green-900">
-                    <p className="font-semibold mb-2">✅ Why Use Complete Study Generation?</p>
-                    <ul className="list-disc list-inside space-y-1 ml-2">
-                      <li><strong>Guaranteed Consistency:</strong> All datasets share the same subject IDs</li>
-                      <li><strong>Same Visit Schedule:</strong> Vitals and labs use identical visit names</li>
-                      <li><strong>Matched Treatment Arms:</strong> Subject RA001-001 is "Active" in all datasets</li>
-                      <li><strong>SDTM-Compliant:</strong> Datasets can be joined on SubjectID with 100% match rate</li>
-                      <li><strong>Parameter Coordination:</strong> Indication/phase affect ALL datasets appropriately</li>
-                    </ul>
-                    <p className="mt-2 text-xs text-green-700">
-                      ℹ️ This is the recommended approach for realistic clinical trial data generation
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* AACT Configuration */}
-              <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="h-4 w-4 text-purple-600" />
-                  <h3 className="font-semibold text-purple-900">AACT Real-World Data (557K+ Trials)</h3>
-                  <Badge variant="outline" className="bg-white">Enhanced v4.0</Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-purple-900">Disease Indication</Label>
-                    <select
-                      value={indication}
-                      onChange={(e) => setIndication(e.target.value)}
-                      className="w-full mt-1 p-2 border rounded-md bg-white"
-                    >
-                      <option value="hypertension">Hypertension (8,695 trials)</option>
-                      <option value="diabetes">Diabetes (20,857 trials)</option>
-                      <option value="cancer">Cancer (82,255 trials)</option>
-                      <option value="heart failure">Heart Failure</option>
-                      <option value="asthma">Asthma</option>
-                      <option value="copd">COPD</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-purple-900">Trial Phase</Label>
-                    <select
-                      value={phase}
-                      onChange={(e) => setPhase(e.target.value)}
-                      className="w-full mt-1 p-2 border rounded-md bg-white"
-                    >
-                      <option value="Phase 1">Phase 1 - Safety (30% serious AEs)</option>
-                      <option value="Phase 2">Phase 2 - Efficacy</option>
-                      <option value="Phase 3">Phase 3 - Confirmation (15% serious AEs)</option>
-                      <option value="Phase 4">Phase 4 - Post-Marketing</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Study Parameters */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label>Dataset Name (Optional)</Label>
-                  <Input
-                    type="text"
-                    placeholder="e.g., My Hypertension Study"
-                    value={datasetName}
-                    onChange={(e) => setDatasetName(e.target.value)}
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Custom name for the generated dataset
+        <TabsContent value="complete" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Header Card */}
+            <BentoCard
+              title="Complete Study Generation"
+              colSpan="md:col-span-12"
+              className="bg-gradient-to-br from-zinc-900 to-zinc-950"
+            >
+              <div className="mt-4 flex items-start justify-between">
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-bold text-white">Command Center</h2>
+                  <p className="text-zinc-400 max-w-2xl">
+                    Generate coordinated clinical trial datasets with guaranteed consistency across all domains.
+                    All datasets will share the same subject IDs, visit schedules, and treatment arms.
                   </p>
                 </div>
-                <div>
-                  <Label>Subjects Per Arm</Label>
-                  <Input
-                    type="number"
-                    value={nPerArm}
-                    onChange={(e) => setNPerArm(parseInt(e.target.value) || 0)}
+                <div className="flex gap-2">
+                  <Badge variant="outline" className="bg-teal-950/30 text-teal-400 border-teal-900">
+                    <Database className="h-3 w-3 mr-1" />
+                    SDTM Compliant
+                  </Badge>
+                  <Badge variant="outline" className="bg-purple-950/30 text-purple-400 border-purple-900">
+                    <Activity className="h-3 w-3 mr-1" />
+                    AACT Real-World Data
+                  </Badge>
+                </div>
+              </div>
+            </BentoCard>
+
+            {/* AACT Configuration */}
+            <BentoCard
+              title="Study Configuration"
+              colSpan="md:col-span-4"
+              icon={Database}
+            >
+              <div className="mt-4 space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Disease Indication</Label>
+                  <Select value={indication} onValueChange={setIndication}>
+                    <SelectTrigger className="bg-zinc-800/50 border-zinc-700 text-zinc-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
+                      <SelectItem value="hypertension">Hypertension (8,695 trials)</SelectItem>
+                      <SelectItem value="diabetes">Diabetes (20,857 trials)</SelectItem>
+                      <SelectItem value="cancer">Cancer (82,255 trials)</SelectItem>
+                      <SelectItem value="heart failure">Heart Failure</SelectItem>
+                      <SelectItem value="asthma">Asthma</SelectItem>
+                      <SelectItem value="copd">COPD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Trial Phase</Label>
+                  <Select value={phase} onValueChange={setPhase}>
+                    <SelectTrigger className="bg-zinc-800/50 border-zinc-700 text-zinc-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
+                      <SelectItem value="Phase 1">Phase 1 - Safety</SelectItem>
+                      <SelectItem value="Phase 2">Phase 2 - Efficacy</SelectItem>
+                      <SelectItem value="Phase 3">Phase 3 - Confirmation</SelectItem>
+                      <SelectItem value="Phase 4">Phase 4 - Post-Marketing</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Generation Method</Label>
+                  <Select value={selectedMethod} onValueChange={setSelectedMethod}>
+                    <SelectTrigger className="bg-zinc-800/50 border-zinc-700 text-zinc-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-200">
+                      <SelectItem value="mvn">MVN (Fastest)</SelectItem>
+                      <SelectItem value="bootstrap">Bootstrap</SelectItem>
+                      <SelectItem value="rules">Rules-based</SelectItem>
+                      <SelectItem value="diffusion">Diffusion (Advanced)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </BentoCard>
+
+            {/* Study Parameters */}
+            <BentoCard
+              title="Population Parameters"
+              colSpan="md:col-span-4"
+              icon={Users}
+            >
+              <div className="mt-4 space-y-6">
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <Label className="text-zinc-400">Subjects Per Arm</Label>
+                    <span className="text-xs font-mono text-teal-400">{nPerArm}</span>
+                  </div>
+                  <Slider
+                    value={[nPerArm]}
+                    onValueChange={(vals) => setNPerArm(vals[0])}
                     min={10}
                     max={200}
+                    step={10}
+                    className="py-2"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Total: {nPerArm * 2} subjects
-                  </p>
+                  <p className="text-xs text-zinc-500">Total: {nPerArm * 2} subjects</p>
                 </div>
-                <div>
-                  <Label>Target Effect (mmHg)</Label>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <Label className="text-zinc-400">Target Effect (mmHg)</Label>
+                    <span className="text-xs font-mono text-teal-400">{targetEffect}</span>
+                  </div>
+                  <Slider
+                    value={[Math.abs(targetEffect)]}
+                    onValueChange={(vals) => setTargetEffect(-vals[0])}
+                    min={0}
+                    max={20}
+                    step={0.5}
+                    className="py-2"
+                  />
+                  <p className="text-xs text-zinc-500">Active vs Placebo difference</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-zinc-400">Dataset Name</Label>
                   <Input
-                    type="number"
-                    value={targetEffect}
-                    onChange={(e) => setTargetEffect(parseFloat(e.target.value) || 0)}
-                    step={0.1}
+                    value={datasetName}
+                    onChange={(e) => setDatasetName(e.target.value)}
+                    placeholder="Optional custom name..."
+                    className="bg-zinc-800/50 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Active vs Placebo SBP difference
-                  </p>
-                </div>
-                <div>
-                  <Label>Generation Method</Label>
-                  <select
-                    value={selectedMethod}
-                    onChange={(e) => setSelectedMethod(e.target.value)}
-                    className="w-full mt-1 p-2 border rounded-md"
-                  >
-                    <option value="mvn">MVN (Fastest)</option>
-                    <option value="bootstrap">Bootstrap</option>
-                    <option value="rules">Rules-based</option>
-                    <option value="diffusion">Diffusion (Advanced)</option>
-                  </select>
                 </div>
               </div>
+            </BentoCard>
 
-              {/* Advanced Simulation Parameters */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                <div className="flex items-center gap-2 mb-3">
-                  <Activity className="h-4 w-4 text-slate-600" />
-                  <h3 className="font-semibold text-slate-900">Advanced Simulation Scenarios</h3>
+            {/* Advanced Simulation */}
+            <BentoCard
+              title="Advanced Simulation"
+              colSpan="md:col-span-4"
+              icon={FlaskConical}
+            >
+              <div className="mt-4 space-y-6">
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <Label className="text-zinc-400">Dropout Rate</Label>
+                    <span className="text-xs font-mono text-teal-400">{(dropoutRate * 100).toFixed(0)}%</span>
+                  </div>
+                  <Slider
+                    value={[dropoutRate]}
+                    onValueChange={(vals) => setDropoutRate(vals[0])}
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    className="py-2"
+                  />
                 </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label>Dropout Rate ({(dropoutRate * 100).toFixed(0)}%)</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="range"
-                        min="0"
-                        max="0.5"
-                        step="0.01"
-                        value={dropoutRate}
-                        onChange={(e) => setDropoutRate(parseFloat(e.target.value))}
-                        className="mt-1"
-                      />
-                      <span className="text-sm w-12">{(dropoutRate * 100).toFixed(0)}%</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Subject attrition over time</p>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <Label className="text-zinc-400">Missing Data</Label>
+                    <span className="text-xs font-mono text-teal-400">{(missingDataRate * 100).toFixed(0)}%</span>
                   </div>
-                  <div>
-                    <Label>Missing Data ({(missingDataRate * 100).toFixed(0)}%)</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="range"
-                        min="0"
-                        max="0.3"
-                        step="0.01"
-                        value={missingDataRate}
-                        onChange={(e) => setMissingDataRate(parseFloat(e.target.value))}
-                        className="mt-1"
-                      />
-                      <span className="text-sm w-12">{(missingDataRate * 100).toFixed(0)}%</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Random missing values</p>
+                  <Slider
+                    value={[missingDataRate]}
+                    onValueChange={(vals) => setMissingDataRate(vals[0])}
+                    min={0}
+                    max={0.3}
+                    step={0.01}
+                    className="py-2"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <Label className="text-zinc-400">Site Heterogeneity</Label>
+                    <span className="text-xs font-mono text-teal-400">{(siteHeterogeneity * 100).toFixed(0)}%</span>
                   </div>
-                  <div>
-                    <Label>Site Heterogeneity ({(siteHeterogeneity * 100).toFixed(0)}%)</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={siteHeterogeneity}
-                        onChange={(e) => setSiteHeterogeneity(parseFloat(e.target.value))}
-                        className="mt-1"
-                      />
-                      <span className="text-sm w-12">{(siteHeterogeneity * 100).toFixed(0)}%</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Variability between sites</p>
-                  </div>
+                  <Slider
+                    value={[siteHeterogeneity]}
+                    onValueChange={(vals) => setSiteHeterogeneity(vals[0])}
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    className="py-2"
+                  />
                 </div>
               </div>
+            </BentoCard>
 
-              {/* Generate Button */}
+            {/* Action Button */}
+            <div className="md:col-span-12">
               <Button
-                className="w-full"
-                size="lg"
+                className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 shadow-lg shadow-teal-900/20"
                 onClick={async () => {
                   setIsGenerating(true);
                   setError("");
@@ -1034,85 +461,530 @@ export function DataGeneration() {
               >
                 {isGenerating ? (
                   <>
-                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                    Generating Complete Study...
+                    <Loader2 className="h-6 w-6 mr-2 animate-spin" />
+                    Generating Comprehensive Study...
                   </>
                 ) : (
                   <>
-                    <Database className="h-5 w-5 mr-2" />
+                    <Database className="h-6 w-6 mr-2" />
                     Generate Complete Study
                   </>
                 )}
               </Button>
+            </div>
 
-              <p className="text-sm text-muted-foreground text-center">
-                After generation, view individual datasets in the Vitals, Demographics, Labs, and AE tabs above
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Summary Card (shown after generation) */}
-          {(vitalsData.length > 0 || demographicsData.length > 0 || labsData.length > 0 || aeData.length > 0) && (
-            <Card className="border-green-500">
-              <CardHeader>
-                <CardTitle>📊 Generated Data Summary</CardTitle>
-                <CardDescription>All datasets are coordinated and ready for analysis</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-4 bg-blue-50 rounded-lg">
+            {/* Summary Section */}
+            {(vitalsData.length > 0 || demographicsData.length > 0 || labsData.length > 0 || aeData.length > 0) && (
+              <BentoCard
+                title="Generated Data Summary"
+                colSpan="md:col-span-12"
+                className="border-teal-900/50 bg-teal-950/10"
+              >
+                <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 rounded-lg bg-zinc-900/50 border border-zinc-800">
                     <div className="flex items-center gap-2 mb-2">
-                      <Activity className="h-4 w-4 text-blue-600" />
-                      <span className="font-medium text-blue-900">Vitals</span>
+                      <Activity className="h-4 w-4 text-teal-500" />
+                      <span className="font-medium text-zinc-300">Vitals</span>
                     </div>
-                    <p className="text-2xl font-bold text-blue-600">{vitalsData.length}</p>
-                    <p className="text-xs text-blue-700">records</p>
+                    <p className="text-2xl font-bold text-white">{vitalsData.length}</p>
+                    <p className="text-xs text-zinc-500">records</p>
                   </div>
-                  <div className="p-4 bg-purple-50 rounded-lg">
+                  <div className="p-4 rounded-lg bg-zinc-900/50 border border-zinc-800">
                     <div className="flex items-center gap-2 mb-2">
-                      <Users className="h-4 w-4 text-purple-600" />
-                      <span className="font-medium text-purple-900">Demographics</span>
+                      <Users className="h-4 w-4 text-purple-500" />
+                      <span className="font-medium text-zinc-300">Demographics</span>
                     </div>
-                    <p className="text-2xl font-bold text-purple-600">{demographicsData.length}</p>
-                    <p className="text-xs text-purple-700">subjects</p>
+                    <p className="text-2xl font-bold text-white">{demographicsData.length}</p>
+                    <p className="text-xs text-zinc-500">subjects</p>
                   </div>
-                  <div className="p-4 bg-green-50 rounded-lg">
+                  <div className="p-4 rounded-lg bg-zinc-900/50 border border-zinc-800">
                     <div className="flex items-center gap-2 mb-2">
-                      <FlaskConical className="h-4 w-4 text-green-600" />
-                      <span className="font-medium text-green-900">Labs</span>
+                      <FlaskConical className="h-4 w-4 text-blue-500" />
+                      <span className="font-medium text-zinc-300">Labs</span>
                     </div>
-                    <p className="text-2xl font-bold text-green-600">{labsData.length}</p>
-                    <p className="text-xs text-green-700">records</p>
+                    <p className="text-2xl font-bold text-white">{labsData.length}</p>
+                    <p className="text-xs text-zinc-500">records</p>
                   </div>
-                  <div className="p-4 bg-orange-50 rounded-lg">
+                  <div className="p-4 rounded-lg bg-zinc-900/50 border border-zinc-800">
                     <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle className="h-4 w-4 text-orange-600" />
-                      <span className="font-medium text-orange-900">AEs</span>
+                      <AlertTriangle className="h-4 w-4 text-orange-500" />
+                      <span className="font-medium text-zinc-300">AEs</span>
                     </div>
-                    <p className="text-2xl font-bold text-orange-600">{aeData.length}</p>
-                    <p className="text-xs text-orange-700">events</p>
+                    <p className="text-2xl font-bold text-white">{aeData.length}</p>
+                    <p className="text-xs text-zinc-500">events</p>
                   </div>
                 </div>
-                <div className="mt-4 flex gap-2">
-                  <Button onClick={() => downloadCSV(vitalsData, "vitals.csv")} variant="outline" size="sm">
+
+                <div className="mt-6 flex flex-wrap gap-2">
+                  <Button onClick={() => downloadCSV(vitalsData, "vitals.csv")} variant="outline" size="sm" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
                     <Download className="h-3 w-3 mr-1" /> Vitals CSV
                   </Button>
-                  <Button onClick={() => downloadCSV(demographicsData, "demographics.csv")} variant="outline" size="sm">
+                  <Button onClick={() => downloadCSV(demographicsData, "demographics.csv")} variant="outline" size="sm" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
                     <Download className="h-3 w-3 mr-1" /> Demographics CSV
                   </Button>
-                  <Button onClick={() => downloadCSV(labsData, "labs.csv")} variant="outline" size="sm">
+                  <Button onClick={() => downloadCSV(labsData, "labs.csv")} variant="outline" size="sm" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
                     <Download className="h-3 w-3 mr-1" /> Labs CSV
                   </Button>
-                  <Button onClick={() => downloadCSV(aeData, "adverse_events.csv")} variant="outline" size="sm">
+                  <Button onClick={() => downloadCSV(aeData, "adverse_events.csv")} variant="outline" size="sm" className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
                     <Download className="h-3 w-3 mr-1" /> AE CSV
                   </Button>
-                  <Button onClick={handleSaveDataset} variant="default" size="sm" className="ml-auto bg-blue-600 hover:bg-blue-700">
+                  <Button onClick={handleSaveDataset} variant="default" size="sm" className="ml-auto bg-teal-600 hover:bg-teal-700 text-white">
                     <Database className="h-3 w-3 mr-1" /> Save Dataset
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </BentoCard>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* VITALS TAB */}
+        <TabsContent value="vitals" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Info Card */}
+            <BentoCard
+              title="Data Source"
+              colSpan="md:col-span-4"
+              icon={Database}
+              className="bg-blue-950/10 border-blue-900/30"
+            >
+              <div className="mt-4 space-y-2">
+                <p className="text-sm text-blue-200">
+                  Data displayed from Complete Study generation.
+                </p>
+                <p className="text-xs text-blue-400">
+                  Use the <strong>Complete Study</strong> tab to generate coordinated datasets with guaranteed consistency.
+                </p>
+              </div>
+            </BentoCard>
+
+            {/* Stats Card */}
+            <BentoCard
+              title="Generation Stats"
+              colSpan="md:col-span-8"
+              icon={Activity}
+            >
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Records</p>
+                  <p className="text-2xl font-bold text-white">{vitalsMetadata?.records ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Subjects</p>
+                  <p className="text-2xl font-bold text-white">{vitalsMetadata?.subjects ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Status</p>
+                  <Badge variant="outline" className="mt-1 bg-emerald-950/30 text-emerald-400 border-emerald-900">
+                    {vitalsMetadata ? "Generated" : "Pending"}
+                  </Badge>
+                </div>
+              </div>
+            </BentoCard>
+
+            {/* Data Table Card */}
+            <BentoCard
+              title="Vital Signs Data"
+              colSpan="md:col-span-12"
+              className="min-h-[500px]"
+            >
+              <div className="mt-4 flex items-center justify-between mb-4">
+                <p className="text-sm text-zinc-400">
+                  Showing first 10 of {(vitalsData ?? []).length} records
+                </p>
+                <Button
+                  onClick={() => downloadCSV(vitalsData, "vitals.csv")}
+                  variant="outline"
+                  size="sm"
+                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                  disabled={(vitalsData ?? []).length === 0}
+                >
+                  <Download className="h-3 w-3 mr-2" />
+                  Download CSV
+                </Button>
+              </div>
+
+              {(vitalsData ?? []).length > 0 ? (
+                <div className="rounded-md border border-zinc-800 overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-zinc-900/50">
+                      <TableRow className="hover:bg-zinc-900/50 border-zinc-800">
+                        <TableHead className="text-zinc-400">Subject</TableHead>
+                        <TableHead className="text-zinc-400">Visit</TableHead>
+                        <TableHead className="text-zinc-400">Arm</TableHead>
+                        <TableHead className="text-zinc-400">SBP</TableHead>
+                        <TableHead className="text-zinc-400">DBP</TableHead>
+                        <TableHead className="text-zinc-400">HR</TableHead>
+                        <TableHead className="text-zinc-400">Temp</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(vitalsData ?? []).slice(0, 10).map((row, idx) => (
+                        <TableRow key={idx} className="hover:bg-zinc-900/30 border-zinc-800">
+                          <TableCell className="font-mono text-xs text-zinc-300">{row?.SubjectID ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.VisitName ?? 'N/A'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={cn(
+                              "border-0",
+                              (row?.TreatmentArm ?? "") === "Active"
+                                ? "bg-teal-950/30 text-teal-400"
+                                : "bg-zinc-800 text-zinc-400"
+                            )}>
+                              {row?.TreatmentArm ?? 'N/A'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-zinc-300">{row?.SystolicBP ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.DiastolicBP ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.HeartRate ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.Temperature?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-zinc-500 border border-dashed border-zinc-800 rounded-lg">
+                  <Database className="h-8 w-8 mb-2 opacity-20" />
+                  <p>No data generated yet</p>
+                </div>
+              )}
+            </BentoCard>
+          </div>
+        </TabsContent>
+
+        {/* DEMOGRAPHICS TAB */}
+        <TabsContent value="demographics" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Info Card */}
+            <BentoCard
+              title="Data Source"
+              colSpan="md:col-span-4"
+              icon={Database}
+              className="bg-purple-950/10 border-purple-900/30"
+            >
+              <div className="mt-4 space-y-2">
+                <p className="text-sm text-purple-200">
+                  Data displayed from Complete Study generation.
+                </p>
+                <p className="text-xs text-purple-400">
+                  Use the <strong>Complete Study</strong> tab to generate coordinated datasets with AACT real-world distributions.
+                </p>
+              </div>
+            </BentoCard>
+
+            {/* Stats Card */}
+            <BentoCard
+              title="Generation Stats"
+              colSpan="md:col-span-8"
+              icon={Users}
+            >
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Subjects</p>
+                  <p className="text-2xl font-bold text-white">{demographicsMetadata?.subjects ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Records</p>
+                  <p className="text-2xl font-bold text-white">{demographicsMetadata?.records ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Status</p>
+                  <Badge variant="outline" className="mt-1 bg-emerald-950/30 text-emerald-400 border-emerald-900">
+                    {demographicsMetadata ? "Generated" : "Pending"}
+                  </Badge>
+                </div>
+              </div>
+            </BentoCard>
+
+            {/* Data Table Card */}
+            <BentoCard
+              title="Demographics Data"
+              colSpan="md:col-span-12"
+              className="min-h-[500px]"
+            >
+              <div className="mt-4 flex items-center justify-between mb-4">
+                <p className="text-sm text-zinc-400">
+                  Showing first 10 of {(demographicsData ?? []).length} subjects
+                </p>
+                <Button
+                  onClick={() => downloadCSV(demographicsData, "demographics.csv")}
+                  variant="outline"
+                  size="sm"
+                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                  disabled={(demographicsData ?? []).length === 0}
+                >
+                  <Download className="h-3 w-3 mr-2" />
+                  Download CSV
+                </Button>
+              </div>
+
+              {(demographicsData ?? []).length > 0 ? (
+                <div className="rounded-md border border-zinc-800 overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-zinc-900/50">
+                      <TableRow className="hover:bg-zinc-900/50 border-zinc-800">
+                        <TableHead className="text-zinc-400">Subject</TableHead>
+                        <TableHead className="text-zinc-400">Age</TableHead>
+                        <TableHead className="text-zinc-400">Gender</TableHead>
+                        <TableHead className="text-zinc-400">Race</TableHead>
+                        <TableHead className="text-zinc-400">Height (cm)</TableHead>
+                        <TableHead className="text-zinc-400">Weight (kg)</TableHead>
+                        <TableHead className="text-zinc-400">BMI</TableHead>
+                        <TableHead className="text-zinc-400">Smoking</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(demographicsData ?? []).slice(0, 10).map((row, idx) => (
+                        <TableRow key={idx} className="hover:bg-zinc-900/30 border-zinc-800">
+                          <TableCell className="font-mono text-xs text-zinc-300">{row?.SubjectID ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.Age ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.Gender ?? 'N/A'}</TableCell>
+                          <TableCell className="text-xs text-zinc-400">{row?.Race ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.Height_cm?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.Weight_kg?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.BMI?.toFixed?.(1) ?? 'N/A'}</TableCell>
+                          <TableCell className="text-xs text-zinc-400">{row?.SmokingStatus ?? 'N/A'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-zinc-500 border border-dashed border-zinc-800 rounded-lg">
+                  <Database className="h-8 w-8 mb-2 opacity-20" />
+                  <p>No data generated yet</p>
+                </div>
+              )}
+            </BentoCard>
+          </div>
+        </TabsContent>
+
+        {/* LABS TAB */}
+        <TabsContent value="labs" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Info Card */}
+            <BentoCard
+              title="Data Source"
+              colSpan="md:col-span-4"
+              icon={Database}
+              className="bg-green-950/10 border-green-900/30"
+            >
+              <div className="mt-4 space-y-2">
+                <p className="text-sm text-green-200">
+                  Data displayed from Complete Study generation.
+                </p>
+                <p className="text-xs text-green-400">
+                  Use the <strong>Complete Study</strong> tab to generate coordinated datasets with consistent visit schedules.
+                </p>
+              </div>
+            </BentoCard>
+
+            {/* Stats Card */}
+            <BentoCard
+              title="Generation Stats"
+              colSpan="md:col-span-8"
+              icon={FlaskConical}
+            >
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Records</p>
+                  <p className="text-2xl font-bold text-white">{labsMetadata?.records ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Subjects</p>
+                  <p className="text-2xl font-bold text-white">{labsMetadata?.subjects ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Status</p>
+                  <Badge variant="outline" className="mt-1 bg-emerald-950/30 text-emerald-400 border-emerald-900">
+                    {labsMetadata ? "Generated" : "Pending"}
+                  </Badge>
+                </div>
+              </div>
+            </BentoCard>
+
+            {/* Data Table Card */}
+            <BentoCard
+              title="Laboratory Data"
+              colSpan="md:col-span-12"
+              className="min-h-[500px]"
+            >
+              <div className="mt-4 flex items-center justify-between mb-4">
+                <p className="text-sm text-zinc-400">
+                  Showing first 10 of {(labsData ?? []).length} records
+                </p>
+                <Button
+                  onClick={() => downloadCSV(labsData, "labs.csv")}
+                  variant="outline"
+                  size="sm"
+                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                  disabled={(labsData ?? []).length === 0}
+                >
+                  <Download className="h-3 w-3 mr-2" />
+                  Download CSV
+                </Button>
+              </div>
+
+              {(labsData ?? []).length > 0 ? (
+                <div className="rounded-md border border-zinc-800 overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-zinc-900/50">
+                      <TableRow className="hover:bg-zinc-900/50 border-zinc-800">
+                        <TableHead className="text-zinc-400">Subject</TableHead>
+                        <TableHead className="text-zinc-400">Visit</TableHead>
+                        <TableHead className="text-zinc-400">Test Code</TableHead>
+                        <TableHead className="text-zinc-400">Test Name</TableHead>
+                        <TableHead className="text-zinc-400">Result</TableHead>
+                        <TableHead className="text-zinc-400">Unit</TableHead>
+                        <TableHead className="text-zinc-400">Ref Range</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(labsData ?? []).slice(0, 10).map((row, idx) => (
+                        <TableRow key={idx} className="hover:bg-zinc-900/30 border-zinc-800">
+                          <TableCell className="font-mono text-xs text-zinc-300">{row?.SubjectID ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.VisitName ?? 'N/A'}</TableCell>
+                          <TableCell className="font-mono text-xs text-zinc-400">{row?.LabTestCode ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.LabTestName ?? 'N/A'}</TableCell>
+                          <TableCell className="font-medium text-white">{row?.LabResult?.toFixed?.(2) ?? 'N/A'}</TableCell>
+                          <TableCell className="text-xs text-zinc-400">{row?.LabUnit ?? 'N/A'}</TableCell>
+                          <TableCell className="text-xs text-zinc-500">
+                            {row?.ReferenceRangeLow} - {row?.ReferenceRangeHigh}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-zinc-500 border border-dashed border-zinc-800 rounded-lg">
+                  <Database className="h-8 w-8 mb-2 opacity-20" />
+                  <p>No data generated yet</p>
+                </div>
+              )}
+            </BentoCard>
+          </div>
+        </TabsContent>
+
+        {/* ADVERSE EVENTS TAB */}
+        <TabsContent value="ae" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            {/* Info Card */}
+            <BentoCard
+              title="Data Source"
+              colSpan="md:col-span-4"
+              icon={Database}
+              className="bg-orange-950/10 border-orange-900/30"
+            >
+              <div className="mt-4 space-y-2">
+                <p className="text-sm text-orange-200">
+                  Data displayed from Complete Study generation.
+                </p>
+                <p className="text-xs text-orange-400">
+                  Use the <strong>Complete Study</strong> tab to generate coordinated datasets with realistic AE distributions based on trial phase.
+                </p>
+              </div>
+            </BentoCard>
+
+            {/* Stats Card */}
+            <BentoCard
+              title="Generation Stats"
+              colSpan="md:col-span-8"
+              icon={AlertTriangle}
+            >
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Events</p>
+                  <p className="text-2xl font-bold text-white">{aeMetadata?.records ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Serious AEs</p>
+                  <p className="text-2xl font-bold text-white">
+                    {(aeData ?? []).filter(r => r.Serious === "Yes").length}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 uppercase">Status</p>
+                  <Badge variant="outline" className="mt-1 bg-emerald-950/30 text-emerald-400 border-emerald-900">
+                    {aeMetadata ? "Generated" : "Pending"}
+                  </Badge>
+                </div>
+              </div>
+            </BentoCard>
+
+            {/* Data Table Card */}
+            <BentoCard
+              title="Adverse Events Data"
+              colSpan="md:col-span-12"
+              className="min-h-[500px]"
+            >
+              <div className="mt-4 flex items-center justify-between mb-4">
+                <p className="text-sm text-zinc-400">
+                  Showing first 10 of {(aeData ?? []).length} events
+                </p>
+                <Button
+                  onClick={() => downloadCSV(aeData, "adverse_events.csv")}
+                  variant="outline"
+                  size="sm"
+                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                  disabled={(aeData ?? []).length === 0}
+                >
+                  <Download className="h-3 w-3 mr-2" />
+                  Download CSV
+                </Button>
+              </div>
+
+              {(aeData ?? []).length > 0 ? (
+                <div className="rounded-md border border-zinc-800 overflow-hidden">
+                  <Table>
+                    <TableHeader className="bg-zinc-900/50">
+                      <TableRow className="hover:bg-zinc-900/50 border-zinc-800">
+                        <TableHead className="text-zinc-400">Subject</TableHead>
+                        <TableHead className="text-zinc-400">Term</TableHead>
+                        <TableHead className="text-zinc-400">Severity</TableHead>
+                        <TableHead className="text-zinc-400">Serious</TableHead>
+                        <TableHead className="text-zinc-400">Start Day</TableHead>
+                        <TableHead className="text-zinc-400">End Day</TableHead>
+                        <TableHead className="text-zinc-400">Outcome</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(aeData ?? []).slice(0, 10).map((row, idx) => (
+                        <TableRow key={idx} className="hover:bg-zinc-900/30 border-zinc-800">
+                          <TableCell className="font-mono text-xs text-zinc-300">{row?.SubjectID ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.AdverseEventTerm ?? 'N/A'}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={cn(
+                              "border-0",
+                              row?.Severity === "Severe" ? "bg-red-950/30 text-red-400" :
+                                row?.Severity === "Moderate" ? "bg-orange-950/30 text-orange-400" :
+                                  "bg-yellow-950/30 text-yellow-400"
+                            )}>
+                              {row?.Severity ?? 'N/A'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {row?.Serious === "Yes" ? (
+                              <Badge variant="destructive" className="bg-red-900/50 text-red-200 hover:bg-red-900/70">Yes</Badge>
+                            ) : (
+                              <span className="text-zinc-500">No</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-zinc-300">{row?.StartDay ?? 'N/A'}</TableCell>
+                          <TableCell className="text-zinc-300">{row?.EndDay ?? 'N/A'}</TableCell>
+                          <TableCell className="text-xs text-zinc-400">{row?.Outcome ?? 'N/A'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-zinc-500 border border-dashed border-zinc-800 rounded-lg">
+                  <Database className="h-8 w-8 mb-2 opacity-20" />
+                  <p>No data generated yet</p>
+                </div>
+              )}
+            </BentoCard>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

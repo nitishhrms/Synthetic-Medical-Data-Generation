@@ -14,26 +14,8 @@ import { analyticsApi, dataGenerationApi } from "@/services/api";
 import { fetchAllAACTAnalytics, type DemographicsResponse, type AdverseEventsResponse, type LabsResponse } from "@/services/aactApi";
 import { useData } from "@/contexts/DataContext";
 import type { VitalsRecord, PCAComparisonResponse } from "@/types";
-import { BarChart3, CheckCircle, AlertCircle, Loader2, TrendingDown, Activity, Target, Layers, Users, AlertTriangle, FlaskConical, GitCompare, Database, Info, Calculator } from "lucide-react";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  ScatterChart,
-  Scatter,
-  PieChart,
-  Pie,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Cell,
-  ComposedChart,
-  ReferenceLine,
-} from "recharts";
+import { CheckCircle, AlertCircle, Loader2, TrendingDown, Activity, Target, Layers, Users, AlertTriangle, FlaskConical, GitCompare, Database, Info, Calculator } from "lucide-react";
+import { AreaChart, BarChart, LineChart, ScatterChart, DonutChart, Legend } from "@tremor/react";
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import DistributionChart from "@/components/analytics/DistributionChart";
 
@@ -109,27 +91,8 @@ const calculateLabStats = (data: any[], paramName: string, baseMean: number, bas
   };
 };
 
-// Custom Tooltip for Recharts with enhanced styling
-const CustomChartTooltip = ({ active, payload, label, labelFormatter }: { active?: boolean; payload?: any; label?: any; labelFormatter?: (label: any) => string }) => {
-  if (!active || !payload || payload.length === 0) return null;
 
-  return (
-    <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
-      <p className="font-semibold text-sm mb-2 text-gray-900 dark:text-gray-100">
-        {labelFormatter ? labelFormatter(label) : label}
-      </p>
-      {payload.map((entry: any, index: number) => (
-        <div key={index} className="flex items-center gap-2 text-xs">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-          <span className="text-gray-600 dark:text-gray-400">{entry.name}:</span>
-          <span className="font-semibold text-gray-900 dark:text-gray-100">
-            {typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-};
+
 
 export function Analytics() {
   const {
