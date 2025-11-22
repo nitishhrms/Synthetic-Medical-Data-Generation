@@ -399,6 +399,58 @@ class VirtualControlArmResponse(BaseModel):
     quality_metrics: Dict[str, Any] = Field(..., description="Quality assessment metrics")
     use_case: str = Field(..., description="Intended use case description")
 
+class AugmentControlArmRequest(BaseModel):
+    real_control_data: List[Dict[str, Any]] = Field(..., description="Existing real control data")
+    n_synthetic: int = Field(..., description="Number of synthetic subjects to add")
+    target_effect: float = Field(default=-5.0, description="Target effect size")
+    seed: Optional[int] = Field(default=42, description="Random seed")
+
+class AugmentControlArmResponse(BaseModel):
+    augmented_data: List[Dict[str, Any]]
+    original_n: int
+    added_n: int
+    total_n: int
+    summary: Dict[str, Any]
+
+class WhatIfEnrollmentRequest(BaseModel):
+    baseline_data: List[Dict[str, Any]]
+    enrollment_sizes: List[int]
+    target_effect: float = -5.0
+    n_simulations: int = 1000
+    seed: Optional[int] = 42
+
+class WhatIfEnrollmentResponse(BaseModel):
+    scenarios: Dict[str, Any]
+    recommendation: str
+    parameters: Dict[str, Any]
+
+class WhatIfPatientMixRequest(BaseModel):
+    baseline_data: List[Dict[str, Any]]
+    severity_shifts: List[float]
+    n_per_arm: int = 50
+    target_effect: float = -5.0
+    seed: Optional[int] = 42
+
+class WhatIfPatientMixResponse(BaseModel):
+    scenarios: Dict[str, Any]
+    interpretation: str
+    parameters: Dict[str, Any]
+
+class FeasibilityAssessmentRequest(BaseModel):
+    baseline_data: List[Dict[str, Any]]
+    target_effect: float = -5.0
+    power: float = 0.8
+    dropout_rate: float = 0.1
+    alpha: float = 0.05
+
+class FeasibilityAssessmentResponse(BaseModel):
+    sample_size: Dict[str, Any]
+    timeline: Dict[str, Any]
+    feasibility: Dict[str, Any]
+    parameters: Dict[str, Any]
+    required_n_per_arm: int
+    effect_size_cohens_d: float
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -3008,6 +3060,157 @@ async def create_virtual_control_arm(request: VirtualControlArmRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Virtual control arm generation failed: {str(e)}"
+        )
+
+
+@app.post("/trial-planning/augment-control-arm", response_model=AugmentControlArmResponse)
+async def augment_control_arm(request: AugmentControlArmRequest):
+    """
+    Augment a small real control arm with synthetic subjects
+    
+    **Use Case:**
+    - You have limited historical control data (e.g., n=20)
+    - You need more power (e.g., n=50)
+    - Augment real data with 30 synthetic subjects matching real characteristics
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+            
+        real_df = pd.DataFrame(request.real_control_data)
+        generator = VirtualControlArmGenerator()
+        
+        # Calculate target total N
+        target_n = len(real_df) + request.n_synthetic
+        
+        augmented_df, stats = generator.augment_small_control_arm(
+            real_control=real_df,
+            target_n=target_n,
+            seed=request.seed
+        )
+        
+        return {
+            "augmented_data": augmented_df.to_dict(orient="records"),
+            "original_n": stats["n_real"],
+            "added_n": stats["n_virtual"],
+            "total_n": stats["n_total"],
+            "summary": stats
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Augment control arm failed: {str(e)}"
+        )
+
+
+@app.post("/trial-planning/what-if/enrollment", response_model=WhatIfEnrollmentResponse)
+async def what_if_enrollment(request: WhatIfEnrollmentRequest):
+    """
+    Simulate trial outcomes for different enrollment sizes
+    
+    **What-If Question:**
+    "How does statistical power change if we enroll 25, 50, or 100 patients per arm?"
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+            
+        baseline_df = pd.DataFrame(request.baseline_data)
+        
+        result = run_what_if_enrollment_analysis(
+            baseline_data=baseline_df,
+            enrollment_sizes=request.enrollment_sizes,
+            target_effect=request.target_effect,
+            seed=request.seed
+        )
+        
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Enrollment what-if analysis failed: {str(e)}"
+        )
+
+
+@app.post("/trial-planning/what-if/patient-mix", response_model=WhatIfPatientMixResponse)
+async def what_if_patient_mix(request: WhatIfPatientMixRequest):
+    """
+    Simulate trial outcomes for different patient populations (severity shifts)
+    
+    **What-If Question:**
+    "What if our patients have higher baseline blood pressure (+10 mmHg)? 
+    Will the treatment effect still be detectable?"
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+            
+        baseline_df = pd.DataFrame(request.baseline_data)
+        simulator = WhatIfScenarioSimulator(baseline_df)
+        
+        result = simulator.simulate_patient_mix_scenarios(
+            severity_shifts=request.severity_shifts,
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            seed=request.seed
+        )
+        
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Patient mix what-if analysis failed: {str(e)}"
+        )
+
+
+@app.post("/trial-planning/feasibility", response_model=FeasibilityAssessmentResponse)
+async def assess_trial_feasibility(request: FeasibilityAssessmentRequest):
+    """
+    Assess trial feasibility and calculate required sample size
+    
+    **Use Cases:**
+    - Determine minimum sample size needed to detect target effect
+    - Assess trial feasibility based on recruitment constraints
+    - Calculate statistical power for different enrollment scenarios
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+            
+        baseline_df = pd.DataFrame(request.baseline_data)
+        
+        result = estimate_trial_feasibility(
+            baseline_data=baseline_df,
+            target_effect=request.target_effect,
+            power=request.power,
+            dropout_rate=request.dropout_rate
+        )
+        
+        # Flatten result for response model
+        return {
+            "sample_size": result["sample_size"],
+            "timeline": result["timeline"],
+            "feasibility": result["feasibility"],
+            "parameters": result["parameters"],
+            "required_n_per_arm": result["sample_size"]["n_per_arm_with_dropout"],
+            "effect_size_cohens_d": result["sample_size"]["effect_size_cohens_d"]
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Feasibility assessment failed: {str(e)}"
         )
 
 

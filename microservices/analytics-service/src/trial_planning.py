@@ -536,8 +536,17 @@ class TrialFeasibilityEstimator:
             Comprehensive feasibility report
         """
         # Estimate parameters from baseline data
-        baseline_sbp = baseline_data[baseline_data['VisitName'] == 'Screening']['SystolicBP']
-        baseline_std = baseline_sbp.std()
+        if baseline_data.empty or 'VisitName' not in baseline_data.columns or 'SystolicBP' not in baseline_data.columns:
+            baseline_std = 15.0  # Default for hypertension trials
+        else:
+            baseline_sbp = baseline_data[baseline_data['VisitName'] == 'Screening']['SystolicBP']
+            if baseline_sbp.empty:
+                 # Try to use any SystolicBP data if Screening not found
+                 baseline_sbp = baseline_data['SystolicBP']
+            
+            baseline_std = baseline_sbp.std()
+            if pd.isna(baseline_std):
+                baseline_std = 15.0
 
         # Calculate sample size
         sample_size_req = self.estimate_sample_size_required(

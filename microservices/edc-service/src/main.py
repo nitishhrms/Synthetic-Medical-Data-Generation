@@ -2,7 +2,7 @@
 EDC Service - Electronic Data Capture
 Handles subject data, visits, validation, and auto-repair
 """
-from fastapi import FastAPI, HTTPException, status, File, UploadFile
+from fastapi import FastAPI, HTTPException, status, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -1234,130 +1234,125 @@ async def get_all_vitals():
 
 
 # ============================================================================
-# Privacy Assessment Endpoints
+# Medical Imaging Endpoints
 # ============================================================================
 
-class PrivacyAssessmentRequest(BaseModel):
-    data: List[Dict[str, Any]] = Field(..., description="Clinical data to assess for privacy risks")
-    k_anonymity: int = Field(default=5, ge=1, le=20, description="K-anonymity threshold")
-
-class PrivacyAssessmentResponse(BaseModel):
-    privacy_score: float = Field(..., description="Overall privacy score (0-1, higher is better)")
-    k_anonymity_satisfied: bool = Field(..., description="Whether k-anonymity threshold is met")
-    re_identification_risk: float = Field(..., description="Risk of re-identification (0-1, lower is better)")
-    uniqueness_ratio: float = Field(..., description="Ratio of unique records")
-    quasi_identifiers_found: List[str] = Field(..., description="Potential quasi-identifiers detected")
-    recommendations: List[str] = Field(..., description="Privacy improvement recommendations")
-    summary: str = Field(..., description="Human-readable summary")
-
-@app.post("/privacy/assess/comprehensive", response_model=PrivacyAssessmentResponse)
-async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
+@app.post("/imaging/upload")
+async def upload_medical_image(
+    file: UploadFile = File(...),
+    subject_id: str = Form(...),
+    visit_name: str = Form(default="Screening"),
+    image_type: str = Form(default="X-Ray")
+):
     """
-    Comprehensive privacy assessment for clinical trial data
-
-    Evaluates privacy risks including:
-    - K-anonymity compliance
-    - Re-identification risk analysis
-    - Quasi-identifier detection
-    - Uniqueness analysis
-
-    **Privacy Metrics:**
-    1. **K-Anonymity**: Ensures each combination of quasi-identifiers appears at least K times
-    2. **Re-identification Risk**: Probability that individuals can be re-identified
-    3. **Uniqueness Ratio**: Proportion of records with unique attribute combinations
-    4. **Quasi-Identifiers**: Attributes that could be combined for re-identification
-
-    **Use Cases:**
-    - HIPAA compliance validation
-    - Data sharing risk assessment
-    - Privacy impact assessments
-    - Regulatory submissions
+    Upload and process a medical image
     """
+    if not IMAGING_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Imaging module not available")
+
     try:
-        df = pd.DataFrame(request.data)
-
-        # Potential quasi-identifiers in clinical trial data
-        quasi_identifiers = []
-        for col in df.columns:
-            # Demographics and identifying information
-            if col in ["age", "gender", "race", "ethnicity", "site_id", "enrollment_date"]:
-                quasi_identifiers.append(col)
-            # Check for SubjectID patterns that might leak info
-            elif col.lower() in ["subjectid", "subject_id"]:
-                # SubjectID itself is not included, but we note it exists
-                pass
-
-        # If no quasi-identifiers found in columns, use visit patterns
-        if not quasi_identifiers:
-            # For vitals data, we'll use treatment arm and visit patterns as weak quasi-identifiers
-            available_cols = [c for c in ["TreatmentArm", "VisitName"] if c in df.columns]
-            quasi_identifiers = available_cols if available_cols else []
-
-        # Calculate uniqueness ratio
-        if quasi_identifiers:
-            # Group by quasi-identifiers
-            grouped = df.groupby(quasi_identifiers, dropna=False).size()
-            total_records = len(df)
-            unique_records = (grouped == 1).sum()
-            uniqueness_ratio = float(unique_records / len(grouped)) if len(grouped) > 0 else 0.0
-
-            # Check k-anonymity
-            min_group_size = int(grouped.min()) if len(grouped) > 0 else 0
-            k_anonymity_satisfied = min_group_size >= request.k_anonymity
-
-            # Re-identification risk (inverse of average group size)
-            avg_group_size = float(grouped.mean()) if len(grouped) > 0 else 1.0
-            re_identification_risk = float(1.0 / avg_group_size) if avg_group_size > 0 else 1.0
-        else:
-            # No quasi-identifiers detected - low risk but also low confidence
-            uniqueness_ratio = 0.0
-            k_anonymity_satisfied = True
-            re_identification_risk = 0.0
-
-        # Calculate overall privacy score
-        # Higher is better (inverse of risk)
-        privacy_score = 1.0 - re_identification_risk
-        privacy_score = max(0.0, min(1.0, privacy_score))
-
-        # Generate recommendations
-        recommendations = []
-        if not k_anonymity_satisfied:
-            recommendations.append(f"Increase data aggregation to meet k={request.k_anonymity} anonymity threshold")
-        if uniqueness_ratio > 0.1:
-            recommendations.append("High uniqueness ratio detected - consider generalization or suppression")
-        if re_identification_risk > 0.2:
-            recommendations.append("Re-identification risk above acceptable threshold - apply additional privacy techniques")
-        if len(quasi_identifiers) > 5:
-            recommendations.append("Multiple quasi-identifiers detected - consider reducing dimensionality")
-        if not quasi_identifiers:
-            recommendations.append("No standard quasi-identifiers found - manual review recommended for domain-specific identifiers")
-
-        if not recommendations:
-            recommendations.append("Privacy assessment passed - data meets acceptable privacy standards")
-
-        # Generate summary
-        if privacy_score >= 0.8:
-            summary = f"✅ EXCELLENT - Privacy score: {privacy_score:.2f}. Low re-identification risk. Data is well-protected."
-        elif privacy_score >= 0.6:
-            summary = f"⚠️ GOOD - Privacy score: {privacy_score:.2f}. Moderate privacy protection. Review recommendations."
-        else:
-            summary = f"❌ NEEDS IMPROVEMENT - Privacy score: {privacy_score:.2f}. High re-identification risk. Apply privacy-enhancing techniques."
-
-        return PrivacyAssessmentResponse(
-            privacy_score=round(privacy_score, 3),
-            k_anonymity_satisfied=k_anonymity_satisfied,
-            re_identification_risk=round(re_identification_risk, 3),
-            uniqueness_ratio=round(uniqueness_ratio, 3),
-            quasi_identifiers_found=quasi_identifiers,
-            recommendations=recommendations,
-            summary=summary
+        # Read file content
+        content = await file.read()
+        
+        # Process image (extract metadata, anonymize)
+        result = process_medical_image(
+            image_data=content,
+            subject_id=subject_id,
+            image_type=image_type
         )
-
+        
+        # Store metadata in DB
+        image_id = await db.fetchval("""
+            INSERT INTO medical_images (
+                subject_id, visit_name, image_type, file_name, 
+                file_size, mime_type, metadata, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING image_id
+        """, subject_id, visit_name, image_type, file.filename, 
+           len(content), file.content_type, json.dumps(result['metadata']))
+        
+        # Store file content (in real app, use S3/Blob storage)
+        # For demo, we'll store in a local directory
+        os.makedirs("data/images", exist_ok=True)
+        file_path = f"data/images/{image_id}_{file.filename}"
+        with open(file_path, "wb") as f:
+            f.write(content)
+            
+        # Update DB with path
+        await db.execute("UPDATE medical_images SET file_path = $1 WHERE image_id = $2", file_path, image_id)
+        
+        return {
+            "image_id": image_id,
+            "subject_id": subject_id,
+            "analysis": result['analysis'],
+            "message": "Image uploaded and processed successfully"
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Privacy assessment failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
+
+@app.get("/imaging/subject/{subject_id}")
+async def get_subject_images(subject_id: str):
+    """Get all images for a subject"""
+    images = await db.fetch("""
+        SELECT * FROM medical_images 
+        WHERE subject_id = $1 
+        ORDER BY created_at DESC
+    """, subject_id)
+    
+    return {
+        "images": [
+            {
+                "image_id": img["image_id"],
+                "visit_name": img["visit_name"],
+                "image_type": img["image_type"],
+                "file_name": img["file_name"],
+                "created_at": img["created_at"].isoformat() if img["created_at"] else None,
+                "metadata": json.loads(img["metadata"]) if img["metadata"] else {}
+            }
+            for img in images
+        ]
+    }
+
+@app.get("/imaging/{image_id}/{type}")
+async def get_image_file(image_id: int, type: str):
+    """Get image file content (file or thumbnail)"""
+    image = await db.fetchrow("SELECT file_path, mime_type FROM medical_images WHERE image_id = $1", image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+        
+    file_path = image["file_path"]
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Image file missing")
+        
+    # For thumbnail, we'd resize here. For now, return original.
+    with open(file_path, "rb") as f:
+        content = f.read()
+        
+    return Response(content=content, media_type=image["mime_type"])
+
+@app.delete("/imaging/{image_id}")
+async def delete_image(image_id: int):
+    """Delete an image"""
+    image = await db.fetchrow("SELECT file_path FROM medical_images WHERE image_id = $1", image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+        
+    # Delete file
+    if os.path.exists(image["file_path"]):
+        os.remove(image["file_path"])
+        
+    # Delete DB record
+    await db.execute("DELETE FROM medical_images WHERE image_id = $1", image_id)
+    
+    return {"message": "Image deleted successfully"}
+
+@app.get("/imaging/status")
+async def get_imaging_status():
+    """Check if imaging module is available"""
+    return {
+        "imaging_available": IMAGING_AVAILABLE,
+        "message": "Imaging module ready" if IMAGING_AVAILABLE else "Imaging module missing dependencies"
+    }
 
 
 if __name__ == "__main__":

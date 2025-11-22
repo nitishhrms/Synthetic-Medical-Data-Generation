@@ -157,6 +157,77 @@ def calculate_baseline_characteristics(demographics_df: pd.DataFrame) -> Dict[st
         results["interpretation"]["message"] = f"Significant imbalances detected in multiple variables: {', '.join(imbalanced_vars)}"
         results["interpretation"]["imbalanced_variables"] = imbalanced_vars
 
+    # Format for frontend (Table 1 structure)
+    characteristics = []
+    
+    # 1. Age
+    if "Age" in demographics_df.columns:
+        row = {"characteristic": "Age (years)"}
+        if "by_arm" in results:
+            for arm, stats in results["by_arm"].items():
+                mean = stats.get("age_mean", "N/A")
+                sd = stats.get("age_sd", "N/A")
+                val = f"{mean} ({sd})"
+                row[f"{arm.lower()}_value"] = val
+                # Also add generic keys for frontend if it expects specific arm names
+                if arm == "Active":
+                    row["active_value"] = val
+                elif arm == "Placebo":
+                    row["placebo_value"] = val
+        characteristics.append(row)
+
+    # 2. Gender
+    if "Gender" in demographics_df.columns:
+        characteristics.append({"characteristic": "Gender, n (%)", "active_value": "", "placebo_value": ""})
+        for cat in ["Male", "Female"]:
+            row = {"characteristic": f"  {cat}"}
+            if "by_arm" in results:
+                for arm, stats in results["by_arm"].items():
+                    key = f"gender_{cat.lower()}_n"
+                    n = stats.get(key, 0)
+                    pct = stats.get(f"{key}_pct", 0)
+                    val = f"{n} ({pct}%)"
+                    if arm == "Active":
+                        row["active_value"] = val
+                    elif arm == "Placebo":
+                        row["placebo_value"] = val
+            characteristics.append(row)
+
+    # 3. Race
+    if "Race" in demographics_df.columns:
+        characteristics.append({"characteristic": "Race, n (%)", "active_value": "", "placebo_value": ""})
+        top_races = demographics_df["Race"].value_counts().head(5).index.tolist()
+        for race in top_races:
+            row = {"characteristic": f"  {race}"}
+            if "by_arm" in results:
+                for arm, stats in results["by_arm"].items():
+                    key = f"race_{str(race).lower().replace(' ', '_')}_n"
+                    n = stats.get(key, 0)
+                    pct = stats.get(f"{key}_pct", 0)
+                    val = f"{n} ({pct}%)"
+                    if arm == "Active":
+                        row["active_value"] = val
+                    elif arm == "Placebo":
+                        row["placebo_value"] = val
+            characteristics.append(row)
+
+    # 4. BMI
+    if "BMI" in demographics_df.columns:
+        row = {"characteristic": "BMI (kg/m²)"}
+        if "by_arm" in results:
+            for arm, stats in results["by_arm"].items():
+                mean = stats.get("bmi_mean", "N/A")
+                sd = stats.get("bmi_sd", "N/A")
+                val = f"{mean} ({sd})"
+                if arm == "Active":
+                    row["active_value"] = val
+                elif arm == "Placebo":
+                    row["placebo_value"] = val
+        characteristics.append(row)
+
+    results["characteristics"] = characteristics
+    results["treatment_groups"] = results["by_arm"]  # Alias for frontend
+
     return results
 
 
@@ -269,64 +340,81 @@ def calculate_demographic_summary(demographics_df: pd.DataFrame) -> Dict[str, An
         "completeness_rate": round(100 * demographics_df.notna().all(axis=1).sum() / len(demographics_df), 1)
     }
 
+    # Treatment Arms Summary (for frontend)
+    results["treatment_arms"] = {}
+    if "TreatmentArm" in demographics_df.columns:
+        for arm in demographics_df["TreatmentArm"].unique():
+            arm_data = demographics_df[demographics_df["TreatmentArm"] == arm]
+            
+            # Calculate stats for this arm
+            stats = {
+                "n": len(arm_data),
+                "mean_age": round(float(arm_data["Age"].mean()), 1) if "Age" in arm_data else 0,
+                "mean_bmi": round(float(arm_data["BMI"].mean()), 1) if "BMI" in arm_data else 0,
+            }
+            
+            if "Gender" in arm_data:
+                gender_counts = arm_data["Gender"].value_counts()
+                stats["male_count"] = int(gender_counts.get("Male", 0))
+                stats["female_count"] = int(gender_counts.get("Female", 0))
+                stats["male_percent"] = round(100 * stats["male_count"] / len(arm_data), 1) if len(arm_data) > 0 else 0
+                stats["female_percent"] = round(100 * stats["female_count"] / len(arm_data), 1) if len(arm_data) > 0 else 0
+            
+            results["treatment_arms"][arm] = stats
+
     return results
 
 
 def assess_treatment_arm_balance(demographics_df: pd.DataFrame) -> Dict[str, Any]:
     """
     Check if randomization produced balanced treatment arms
-
+    
     Uses statistical tests (chi-square for categorical, t-test for continuous)
     and standardized differences to assess balance.
-
+    
     Args:
         demographics_df: DataFrame with demographics data including TreatmentArm
-
+        
     Returns:
         Dict containing:
-            - balance_tests: Statistical test results for each variable
+            - balance_tests: List of statistical test results for each variable (Frontend expects list)
             - standardized_differences: Standardized mean differences
             - overall_assessment: Summary of balance quality
     """
     if "TreatmentArm" not in demographics_df.columns:
         raise ValueError("TreatmentArm column is required")
-
+        
     arms = demographics_df["TreatmentArm"].unique()
     if len(arms) != 2:
         raise ValueError(f"Expected 2 treatment arms, found {len(arms)}")
-
+        
     arm1, arm2 = arms[0], arms[1]
     arm1_data = demographics_df[demographics_df["TreatmentArm"] == arm1]
     arm2_data = demographics_df[demographics_df["TreatmentArm"] == arm2]
-
-    results = {
-        "balance_tests": {},
-        "standardized_differences": {},
-        "sample_sizes": {
-            arm1: len(arm1_data),
-            arm2: len(arm2_data)
-        }
-    }
-
+    
+    balance_tests_list = []  # Changed to list for frontend
+    standardized_differences = {}
+    
     # Continuous variables - T-tests and standardized differences
     continuous_vars = ["Age", "Height", "Weight", "BMI"]
     for var in continuous_vars:
         if var in demographics_df.columns:
             values1 = pd.to_numeric(arm1_data[var], errors='coerce').dropna()
             values2 = pd.to_numeric(arm2_data[var], errors='coerce').dropna()
-
+            
             if len(values1) > 1 and len(values2) > 1:
                 # T-test
                 try:
                     t_stat, p_value = ttest_ind(values1, values2, equal_var=False)
-
+                    
                     # Standardized difference (Cohen's d)
                     mean1, mean2 = values1.mean(), values2.mean()
                     std_pooled = np.sqrt((values1.var() + values2.var()) / 2)
                     std_diff = (mean1 - mean2) / std_pooled if std_pooled > 0 else 0
-
-                    results["balance_tests"][var] = {
-                        "test": "t-test (Welch)",
+                    
+                    test_result = {
+                        "variable": var,
+                        "test_name": "t-test (Welch)",
                         "statistic": round(float(t_stat), 4),
                         "p_value": round(float(p_value), 4),
                         "mean_arm1": round(float(mean1), 2),
@@ -334,8 +422,9 @@ def assess_treatment_arm_balance(demographics_df: pd.DataFrame) -> Dict[str, Any
                         "difference": round(float(mean1 - mean2), 2),
                         "balanced": p_value >= 0.05
                     }
-
-                    results["standardized_differences"][var] = {
+                    balance_tests_list.append(test_result)
+                    
+                    standardized_differences[var] = {
                         "std_diff": round(float(std_diff), 3),
                         "interpretation": (
                             "negligible" if abs(std_diff) < 0.1 else
@@ -346,7 +435,7 @@ def assess_treatment_arm_balance(demographics_df: pd.DataFrame) -> Dict[str, Any
                         "acceptable": abs(std_diff) < 0.2  # Common threshold
                     }
                 except Exception as e:
-                    results["balance_tests"][var] = {"error": str(e)}
+                    balance_tests_list.append({"variable": var, "error": str(e)})
 
     # Categorical variables - Chi-square tests
     categorical_vars = ["Gender", "Race", "Ethnicity", "SmokingStatus"]
@@ -357,35 +446,46 @@ def assess_treatment_arm_balance(demographics_df: pd.DataFrame) -> Dict[str, Any
                     demographics_df["TreatmentArm"],
                     demographics_df[var]
                 )
-
+                
                 chi2, p_value, dof, expected = chi2_contingency(contingency_table)
-
+                
                 # Get proportions for each category
                 arm1_props = contingency_table.loc[arm1] / contingency_table.loc[arm1].sum()
                 arm2_props = contingency_table.loc[arm2] / contingency_table.loc[arm2].sum()
-
+                
                 max_diff = max(abs(arm1_props - arm2_props))
-
-                results["balance_tests"][var] = {
-                    "test": "chi-square",
+                
+                test_result = {
+                    "variable": var,
+                    "test_name": "chi-square",
                     "statistic": round(float(chi2), 4),
                     "p_value": round(float(p_value), 4),
                     "degrees_of_freedom": int(dof),
                     "max_proportion_difference": round(float(max_diff), 3),
                     "balanced": p_value >= 0.05
                 }
+                balance_tests_list.append(test_result)
             except Exception as e:
-                results["balance_tests"][var] = {"error": str(e)}
+                balance_tests_list.append({"variable": var, "error": str(e)})
+                
+    results = {
+        "balance_tests": balance_tests_list,
+        "standardized_differences": standardized_differences,
+        "sample_sizes": {
+            arm1: len(arm1_data),
+            arm2: len(arm2_data)
+        }
+    }
 
     # Overall assessment
-    total_tests = len(results["balance_tests"])
-    balanced_tests = sum(1 for test in results["balance_tests"].values()
+    total_tests = len(balance_tests_list)
+    balanced_tests = sum(1 for test in balance_tests_list 
                          if isinstance(test, dict) and test.get("balanced", False))
-
-    std_diffs_acceptable = sum(1 for diff in results["standardized_differences"].values()
+                         
+    std_diffs_acceptable = sum(1 for diff in standardized_differences.values() 
                                if diff.get("acceptable", False))
-    total_std_diffs = len(results["standardized_differences"])
-
+    total_std_diffs = len(standardized_differences)
+    
     results["overall_assessment"] = {
         "total_variables_tested": total_tests,
         "balanced_variables": balanced_tests,
@@ -397,14 +497,18 @@ def assess_treatment_arm_balance(demographics_df: pd.DataFrame) -> Dict[str, Any
             "good" if balanced_tests / total_tests >= 0.7 else
             "fair" if balanced_tests / total_tests >= 0.5 else
             "poor"
-        ),
+        ) if total_tests > 0 else "unknown",
         "recommendation": (
-            "Randomization successful - arms are well balanced" if balanced_tests / total_tests >= 0.8 else
-            "Minor imbalances present - consider covariate adjustment in analysis" if balanced_tests / total_tests >= 0.6 else
+            "Randomization successful - arms are well balanced" if total_tests > 0 and balanced_tests / total_tests >= 0.8 else
+            "Minor imbalances present - consider covariate adjustment in analysis" if total_tests > 0 and balanced_tests / total_tests >= 0.6 else
             "Significant imbalances detected - stratified randomization or adjustment recommended"
         )
     }
-
+    
+    # Add interpretation for frontend
+    results["overall_balanced"] = results["overall_assessment"]["overall_balance"] in ["excellent", "good"]
+    results["interpretation"] = results["overall_assessment"]["recommendation"]
+    
     return results
 
 

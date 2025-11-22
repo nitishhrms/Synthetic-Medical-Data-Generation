@@ -19,7 +19,7 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U clinical_user -d clinical_trials"]
+      test: [ "CMD-SHELL", "pg_isready -U clinical_user -d clinical_trials" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,7 +38,7 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -78,7 +78,7 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -104,7 +104,7 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8005/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -128,7 +128,7 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -147,7 +147,7 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
     volumes:
-      - ./data:/app/data:ro  # Mount data directory as read-only
+      - ./data:/app/data:ro # Mount data directory as read-only
     depends_on:
       postgres:
         condition: service_healthy
@@ -155,7 +155,7 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8002/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -179,7 +179,7 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8003/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -203,7 +203,34 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8004/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # AI Monitor Service - AI-powered medical monitoring
+  ai-monitor-service:
+    build:
+      context: ./microservices/ai-monitor-service
+      dockerfile: Dockerfile
+    container_name: ai-monitor-service
+    ports:
+      - "8008:8008"
+    environment:
+      - EDC_SERVICE_URL=http://edc-service:8001
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    depends_on:
+      edc-service:
+        condition: service_healthy
+    networks:
+      - clinical-trials-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8008/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -224,7 +251,7 @@ services:
       - clinical-trials-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8007/health" ]
       interval: 30s
       timeout: 10s
       retries: 3

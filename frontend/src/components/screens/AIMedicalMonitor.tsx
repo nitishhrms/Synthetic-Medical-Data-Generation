@@ -55,7 +55,12 @@ export function AIMedicalMonitor() {
             const result = await aiMonitorApi.reviewStudyAndPostQueries(selectedStudyId);
             setReviewResult(result.review);
         } catch (err: any) {
-            setError(err.message || 'AI review failed');
+            // Check if it's a connection error (service not running)
+            if (err.message?.includes('Failed to fetch') || err.message?.includes('ERR_CONNECTION_REFUSED')) {
+                setError('⚠️ AI Monitor service is not currently available. Please ensure the service on port 8008 is running.');
+            } else {
+                setError(err.message || 'AI review failed');
+            }
         } finally {
             setReviewing(false);
         }

@@ -170,6 +170,12 @@ export function Analytics() {
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(false);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
 
+  // Generation Method State
+  type GenerationMethod = "mvn" | "copula" | "ctgan" | "bootstrap" | "rules" | "llm" | "bayesian" | "mice";
+  const [selectedMethod, setSelectedMethod] = useState<GenerationMethod>("mvn");
+  const [selectedMethodData, setSelectedMethodData] = useState<any>(null);
+  const [isGeneratingComparison, setIsGeneratingComparison] = useState(false);
+
   // Sample Size Calculator State
   const [sampleSizeAlpha, setSampleSizeAlpha] = useState(0.05);
   const [sampleSizePower, setSampleSizePower] = useState(0.80);
@@ -202,8 +208,9 @@ export function Analytics() {
           hasLabs: !!data.labs
         });
       } catch (err) {
-        console.error('❌ Failed to load AACT data:', err);
-        // Gracefully continue without AACT data - will use generated data as fallback
+        // Silently fail if AACT endpoints are not available (expected during development)
+        // The Analytics page will use generated data as a fallback
+        console.log('ℹ️ AACT data not available - using generated data as fallback');
       } finally {
         setIsLoadingAACT(false);
       }

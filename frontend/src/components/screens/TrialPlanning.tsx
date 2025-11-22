@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,9 +53,8 @@ import {
 } from "recharts";
 
 export function TrialPlanning() {
-  // Get data context and navigation
-  const { pilotData, setPlanningScenario } = useData();
-  const navigate = useNavigate();
+  // Get data context
+  const { pilotData, setPilotData, setPlanningScenario } = useData();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("virtual-control");
@@ -74,6 +72,23 @@ export function TrialPlanning() {
   const [scenarioName, setScenarioName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingScenarios, setIsLoadingScenarios] = useState(false);
+
+  // Load pilot data on mount
+  useEffect(() => {
+    if (!pilotData) {
+      loadPilotData();
+    }
+  }, []);
+
+  const loadPilotData = async () => {
+    try {
+      const data = await dataGenerationApi.getPilotData();
+      setPilotData(data);
+    } catch (err) {
+      console.error("Failed to load pilot data:", err);
+      setError("Failed to load pilot data. Please try refreshing the page.");
+    }
+  };
 
   // Form states
   const [vcaParams, setVcaParams] = useState({
@@ -171,7 +186,10 @@ export function TrialPlanning() {
       });
       setAugmentResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to augment control arm");
+      const message = err instanceof Error && err.message.includes("404")
+        ? "⚠️ Augment Control Arm feature is coming soon."
+        : (err instanceof Error ? err.message : "Failed to augment control arm");
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -197,7 +215,10 @@ export function TrialPlanning() {
       });
       setEnrollmentResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to run enrollment what-if");
+      const message = err instanceof Error && err.message.includes("404")
+        ? "⚠️ Enrollment What-If feature is coming soon."
+        : (err instanceof Error ? err.message : "Failed to run enrollment what-if");
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -223,7 +244,10 @@ export function TrialPlanning() {
       });
       setPatientMixResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to run patient mix what-if");
+      const message = err instanceof Error && err.message.includes("404")
+        ? "⚠️ Patient Mix What-If feature is coming soon."
+        : (err instanceof Error ? err.message : "Failed to run patient mix what-if");
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -540,58 +564,69 @@ export function TrialPlanning() {
    * - Sensitivity analysis (±20% variance)
    */
   const calculateCostEstimate = () => {
-    // Use feasibility result N if available, otherwise use manual input
-    const nPerArm = feasibilityResult?.required_n_per_arm || costParams.n_per_arm;
-    const totalPatients = nPerArm * 2; // Active + Control arms
+    try {
+      console.log("💰 Calculating cost estimate...");
+      // Use feasibility result N if available, otherwise use manual input
+      const nPerArm = feasibilityResult?.required_n_per_arm || costParams.n_per_arm;
+      const totalPatients = nPerArm * 2; // Active + Control arms
 
-    // Patient-related costs
-    const patientEnrollmentCost = totalPatients * costParams.cost_per_patient;
-    const visitCosts = totalPatients * costParams.visits_per_patient * costParams.cost_per_visit;
-    const totalPatientCosts = patientEnrollmentCost + visitCosts;
+      // Patient-related costs
+      const patientEnrollmentCost = totalPatients * costParams.cost_per_patient;
+      const visitCosts = totalPatients * costParams.visits_per_patient * costParams.cost_per_visit;
+      const totalPatientCosts = patientEnrollmentCost + visitCosts;
 
-    // Site-related costs
-    const siteCosts = costParams.num_sites * costParams.cost_per_site;
+      // Site-related costs
+      const siteCosts = costParams.num_sites * costParams.cost_per_site;
 
-    // Duration-dependent costs
-    const overheadCosts = costParams.duration_months * costParams.overhead_monthly;
+      // Duration-dependent costs
+      const overheadCosts = costParams.duration_months * costParams.overhead_monthly;
 
-    // Fixed costs
-    const monitoringCosts = costParams.monitoring_cost;
-    const regulatoryCosts = costParams.regulatory_cost;
+      // Fixed costs
+      const monitoringCosts = costParams.monitoring_cost;
+      const regulatoryCosts = costParams.regulatory_cost;
 
-    // Calculate totals
-    const totalCost = totalPatientCosts + siteCosts + overheadCosts + monitoringCosts + regulatoryCosts;
-    const costPerPatient = totalCost / totalPatients;
-    const costPerArm = totalCost / 2;
-    const monthlyCostBurnRate = totalCost / costParams.duration_months;
+      // Calculate totals
+      const totalCost = totalPatientCosts + siteCosts + overheadCosts + monitoringCosts + regulatoryCosts;
+      const costPerPatient = totalCost / totalPatients;
+      const costPerArm = totalCost / 2;
+      const monthlyCostBurnRate = totalCost / costParams.duration_months;
 
-    // Sensitivity analysis (±20%)
-    const lowEstimate = totalCost * 0.8;
-    const highEstimate = totalCost * 1.2;
+      // Sensitivity analysis (±20%)
+      const lowEstimate = totalCost * 0.8;
+      const highEstimate = totalCost * 1.2;
 
-    // Set the cost estimate result
-    setCostEstimate({
-      totalCost,
-      costPerPatient,
-      costPerArm,
-      monthlyCostBurnRate,
-      totalPatients,
-      nPerArm,
-      durationMonths: costParams.duration_months,
-      breakdown: {
-        patientEnrollment: patientEnrollmentCost,
-        visitCosts: visitCosts,
-        siteCosts: siteCosts,
-        overheadCosts: overheadCosts,
-        monitoringCosts: monitoringCosts,
-        regulatoryCosts: regulatoryCosts,
-      },
-      sensitivity: {
-        low: lowEstimate,
-        base: totalCost,
-        high: highEstimate,
-      },
-    });
+      // Set the cost estimate result
+      setCostEstimate({
+        totalCost,
+        costPerPatient,
+        costPerArm,
+        monthlyCostBurnRate,
+        totalPatients,
+        nPerArm,
+        durationMonths: costParams.duration_months,
+        breakdown: {
+          patientEnrollment: patientEnrollmentCost,
+          visitCosts: visitCosts,
+          siteCosts: siteCosts,
+          overheadCosts: overheadCosts,
+          monitoringCosts: monitoringCosts,
+          regulatoryCosts: regulatoryCosts,
+        },
+        sensitivity: {
+          low: lowEstimate,
+          base: totalCost,
+          high: highEstimate,
+        },
+      });
+
+      console.log("✅ Cost estimate calculated:", {
+        totalCost: totalCost,
+        nPerArm: nPerArm,
+        totalPatients: totalPatients
+      });
+    } catch (error) {
+      console.error("❌ Error calculating cost estimate:", error);
+    }
   };
 
   /**
@@ -654,8 +689,8 @@ export function TrialPlanning() {
       source: "feasibility" as const,
     });
 
-    // Navigate to Data Generation screen where parameters will be auto-filled
-    navigate("/data-generation");
+    // Parameters are now saved to context and will be auto-filled when user navigates to Data Generation
+    console.log("✅ Planning parameters saved to context. Navigate to Data Generation to use them.");
   };
 
   return (
@@ -1327,14 +1362,14 @@ export function TrialPlanning() {
                * - EMA: European Medicines Agency guidelines
                * - ICH: International Council for Harmonisation (E4, E6, E9, E10)
                */}
-              <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950">
+              <Card className="border-blue-200 bg-blue-50">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+                      <h3 className="text-lg font-semibold text-blue-900">
                         Quick Setup: Load Template
                       </h3>
-                      <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                      <p className="text-sm text-blue-700 mt-1">
                         Pre-fill parameters with industry-standard templates for Phase 1, 2, or 3 trials
                       </p>
                     </div>
@@ -1344,23 +1379,23 @@ export function TrialPlanning() {
                         if (template) loadTemplate(template);
                       }}
                     >
-                      <SelectTrigger className="w-[280px] bg-white dark:bg-gray-950">
+                      <SelectTrigger className="w-[280px] bg-white border-gray-300">
                         <SelectValue placeholder="Select trial phase template..." />
                       </SelectTrigger>
                       <SelectContent>
                         {PLANNING_TEMPLATES.map((template) => (
                           <SelectItem key={template.id} value={template.id}>
                             <div className="flex flex-col">
-                              <span className="font-medium">{template.name}</span>
-                              <span className="text-xs text-muted-foreground">{template.description}</span>
+                              <span className="font-medium text-gray-900">{template.name}</span>
+                              <span className="text-xs text-gray-600">{template.description}</span>
                             </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="mt-3 p-3 bg-white dark:bg-gray-950 rounded border border-blue-200">
-                    <p className="text-xs text-blue-800 dark:text-blue-200">
+                  <div className="mt-3 p-3 bg-white rounded border border-blue-200">
+                    <p className="text-xs text-blue-800">
                       💡 <strong>Tip:</strong> Templates automatically configure parameters based on regulatory
                       guidelines (FDA, EMA, ICH). You can adjust values after loading.
                     </p>
@@ -1389,14 +1424,14 @@ export function TrialPlanning() {
                * - Each scenario includes all parameters, results, and metadata
                * - Scenarios can be retrieved by ID or listed chronologically
                */}
-              <Card className="border-green-200 bg-green-50 dark:bg-green-950">
+              <Card className="border-green-200 bg-green-50">
                 <CardContent className="pt-6">
                   <div className="space-y-4">
                     {/* Load Saved Scenario Section */}
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <FolderOpen className="h-4 w-4 text-green-600 dark:text-green-400" />
-                        <h3 className="text-sm font-semibold text-green-900 dark:text-green-100">
+                        <FolderOpen className="h-4 w-4 text-green-600" />
+                        <h3 className="text-sm font-semibold text-green-900">
                           Load Saved Scenario
                         </h3>
                       </div>
@@ -1408,7 +1443,7 @@ export function TrialPlanning() {
                         }}
                         disabled={isLoadingScenarios || savedScenarios.length === 0}
                       >
-                        <SelectTrigger className="w-full bg-white dark:bg-gray-950">
+                        <SelectTrigger className="w-full bg-white border-gray-300">
                           <SelectValue placeholder={
                             isLoadingScenarios
                               ? "Loading scenarios..."
@@ -1421,8 +1456,8 @@ export function TrialPlanning() {
                           {savedScenarios.map((scenario) => (
                             <SelectItem key={scenario.id} value={scenario.id.toString()}>
                               <div className="flex flex-col">
-                                <span className="font-medium">{scenario.dataset_name}</span>
-                                <span className="text-xs text-muted-foreground">
+                                <span className="font-medium text-gray-900">{scenario.dataset_name}</span>
+                                <span className="text-xs text-gray-600">
                                   {new Date(scenario.created_at).toLocaleString()} • {scenario.record_count} parameter{scenario.record_count !== 1 ? 's' : ''}
                                 </span>
                               </div>
@@ -1438,7 +1473,7 @@ export function TrialPlanning() {
                         <div className="w-full border-t border-green-300"></div>
                       </div>
                       <div className="relative flex justify-center text-xs">
-                        <span className="bg-green-50 dark:bg-green-950 px-2 text-green-600 dark:text-green-400">
+                        <span className="bg-green-50 px-2 text-green-600">
                           OR
                         </span>
                       </div>
@@ -1447,8 +1482,8 @@ export function TrialPlanning() {
                     {/* Save Current Scenario Section */}
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <Save className="h-4 w-4 text-green-600 dark:text-green-400" />
-                        <h3 className="text-sm font-semibold text-green-900 dark:text-green-100">
+                        <Save className="h-4 w-4 text-green-600" />
+                        <h3 className="text-sm font-semibold text-green-900">
                           Save Current Scenario
                         </h3>
                       </div>
@@ -1457,14 +1492,14 @@ export function TrialPlanning() {
                           placeholder="Enter scenario name (e.g., 'Phase 2 - 80% Power')"
                           value={scenarioName}
                           onChange={(e) => setScenarioName(e.target.value)}
-                          className="flex-1 bg-white dark:bg-gray-950"
+                          className="flex-1 bg-white border-gray-300"
                           disabled={!feasibilityResult}
                         />
                         <Button
                           onClick={saveCurrentScenario}
                           disabled={!feasibilityResult || !scenarioName.trim() || isSaving}
                           variant="outline"
-                          className="border-green-300 hover:bg-green-100 dark:hover:bg-green-900"
+                          className="border-green-300 hover:bg-green-100"
                         >
                           {isSaving ? (
                             <>
@@ -1479,14 +1514,14 @@ export function TrialPlanning() {
                           )}
                         </Button>
                       </div>
-                      <p className="text-xs text-green-700 dark:text-green-300 mt-2">
+                      <p className="text-xs text-green-700 mt-2">
                         💾 Run feasibility assessment first, then save your scenario for future reference
                       </p>
                     </div>
 
                     {/* Saved Scenarios Count */}
                     {savedScenarios.length > 0 && (
-                      <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-300 p-2 bg-white dark:bg-gray-950 rounded border border-green-200">
+                      <div className="flex items-center gap-2 text-xs text-green-700 p-2 bg-white rounded border border-green-200">
                         <History className="h-3 w-3" />
                         <span>{savedScenarios.length} saved scenario{savedScenarios.length !== 1 ? 's' : ''} available</span>
                       </div>
@@ -1585,47 +1620,47 @@ export function TrialPlanning() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <Card className="border-2 border-primary">
+                    <Card className="border-2 border-blue-200 bg-blue-50">
                       <CardContent className="pt-6 text-center">
-                        <p className="text-sm text-muted-foreground mb-2">Required Sample Size</p>
-                        <p className="text-5xl font-bold text-primary">{feasibilityResult.required_n_per_arm ?? 0}</p>
-                        <p className="text-sm text-muted-foreground mt-2">per arm</p>
-                        <p className="text-lg font-semibold mt-1">
+                        <p className="text-sm text-gray-600 mb-2">Required Sample Size</p>
+                        <p className="text-5xl font-bold text-blue-700">{feasibilityResult.required_n_per_arm ?? 0}</p>
+                        <p className="text-sm text-gray-600 mt-2">per arm</p>
+                        <p className="text-lg font-semibold text-gray-800 mt-1">
                           Total: {feasibilityResult.total_n ?? 0} patients
                         </p>
                       </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="bg-gray-50">
                       <CardContent className="pt-6">
-                        <p className="text-sm text-muted-foreground mb-3">Study Parameters</p>
+                        <p className="text-sm text-gray-600 mb-3">Study Parameters</p>
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Effect Size:</span>
-                            <span className="font-medium">{feasibilityParams.target_effect} mmHg</span>
+                            <span className="text-gray-600">Effect Size:</span>
+                            <span className="font-medium text-gray-900">{feasibilityParams.target_effect} mmHg</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Cohen's d:</span>
-                            <span className="font-medium">{feasibilityResult.effect_size_cohens_d?.toFixed(3) ?? 'N/A'}</span>
+                            <span className="text-gray-600">Cohen's d:</span>
+                            <span className="font-medium text-gray-900">{feasibilityResult.effect_size_cohens_d?.toFixed(3) ?? 'N/A'}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Power:</span>
-                            <span className="font-medium">{(feasibilityParams.power * 100).toFixed(0)}%</span>
+                            <span className="text-gray-600">Power:</span>
+                            <span className="font-medium text-gray-900">{(feasibilityParams.power * 100).toFixed(0)}%</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Alpha:</span>
-                            <span className="font-medium">{feasibilityParams.alpha}</span>
+                            <span className="text-gray-600">Alpha:</span>
+                            <span className="font-medium text-gray-900">{feasibilityParams.alpha}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Allocation:</span>
-                            <span className="font-medium">{feasibilityParams.allocation_ratio}:1</span>
+                            <span className="text-gray-600">Allocation:</span>
+                            <span className="font-medium text-gray-900">{feasibilityParams.allocation_ratio}:1</span>
                           </div>
                         </div>
                       </CardContent>
                     </Card>
                   </div>
 
-                  <Card>
+                  <Card className="bg-white">
                     <CardHeader>
                       <CardTitle className="text-base">Feasibility Assessment</CardTitle>
                     </CardHeader>
@@ -1633,29 +1668,31 @@ export function TrialPlanning() {
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <Badge
-                            variant={(feasibilityResult.feasibility ?? "") === "Highly Feasible" ? "default" : "secondary"}
+                            variant="outline"
                             className={
                               (feasibilityResult.feasibility ?? "") === "Highly Feasible"
-                                ? "bg-green-500"
+                                ? "bg-green-100 text-green-800 border-green-300"
                                 : (feasibilityResult.feasibility ?? "") === "Feasible"
-                                ? "bg-yellow-500"
-                                : "bg-red-500"
+                                  ? "bg-blue-100 text-blue-800 border-blue-300"
+                                  : (feasibilityResult.feasibility ?? "") === "Challenging"
+                                    ? "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                    : "bg-red-100 text-red-800 border-red-300"
                             }
                           >
                             {feasibilityResult.feasibility ?? 'Unknown'}
                           </Badge>
-                          <span className="text-sm">
+                          <span className="text-sm text-gray-700">
                             Based on effect size of {Math.abs(feasibilityParams.target_effect)} mmHg
                           </span>
                         </div>
 
-                        <div className="p-3 bg-muted rounded-lg">
-                          <p className="text-sm">{feasibilityResult.interpretation ?? 'N/A'}</p>
+                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                          <p className="text-sm text-gray-800">{feasibilityResult.interpretation ?? 'N/A'}</p>
                         </div>
 
                         <div className="space-y-2">
-                          <p className="text-sm font-medium">Assumptions:</p>
-                          <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                          <p className="text-sm font-medium text-gray-900">Assumptions:</p>
+                          <ul className="text-sm text-gray-700 space-y-1 list-disc list-inside">
                             {(feasibilityResult.assumptions ?? []).map((assumption, idx) => (
                               <li key={idx}>{assumption}</li>
                             ))}
@@ -1665,11 +1702,11 @@ export function TrialPlanning() {
                     </CardContent>
                   </Card>
 
-                  <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200">
-                    <p className="text-sm font-medium text-green-900 dark:text-green-100 mb-1">
+                  <div className="p-4 bg-green-50 rounded-lg border border-green-300">
+                    <p className="text-sm font-medium text-green-900 mb-1">
                       Recommendation
                     </p>
-                    <p className="text-sm text-green-800 dark:text-green-200">
+                    <p className="text-sm text-green-800">
                       {feasibilityResult.recommendation ?? 'N/A'}
                     </p>
                   </div>
@@ -1679,12 +1716,12 @@ export function TrialPlanning() {
                       to the Data Generation screen, where the form will be auto-filled with
                       the recommended sample size and target effect size.
                   */}
-                  <Card className="border-2 border-primary bg-primary/5">
+                  <Card className="border-2 border-blue-300 bg-blue-50">
                     <CardContent className="pt-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h3 className="text-lg font-semibold mb-1">Ready to Generate Data?</h3>
-                          <p className="text-sm text-muted-foreground">
+                          <h3 className="text-lg font-semibold mb-1 text-gray-900">Ready to Generate Data?</h3>
+                          <p className="text-sm text-gray-600">
                             Use these planning parameters to generate synthetic trial data
                           </p>
                         </div>
@@ -1697,26 +1734,26 @@ export function TrialPlanning() {
                           Apply to Generation
                         </Button>
                       </div>
-                      <div className="mt-4 p-3 bg-white dark:bg-gray-950 rounded-lg border">
-                        <p className="text-xs text-muted-foreground mb-2">
+                      <div className="mt-4 p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-xs text-gray-600 mb-2">
                           This will pre-fill the Data Generation form with:
                         </p>
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Subjects per arm:</span>
-                            <span className="font-medium">{feasibilityResult.required_n_per_arm ?? 0}</span>
+                            <span className="text-gray-600">Subjects per arm:</span>
+                            <span className="font-medium text-gray-900">{feasibilityResult.required_n_per_arm ?? 0}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Target effect:</span>
-                            <span className="font-medium">{feasibilityParams.target_effect} mmHg</span>
+                            <span className="text-gray-600">Target effect:</span>
+                            <span className="font-medium text-gray-900">{feasibilityParams.target_effect} mmHg</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Expected power:</span>
-                            <span className="font-medium">{(feasibilityParams.power * 100).toFixed(0)}%</span>
+                            <span className="text-gray-600">Expected power:</span>
+                            <span className="font-medium text-gray-900">{(feasibilityParams.power * 100).toFixed(0)}%</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">Dropout rate:</span>
-                            <span className="font-medium">10%</span>
+                            <span className="text-gray-600">Dropout rate:</span>
+                            <span className="font-medium text-gray-900">10%</span>
                           </div>
                         </div>
                       </div>
@@ -1931,44 +1968,44 @@ export function TrialPlanning() {
                 <>
                   {/* Summary Cards */}
                   <div className="grid grid-cols-4 gap-4">
-                    <Card className="border-2 border-primary">
+                    <Card className="border-2 border-blue-300 bg-blue-50">
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Total Trial Cost</p>
-                          <p className="text-2xl font-bold text-primary">
+                          <p className="text-xs text-gray-600 mb-1">Total Trial Cost</p>
+                          <p className="text-2xl font-bold text-blue-700">
                             ${(costEstimate.totalCost / 1000000).toFixed(2)}M
                           </p>
                         </div>
                       </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="bg-gray-50">
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Cost per Patient</p>
-                          <p className="text-2xl font-bold">
+                          <p className="text-xs text-gray-600 mb-1">Cost per Patient</p>
+                          <p className="text-2xl font-bold text-gray-900">
                             ${(costEstimate.costPerPatient / 1000).toFixed(1)}K
                           </p>
                         </div>
                       </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="bg-gray-50">
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Cost per Arm</p>
-                          <p className="text-2xl font-bold">
+                          <p className="text-xs text-gray-600 mb-1">Cost per Arm</p>
+                          <p className="text-2xl font-bold text-gray-900">
                             ${(costEstimate.costPerArm / 1000000).toFixed(2)}M
                           </p>
                         </div>
                       </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="bg-gray-50">
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <p className="text-xs text-muted-foreground mb-1">Monthly Burn Rate</p>
-                          <p className="text-2xl font-bold">
+                          <p className="text-xs text-gray-600 mb-1">Monthly Burn Rate</p>
+                          <p className="text-2xl font-bold text-gray-900">
                             ${(costEstimate.monthlyCostBurnRate / 1000).toFixed(0)}K
                           </p>
                         </div>
@@ -1977,10 +2014,10 @@ export function TrialPlanning() {
                   </div>
 
                   {/* Cost Breakdown */}
-                  <Card>
+                  <Card className="bg-white">
                     <CardHeader>
-                      <CardTitle>Cost Breakdown</CardTitle>
-                      <CardDescription>Detailed breakdown by cost category</CardDescription>
+                      <CardTitle className="text-gray-900">Cost Breakdown</CardTitle>
+                      <CardDescription className="text-gray-600">Detailed breakdown by cost category</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
@@ -1996,19 +2033,19 @@ export function TrialPlanning() {
                           };
 
                           return (
-                            <div key={category} className="flex items-center justify-between p-3 bg-muted/50 rounded">
+                            <div key={category} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                               <div className="flex-1">
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="text-sm font-medium">{categoryLabels[category]}</span>
-                                  <span className="text-sm font-bold">${(amount / 1000).toFixed(0)}K</span>
+                                  <span className="text-sm font-medium text-gray-900">{categoryLabels[category]}</span>
+                                  <span className="text-sm font-bold text-gray-900">${(amount / 1000).toFixed(0)}K</span>
                                 </div>
-                                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                <div className="w-full bg-gray-200 rounded-full h-2">
                                   <div
-                                    className="bg-primary rounded-full h-2"
+                                    className="bg-blue-600 rounded-full h-2"
                                     style={{ width: `${percentage}%` }}
                                   />
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-1">{percentage}% of total</p>
+                                <p className="text-xs text-gray-600 mt-1">{percentage}% of total</p>
                               </div>
                             </div>
                           );
@@ -2018,17 +2055,17 @@ export function TrialPlanning() {
                   </Card>
 
                   {/* Sensitivity Analysis */}
-                  <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950">
+                  <Card className="border-orange-300 bg-orange-50">
                     <CardHeader>
-                      <CardTitle className="text-orange-900 dark:text-orange-100">Sensitivity Analysis</CardTitle>
-                      <CardDescription className="text-orange-700 dark:text-orange-300">
+                      <CardTitle className="text-orange-900">Sensitivity Analysis</CardTitle>
+                      <CardDescription className="text-orange-700">
                         Cost variance scenarios (±20% from base estimate)
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-3 gap-4">
-                        <div className="text-center p-4 bg-white dark:bg-gray-950 rounded border">
-                          <p className="text-xs text-muted-foreground mb-1">Low Estimate (-20%)</p>
+                        <div className="text-center p-4 bg-white rounded border border-gray-200">
+                          <p className="text-xs text-gray-600 mb-1">Low Estimate (-20%)</p>
                           <p className="text-xl font-bold text-green-600">
                             ${(costEstimate.sensitivity.low / 1000000).toFixed(2)}M
                           </p>
