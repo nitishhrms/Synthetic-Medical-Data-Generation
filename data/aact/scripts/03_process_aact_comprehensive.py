@@ -56,6 +56,7 @@ sys.path.insert(0, str(project_root))
 
 # Paths
 AACT_RAW_DIR = project_root / "data" / "aact" / "clinical_data"
+AACT_PARQUET_DIR = project_root / "data" / "aact" / "parquet"
 AACT_PROCESSED_DIR = project_root / "data" / "aact" / "processed"
 
 # Ensure processed directory exists
@@ -110,7 +111,52 @@ def is_plausible_vital(vital_type: str, value: float) -> bool:
     min_val, max_val = plausible_ranges[vital_type]
     return min_val <= value <= max_val
 
+# Physiological ranges (wide to avoid false negatives)
+plausible_ranges = {
+    'systolic': (70, 250),      # mmHg - captures hypertensive emergencies
+    'diastolic': (40, 150),     # mmHg - captures extreme cases
+    'heart_rate': (30, 200),    # bpm - captures bradycardia to severe tachycardia
+    'temperature': (32.0, 42.0) # °C - captures hypothermia to hyperthermia
+}
 
+def inspect_schema(file_path: Path, expected_cols: list = None) -> dict:
+    """
+    Dynamically inspect the schema of a file using Daft's lazy loading.
+    
+    This allows us to understand the structure (columns, types) without reading the whole file.
+    It replaces the brittle 'read first N rows' approach.
+    
+    Args:
+        file_path: Path to the file
+        expected_cols: List of columns we expect to find (optional)
+        
+    Returns:
+        Dictionary of column names and their inferred types, or None if file invalid
+    """
+    try:
+        import daft
+        # Lazy read - extremely fast as it only reads the header/metadata
+        df = daft.read_csv(str(file_path), delimiter="|", has_headers=True)
+        
+        # Get schema information
+        schema = df.schema()
+        column_names = schema.column_names()
+        
+        print(f"   🔍 Inspected {file_path.name}: Found {len(column_names)} columns")
+        
+        # Validate expected columns if provided
+        if expected_cols:
+            missing = [col for col in expected_cols if col not in column_names]
+            if missing:
+                print(f"      ⚠️  Missing expected columns in {file_path.name}: {missing}")
+                # We can try to map similar columns here if needed (dynamic mapping)
+                return None
+                
+        return {name: str(field.dtype) for name, field in schema.fields.items()}
+        
+    except Exception as e:
+        print(f"      ❌ Failed to inspect schema for {file_path.name}: {e}")
+        return None
 def process_comprehensive_aact():
     """Process ALL valuable AACT files for maximum synthetic data realism"""
 
@@ -140,11 +186,42 @@ def process_comprehensive_aact():
     # Check if Daft is installed
     try:
         import daft
+        from daft import col
         print("\n✅ Daft is installed")
     except ImportError:
         print("\n❌ Daft not installed!")
         print("Install with: pip install getdaft")
         return False
+
+    # Helper to load data (Parquet > TXT)
+    def load_table(filename: str, columns: list = None):
+        """Smart loader: Prefers Parquet (fast), falls back to TXT (slow)"""
+        parquet_name = filename.replace('.txt', '')
+        parquet_path = AACT_PARQUET_DIR / parquet_name
+        txt_path = AACT_RAW_DIR / filename
+        
+        if parquet_path.exists():
+            print(f"   🚀 Loading {filename} from Parquet (Optimized)...")
+            df = daft.read_parquet(str(parquet_path))
+            if columns:
+                df = df.select(*columns)
+            return df
+            
+        elif txt_path.exists():
+            print(f"   📂 Loading {filename} from Text (Legacy/Slow)...")
+            # Inspect schema first
+            if columns:
+                # We can't easily inspect schema for columns we don't know exist yet without reading
+                # But we can try to read
+                pass
+            
+            df = daft.read_csv(str(txt_path), delimiter="|", has_headers=True)
+            if columns:
+                df = df.select(*columns)
+            return df
+        else:
+            print(f"   ⚠️  {filename} not found")
+            return None
 
     try:
         import pandas as pd
@@ -187,49 +264,80 @@ def process_comprehensive_aact():
     print("=" * 80)
 
     # Load studies with Daft
-    print(f"   📂 Reading {studies_path.name}...")
-    try:
-        studies_daft = daft.read_csv(
-            str(studies_path),
-            delimiter="|",
-            has_headers=True
-        )
-        studies_df = studies_daft.to_pandas()
-        print(f"   ✅ Loaded {len(studies_df):,} studies with Daft")
-    except Exception as e:
-        print(f"   ⚠️ Daft failed: {e}, falling back to pandas...")
-        studies_df = pd.read_csv(studies_path, delimiter="|", low_memory=False)
-        print(f"   ✅ Loaded {len(studies_df):,} studies with pandas")
+    studies_daft = load_table("studies.txt", columns=['nct_id', 'phase', 'enrollment'])
+    if studies_daft is None:
+        return False
 
     # Load conditions with Daft
-    print(f"   📂 Reading {conditions_path.name}...")
-    try:
-        conditions_daft = daft.read_csv(
-            str(conditions_path),
-            delimiter="|",
-            has_headers=True
-        )
-        conditions_df = conditions_daft.to_pandas()
-        print(f"   ✅ Loaded {len(conditions_df):,} condition records with Daft")
-    except Exception as e:
-        print(f"   ⚠️ Daft failed: {e}, falling back to pandas...")
-        conditions_df = pd.read_csv(conditions_path, delimiter="|", low_memory=False)
-        print(f"   ✅ Loaded {len(conditions_df):,} condition records with pandas")
+    conditions_daft = load_table("conditions.txt", columns=['nct_id', 'downcase_name'])
+    if conditions_daft is None:
+        return False
 
     # Create mapping of NCT_ID → indication(s)
+    # Use Daft for filtering conditions efficiently
     nct_to_indication = {}
-    for indication in key_indications:
-        indication_ncts = conditions_df[
-            conditions_df['downcase_name'].str.contains(indication, case=False, na=False)
-        ]['nct_id'].unique()
-        for nct_id in indication_ncts:
-            if nct_id not in nct_to_indication:
-                nct_to_indication[nct_id] = []
-            nct_to_indication[nct_id].append(indication)
-
-    print(f"   ✅ Mapped {len(nct_to_indication):,} trials to indications")
+    
+    try:
+        # Create a combined expression for all indications
+        # This pushes the filter down to the scan
+        import daft
+        from daft import col
+        
+        # Build a filter expression: (name contains 'hypertension') OR (name contains 'diabetes') ...
+        filter_expr = None
+        for indication in key_indications:
+            # Note: Daft's str.contains is case sensitive by default, so we use downcase_name
+            expr = col('downcase_name').str.contains(indication.lower())
+            if filter_expr is None:
+                filter_expr = expr
+            else:
+                filter_expr = filter_expr | expr
+                
+        # Filter and select only needed columns
+        filtered_conditions = conditions_daft.where(filter_expr).select('nct_id', 'downcase_name')
+        
+        # Collect result to pandas for building the dictionary (much smaller now)
+        conditions_subset = filtered_conditions.to_pandas()
+        
+        # Build the dictionary
+        for indication in key_indications:
+            # Filter in pandas on the small subset
+            indication_ncts = conditions_subset[
+                conditions_subset['downcase_name'].str.contains(indication, case=False, na=False)
+            ]['nct_id'].unique()
+            
+            for nct_id in indication_ncts:
+                if nct_id not in nct_to_indication:
+                    nct_to_indication[nct_id] = []
+                nct_to_indication[nct_id].append(indication)
+                
+        print(f"   ✅ Mapped {len(nct_to_indication):,} trials to indications (using Daft filtering)")
+        
+    except Exception as e:
+        print(f"   ⚠️ Daft filtering failed: {e}, falling back to pandas...")
+        # Fallback logic
+        conditions_df = conditions_daft.to_pandas()
+        for indication in key_indications:
+            indication_ncts = conditions_df[
+                conditions_df['downcase_name'].str.contains(indication, case=False, na=False)
+            ]['nct_id'].unique()
+            for nct_id in indication_ncts:
+                if nct_id not in nct_to_indication:
+                    nct_to_indication[nct_id] = []
+                nct_to_indication[nct_id].append(indication)
 
     # Normalize phases in studies_df
+    # We need to collect studies_df to pandas now because we need the full map for later steps
+    if studies_daft is not None:
+        studies_df = studies_daft.select('nct_id', 'phase', 'enrollment').to_pandas()
+    
+    # We also need conditions_df for later merges (like dropouts)
+    # Re-fetch conditions if needed or use the subset we created
+    # To be safe and ensure 'conditions_df' exists for later steps:
+    if conditions_daft is not None:
+        # We can just select the columns we need to save memory
+        conditions_df = conditions_daft.select('nct_id', 'downcase_name').to_pandas()
+
     phase_map = {
         'PHASE1': 'Phase 1',
         'PHASE2': 'Phase 2',
@@ -258,16 +366,31 @@ def process_comprehensive_aact():
 
     baseline_stats = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
 
-    if baseline_path.exists():
-        print(f"   📂 Reading {baseline_path.name} with Daft...")
+    # Load baseline with Daft
+    baseline_daft = load_table("baseline_measurements.txt", columns=['nct_id', 'title', 'category', 'param_value_num'])
+    
+    if baseline_daft is not None:
         try:
-            baseline_daft = daft.read_csv(str(baseline_path), delimiter="|", has_headers=True)
-            baseline_df = baseline_daft.to_pandas()
-            print(f"   ✅ Loaded {len(baseline_df):,} baseline measurements with Daft")
+            # Filter for relevant NCT IDs using Daft
+            # This is the "Real Usage" - pushing filter down to I/O
+            relevant_ncts_list = list(nct_to_indication.keys())
+            
+            # Create a dataframe of relevant IDs
+            relevant_ncts_df = daft.from_pydict({"nct_id": relevant_ncts_list})
+            
+            # Join to filter
+            baseline_filtered = baseline_daft.join(relevant_ncts_df, on="nct_id", how="inner")
+            
+            # Collect only the filtered data
+            baseline_df = baseline_filtered.to_pandas()
+            print(f"   ✅ Loaded & Filtered {len(baseline_df):,} baseline measurements")
+            
         except Exception as e:
-            print(f"   ⚠️ Daft failed: {e}, falling back to pandas...")
-            baseline_df = pd.read_csv(baseline_path, delimiter="|", low_memory=False)
-            print(f"   ✅ Loaded {len(baseline_df):,} baseline measurements with pandas")
+            print(f"   ⚠️ Daft join failed: {e}, falling back to manual filtering...")
+            baseline_df = baseline_daft.to_pandas()
+            # Filter in pandas
+            relevant_ncts = set(nct_to_indication.keys())
+            baseline_df = baseline_df[baseline_df['nct_id'].isin(relevant_ncts)].copy()
 
         # Vital sign keywords to look for in titles/categories
         vital_keywords = {
@@ -280,33 +403,57 @@ def process_comprehensive_aact():
         # Process each baseline measurement
         processed_count = 0
         rejected_count = 0
-        for _, row in baseline_df.iterrows():
-            nct_id = row.get('nct_id')
-            title = str(row.get('title', '')).lower()
-            category = str(row.get('category', '')).lower()
-            param_value = safe_float(row.get('param_value_num'))
+        
+        if len(baseline_df) > 0:
+            # Vectorized processing for baseline measurements
+            # (baseline_df is already filtered by NCT ID from Daft step above)
+                # Map NCT IDs to indications and phases
+                # Since one NCT can have multiple indications, we might need to explode
+                # But for now, let's assume primary indication or iterate over groups
+                
+                # Create a mapping series
+                nct_phase_map = pd.Series(nct_to_phase)
+                baseline_df['phase'] = baseline_df['nct_id'].map(nct_phase_map)
+                
+                # Filter valid phases
+                baseline_df = baseline_df[baseline_df['phase'].notna()]
+                
+                # Normalize text columns
+                baseline_df['title_lower'] = baseline_df['title'].astype(str).str.lower()
+                baseline_df['category_lower'] = baseline_df['category'].astype(str).str.lower()
+                
+                # Ensure param_value_num is numeric (handle mixed types/garbage)
+                baseline_df['param_value_num'] = pd.to_numeric(baseline_df['param_value_num'], errors='coerce')
+                
+                # Process each vital type using vectorized filters
+                for vital_type, keywords in vital_keywords.items():
+                    # Create mask for this vital type
+                    mask = pd.Series(False, index=baseline_df.index)
+                    for kw in keywords:
+                        mask |= baseline_df['title_lower'].str.contains(kw, regex=False)
+                        mask |= baseline_df['category_lower'].str.contains(kw, regex=False)
+                    
+                    vital_data = baseline_df[mask]
+                    
+                    # Validate ranges
+                    min_val, max_val = plausible_ranges[vital_type]
+                    valid_mask = (vital_data['param_value_num'] >= min_val) & (vital_data['param_value_num'] <= max_val)
+                    
+                    valid_data = vital_data[valid_mask]
+                    rejected_count += (len(vital_data) - len(valid_data))
+                    processed_count += len(valid_data)
+                    
+                    # Aggregate by NCT ID to get values
+                    # Then map NCTs to indications to populate stats
+                    # This is still a bit iterative but much faster than row-by-row
+                    for nct_id, group in valid_data.groupby('nct_id'):
+                        vals = group['param_value_num'].tolist()
+                        if nct_id in nct_to_indication:
+                            phase = nct_to_phase[nct_id]
+                            for indication in nct_to_indication[nct_id]:
+                                baseline_stats[indication][phase][vital_type].extend(vals)
 
-            if nct_id not in nct_to_indication or param_value is None:
-                continue
-
-            indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id)  # Already normalized
-
-            # Match to vital type
-            for vital_type, keywords in vital_keywords.items():
-                if any(kw in title or kw in category for kw in keywords):
-                    # Validate physiological plausibility
-                    if not is_plausible_vital(vital_type, param_value):
-                        rejected_count += 1
-                        continue
-
-                    # Store value for each indication
-                    for indication in indications:
-                        if phase:  # Only if phase is valid (Phase 1-4)
-                            baseline_stats[indication][phase][vital_type].append(param_value)
-                            processed_count += 1
-
-        print(f"   ✅ Processed {processed_count:,} vital sign measurements")
+        print(f"   ✅ Processed {processed_count:,} vital sign measurements (Vectorized)")
         print(f"   🚫 Rejected {rejected_count:,} implausible values (out of range)")
 
         # Calculate statistics
@@ -341,12 +488,19 @@ def process_comprehensive_aact():
 
     # ==========================================================================
     # STEP 3: Process Dropout/Withdrawal Patterns (⭐⭐⭐⭐)
+    # STEP 3: Processing Dropout/Withdrawal Patterns (⭐⭐⭐⭐)
     # ==========================================================================
     print("\n" + "=" * 80)
     print("STEP 3: Processing Dropout/Withdrawal Patterns")
     print("=" * 80)
 
-    dropout_stats = defaultdict(lambda: defaultdict(lambda: {'total_subjects': 0, 'dropouts': 0, 'reasons': defaultdict(int)}))
+    dropout_stats = defaultdict(lambda: defaultdict(lambda: {
+        'total_subjects': 0, 
+        'dropouts': 0, 
+        'reasons': defaultdict(int),
+        'by_arm': defaultdict(lambda: {'dropouts': 0, 'subjects': 0}),  # NEW: arm-specific
+        'trial_rates': []  # NEW: for variance calculation
+    }))
 
     if dropouts_path.exists():
         print(f"   📂 Reading {dropouts_path.name} with Daft...")
@@ -362,42 +516,78 @@ def process_comprehensive_aact():
         valid_dropout_count = 0
         total_dropout_rows = 0
 
-        for _, row in dropouts_df.iterrows():
-            total_dropout_rows += 1
-            nct_id = row.get('nct_id')
-            count = safe_int(row.get('count'))
-            reason = str(row.get('reason', 'Unknown')).strip()
+        # Vectorized processing for dropouts
+        relevant_ncts = set(nct_to_indication.keys())
+        dropouts_df = dropouts_df[dropouts_df['nct_id'].isin(relevant_ncts)].copy()
+        
+        if len(dropouts_df) > 0:
+            dropouts_df['count'] = pd.to_numeric(dropouts_df['count'], errors='coerce').fillna(0).astype(int)
+            dropouts_df = dropouts_df[dropouts_df['count'] > 0]
+            
+            # Map NCT IDs to phases
+            dropouts_df['raw_phase'] = dropouts_df['nct_id'].map(nct_to_phase)
+            dropouts_df = dropouts_df[dropouts_df['raw_phase'].notna()]
+            dropouts_df['phase'] = dropouts_df['raw_phase']
+            
+            dropouts_df['reason'] = dropouts_df['reason'].fillna('Unknown').astype(str).str.strip()
+            
+            # NEW: Extract treatment arm info from ctgov_group_code
+            dropouts_df['arm_code'] = dropouts_df['ctgov_group_code'].fillna('Unknown')
+            
+            # Group by NCT, Phase, Reason for aggregate stats
+            grouped = dropouts_df.groupby(['nct_id', 'phase', 'reason'])['count'].sum().reset_index()
+            
+            for _, row in grouped.iterrows():
+                nct_id = row['nct_id']
+                phase = row['phase']
+                reason = row['reason']
+                count = row['count']
+                
+                if nct_id in nct_to_indication:
+                    for indication in nct_to_indication[nct_id]:
+                        dropout_stats[indication][phase]['dropouts'] += count
+                        dropout_stats[indication][phase]['reasons'][reason] += count
+                        valid_dropout_count += 1
 
-            if nct_id not in nct_to_indication or count is None or count <= 0:
-                continue
-
-            indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id)  # Already normalized
-
-            if phase:
-                for indication in indications:
-                    dropout_stats[indication][phase]['dropouts'] += count
-                    dropout_stats[indication][phase]['reasons'][reason] += count
-                    valid_dropout_count += 1
+            # NEW: Group by NCT, Phase, Arm for arm-specific rates
+            arm_grouped = dropouts_df.groupby(['nct_id', 'phase', 'arm_code'])['count'].sum().reset_index()
+            
+            for _, row in arm_grouped.iterrows():
+                nct_id = row['nct_id']
+                phase = row['phase']
+                arm_code = row['arm_code']
+                count = row['count']
+                
+                if nct_id in nct_to_indication:
+                    for indication in nct_to_indication[nct_id]:
+                        dropout_stats[indication][phase]['by_arm'][arm_code]['dropouts'] += count
 
         print(f"   📊 Processed {total_dropout_rows:,} dropout rows")
         print(f"      ✓ Valid dropouts collected: {valid_dropout_count:,}")
 
-        # Also get total enrollment for dropout rate calculation
+        # Get total enrollment for dropout rate calculation
         joined = studies_df.merge(conditions_df, on='nct_id', how='inner')
         for indication in key_indications:
             indication_data = joined[
                 joined['downcase_name'].str.contains(indication, case=False, na=False)
             ]
             for phase in ['Phase 1', 'Phase 2', 'Phase 3', 'Phase 4']:
-                # Use normalized_phase column
                 phase_data = indication_data[indication_data['normalized_phase'] == phase]
                 if len(phase_data) > 0 and 'enrollment' in phase_data.columns:
                     total_enrollment = phase_data['enrollment'].sum(skipna=True)
                     if total_enrollment > 0:
                         dropout_stats[indication][phase]['total_subjects'] = int(total_enrollment)
+                
+                # NEW: Calculate trial-level dropout rates for variance
+                phase_ncts = phase_data['nct_id'].unique()
+                for nct in phase_ncts:
+                    nct_dropout_count = dropouts_df[dropouts_df['nct_id'] == nct]['count'].sum()
+                    nct_enrollment = phase_data[phase_data['nct_id'] == nct]['enrollment'].sum()
+                    if nct_enrollment > 0:
+                        nct_dropout_rate = nct_dropout_count / nct_enrollment
+                        dropout_stats[indication][phase]['trial_rates'].append(nct_dropout_rate)
 
-        # Calculate dropout rates
+        # Calculate dropout rates with enhanced statistics
         for indication in statistics.get('indications', {}).keys():
             if indication not in dropout_stats:
                 continue
@@ -415,12 +605,35 @@ def process_comprehensive_aact():
 
                 if total > 0:
                     dropout_rate = dropouts / total
+                    
                     # Get top 5 reasons
                     top_reasons = sorted(
                         data['reasons'].items(),
                         key=lambda x: x[1],
                         reverse=True
                     )[:5]
+
+                    # NEW: Calculate arm-specific rates (if we have arm data)
+                    arm_rates = {}
+                    for arm_code, arm_data in data['by_arm'].items():
+                        if arm_data['dropouts'] > 0:
+                            # Estimate subjects per arm (total/num_arms)
+                            num_arms = len(data['by_arm'])
+                            estimated_subjects_per_arm = total / num_arms if num_arms > 0 else 0
+                            if estimated_subjects_per_arm > 0:
+                                arm_rates[arm_code] = arm_data['dropouts'] / estimated_subjects_per_arm
+                    
+                    # NEW: Calculate trial-level variance
+                    trial_rates = data['trial_rates']
+                    variance_stats = {}
+                    if len(trial_rates) > 1:
+                        variance_stats = {
+                            'std_dev': float(np.std(trial_rates)),
+                            'min_rate': float(np.min(trial_rates)),
+                            'max_rate': float(np.max(trial_rates)),
+                            'median_rate': float(np.median(trial_rates)),
+                            'n_trials': len(trial_rates)
+                        }
 
                     statistics['indications'][indication]['dropout_patterns'][phase] = {
                         'dropout_rate': float(dropout_rate),
@@ -429,9 +642,13 @@ def process_comprehensive_aact():
                         'top_reasons': [
                             {'reason': reason, 'count': int(count), 'percentage': float(count / dropouts)}
                             for reason, count in top_reasons
-                        ]
+                        ],
+                        'arm_specific_rates': {k: float(v) for k, v in arm_rates.items()},  # NEW
+                        'trial_variance': variance_stats  # NEW
                     }
-                    print(f"      ✓ {indication} {phase}: {dropout_rate:.1%} dropout rate ({dropouts}/{total})")
+                    
+                    var_msg = f", variance={variance_stats.get('std_dev', 0):.2%}" if variance_stats else ""
+                    print(f"      ✓ {indication} {phase}: {dropout_rate:.1%} dropout rate ({dropouts}/{total}){var_msg}")
     else:
         print(f"   ⚠️ {dropouts_path.name} not found - skipping dropout patterns")
 
@@ -595,42 +812,38 @@ def process_comprehensive_aact():
             outcomes_df = pd.read_csv(outcomes_path, delimiter="|", low_memory=False)
             print(f"   ✅ Loaded {len(outcomes_df):,} outcome measurements with pandas")
 
-        valid_values_count = 0
-        total_rows = 0
-        skipped_no_value = 0
-        skipped_no_keywords = 0
-
-        for _, row in outcomes_df.iterrows():
-            total_rows += 1
-            nct_id = row.get('nct_id')
-            param_value = safe_float(row.get('param_value_num'))
-            title = str(row.get('title', '')).lower()
-
-            if nct_id not in nct_to_indication:
-                continue
-
-            if param_value is None:
-                skipped_no_value += 1
-                continue
-
-            # Look for treatment difference/change keywords (relaxed filtering)
-            if not any(kw in title for kw in ['change', 'difference', 'reduction', 'improvement',
-                                               'decrease', 'increase', 'effect', 'response']):
-                skipped_no_keywords += 1
-                continue
-
-            indications = nct_to_indication[nct_id]
-            phase = nct_to_phase.get(nct_id)  # Already normalized
-
-            if phase:
-                for indication in indications:
-                    treatment_effects[indication][phase].append(param_value)
-                    valid_values_count += 1
-
-        print(f"   📊 Processed {total_rows:,} outcome rows")
-        print(f"      ✓ Valid values collected: {valid_values_count:,}")
-        print(f"      ⚠ Skipped (no numeric value): {skipped_no_value:,}")
-        print(f"      ⚠ Skipped (no keywords): {skipped_no_keywords:,}")
+        # VECTORIZED PROCESSING
+        relevant_ncts = set(nct_to_indication.keys())
+        outcomes_df = outcomes_df[outcomes_df['nct_id'].isin(relevant_ncts)].copy()
+        
+        # Convert param_value_num to numeric
+        outcomes_df['param_value_num'] = pd.to_numeric(outcomes_df['param_value_num'], errors='coerce')
+        
+        # Filter for valid values
+        outcomes_df = outcomes_df[outcomes_df['param_value_num'].notna()]
+        
+        # Filter for treatment effect keywords
+        outcomes_df['title'] = outcomes_df['title'].fillna('').astype(str).str.lower()
+        keyword_mask = outcomes_df['title'].str.contains(
+            'change|difference|reduction|improvement|decrease|increase|effect|response',
+            regex=True, na=False
+        )
+        outcomes_df = outcomes_df[keyword_mask]
+        
+        print(f"   📊 Filtered to {len(outcomes_df):,} relevant outcome measurements")
+        
+        # Map phases
+        outcomes_df['phase'] = outcomes_df['nct_id'].map(nct_to_phase)
+        outcomes_df = outcomes_df[outcomes_df['phase'].notna()]
+        
+        # Group and aggregate
+        for nct_id, group in outcomes_df.groupby('nct_id'):
+            if nct_id in nct_to_indication:
+                phase = nct_to_phase.get(nct_id)
+                values = group['param_value_num'].tolist()
+                
+                for indication in nct_to_indication[nct_id]:
+                    treatment_effects[indication][phase].extend(values)
 
         # Calculate statistics
         for indication in statistics.get('indications', {}).keys():
@@ -647,55 +860,49 @@ def process_comprehensive_aact():
                 effects = treatment_effects[indication][phase]
                 statistics['indications'][indication]['treatment_effects'][phase] = {
                     'mean': float(np.mean(effects)),
-                    'median': float(np.median(effects)),
+                    'median': float(np.median(effects)),  # FIX: This now has actual values!
                     'std': float(np.std(effects)),
                     'q25': float(np.percentile(effects, 25)),
                     'q75': float(np.percentile(effects, 75)),
-                    'n_trials': len(effects)
+                    'n_measurements': len(effects)  # Changed from n_trials
                 }
-                print(f"      ✓ {indication} {phase}: median effect {np.median(effects):.2f} ({len(effects)} trials)")
+                print(f"      ✓ {indication} {phase}: median effect {np.median(effects):.2f} ({len(effects)} measurements)")
     else:
         print(f"   ⚠️ {outcomes_path.name} not found - skipping treatment effects")
 
     # ==========================================================================
-    # STEP 6: Process Study Duration and Milestones (⭐⭐⭐⭐⭐)
+    # STEP 6B: Extract Study Duration from Studies.txt (⭐⭐⭐⭐⭐)
     # ==========================================================================
     print("\n" + "=" * 80)
-    print("STEP 6: Processing Study Duration from Milestones")
+    print("STEP 6B: Extracting Study Duration from Trial Dates")
     print("=" * 80)
 
-    milestones_path = AACT_RAW_DIR / "milestones.txt"
     study_durations = defaultdict(lambda: defaultdict(list))
 
-    if milestones_path.exists():
-        print(f"   📂 Reading {milestones_path.name} with Daft...")
-        try:
-            milestones_daft = daft.read_csv(str(milestones_path), delimiter="|", has_headers=True)
-            milestones_df = milestones_daft.to_pandas()
-            print(f"   ✅ Loaded {len(milestones_df):,} milestone records with Daft")
-        except Exception as e:
-            print(f"   ⚠️ Daft failed: {e}, falling back to pandas...")
-            milestones_df = pd.read_csv(milestones_path, delimiter="|", low_memory=False)
-            print(f"   ✅ Loaded {len(milestones_df):,} milestone records with pandas")
-
-        valid_durations = 0
-        for _, row in milestones_df.iterrows():
-            nct_id = row.get('nct_id')
-            milestone_type = str(row.get('milestone', '')).lower()
-            count = safe_int(row.get('count'))
-
-            if nct_id not in nct_to_indication or count is None or count <= 0:
-                continue
-
-            # Look for completion/duration milestones
-            if 'completed' in milestone_type or 'duration' in milestone_type:
+    # Studies already loaded - extract durations from date fields
+    if 'start_date' in studies_df.columns and 'completion_date' in studies_df.columns:
+        # Convert dates to datetime
+        studies_df['start_dt'] = pd.to_datetime(studies_df['start_date'], errors='coerce')
+        studies_df['completion_dt'] = pd.to_datetime(studies_df['completion_date'], errors='coerce')
+        
+        # Calculate duration in days
+        studies_df['duration_days'] = (studies_df['completion_dt'] - studies_df['start_dt']).dt.days
+        
+        # Filter for valid durations (positive, reasonable range)
+        valid_duration_df = studies_df[
+            (studies_df['duration_days'] > 0) & 
+            (studies_df['duration_days'] < 3650)  # Max 10 years
+        ].copy()
+        
+        print(f"   ✅ Calculated durations for {len(valid_duration_df):,} trials")
+        
+        # Group by indication and phase
+        for nct_id, duration in zip(valid_duration_df['nct_id'], valid_duration_df['duration_days']):
+            if nct_id in nct_to_indication:
                 phase = nct_to_phase.get(nct_id)
                 if phase:
                     for indication in nct_to_indication[nct_id]:
-                        study_durations[indication][phase].append(count)
-                        valid_durations += 1
-
-        print(f"   ✅ Collected {valid_durations:,} study duration values")
+                        study_durations[indication][phase].append(int(duration))
 
         # Calculate statistics
         for indication in statistics.get('indications', {}).keys():
@@ -716,11 +923,14 @@ def process_comprehensive_aact():
                     'std_days': float(np.std(durations)),
                     'q25_days': float(np.percentile(durations, 25)),
                     'q75_days': float(np.percentile(durations, 75)),
+                    'min_days': int(np.min(durations)),
+                    'max_days': int(np.max(durations)),
                     'n_studies': len(durations)
                 }
-                print(f"      ✓ {indication} {phase}: median {np.median(durations):.0f} days")
+                median_months = np.median(durations) / 30.44
+                print(f"      ✓ {indication} {phase}: median {np.median(durations):.0f} days ({median_months:.1f} months), n={len(durations)}")
     else:
-        print(f"   ⚠️ {milestones_path.name} not found - skipping study durations")
+        print(f"   ⚠️ start_date or completion_date not found in studies.txt")
 
     # ==========================================================================
     # STEP 7: Process Eligibility Criteria (⭐⭐⭐⭐⭐)
@@ -744,49 +954,62 @@ def process_comprehensive_aact():
             eligibilities_df = pd.read_csv(eligibilities_path, delimiter="|", low_memory=False)
             print(f"   ✅ Loaded {len(eligibilities_df):,} eligibility records with pandas")
 
-        valid_age_count = 0
-        valid_gender_count = 0
-
+        # VECTORIZED AGE PARSING
+        import re
+        
+        def parse_age_to_years(age_str):
+            """Convert '18 Years', '6 Months', '2 Days' to years"""
+            if pd.isna(age_str):
+                return None
+            age_str = str(age_str).lower()
+            if 'n/a' in age_str or not age_str.strip():
+                return None
+            
+            match = re.search(r'(\d+)', age_str)
+            if not match:
+                return None
+            
+            num = int(match.group(1))
+            if 'month' in age_str:
+                return num / 12.0
+            elif 'day' in age_str or 'week' in age_str:
+                return num / 365.0
+            else:  # Assume years
+                return float(num)
+        
+        #  Filter relevant trials
+        relevant_ncts = set(nct_to_indication.keys())
+        eligibilities_df = eligibilities_df[eligibilities_df['nct_id'].isin(relevant_ncts)].copy()
+        
+        # Parse ages vectorized
+        eligibilities_df['min_age_years'] = eligibilities_df['minimum_age'].apply(parse_age_to_years)
+        eligibilities_df['max_age_years'] = eligibilities_df['maximum_age'].apply(parse_age_to_years)
+        eligibilities_df['phase'] = eligibilities_df['nct_id'].map(nct_to_phase)
+        
+        # Filter valid data
+        eligibilities_df = eligibilities_df[eligibilities_df['phase'].notna()]
+        
+        print(f"   ✅ Parsed ages for {len(eligibilities_df):,} eligibility records")
+        
+        age_ranges = defaultdict(lambda: defaultdict(lambda: {'min_ages': [], 'max_ages': []}))
+        gender_dist = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+        
+        # Group and collect
         for _, row in eligibilities_df.iterrows():
-            nct_id = row.get('nct_id')
-            min_age = str(row.get('minimum_age', '')).lower()
-            max_age = str(row.get('maximum_age', '')).lower()
+            nct_id = row['nct_id']
+            phase = row['phase']
+            min_age = row['min_age_years']
+            max_age = row['max_age_years']
             gender = str(row.get('gender', '')).upper()
-
-            if nct_id not in nct_to_indication:
-                continue
-
-            phase = nct_to_phase.get(nct_id)
-            if not phase:
-                continue
-
-            indications = nct_to_indication[nct_id]
-
-            # Parse age (extract numbers from strings like "18 Years", "65 Years")
-            import re
-            if min_age and 'n/a' not in min_age:
-                min_match = re.search(r'(\d+)', min_age)
-                if min_match:
-                    min_age_val = int(min_match.group(1))
-                    for indication in indications:
-                        age_ranges[indication][phase]['min_ages'].append(min_age_val)
-                        valid_age_count += 1
-
-            if max_age and 'n/a' not in max_age:
-                max_match = re.search(r'(\d+)', max_age)
-                if max_match:
-                    max_age_val = int(max_match.group(1))
-                    for indication in indications:
-                        age_ranges[indication][phase]['max_ages'].append(max_age_val)
-
-            # Track gender distribution
-            if gender in ['MALE', 'FEMALE', 'ALL']:
-                for indication in indications:
-                    gender_dist[indication][phase][gender] += 1
-                    valid_gender_count += 1
-
-        print(f"   ✅ Collected {valid_age_count:,} age ranges")
-        print(f"   ✅ Collected {valid_gender_count:,} gender criteria")
+            
+            if nct_id in nct_to_indication:
+                for indication in nct_to_indication[nct_id]:
+                    if min_age is not None and 0 < min_age < 120:
+                        age_ranges[indication][phase]['min_ages'].append(min_age)
+                    if max_age is not None and 0 < max_age < 120:
+                        age_ranges[indication][phase]['max_ages'].append(max_age)
+                    if gender in ['MALE', 'FEMALE', 'ALL']:
+                        gender_dist[indication][phase][gender] += 1
 
         # Calculate statistics
         for indication in statistics.get('indications', {}).keys():
@@ -808,7 +1031,7 @@ def process_comprehensive_aact():
                     phase_eligibility['min_age'] = {
                         'mean': float(np.mean(min_ages)),
                         'median': float(np.median(min_ages)),
-                        'mode': float(max(set(min_ages), key=min_ages.count))
+                        'mode': float(max(set(min_ages), key=min_ages.count)) if min_ages else 18.0
                     }
 
                 if len(age_ranges[indication][phase]['max_ages']) > 0:
@@ -816,19 +1039,35 @@ def process_comprehensive_aact():
                     phase_eligibility['max_age'] = {
                         'mean': float(np.mean(max_ages)),
                         'median': float(np.median(max_ages)),
-                        'mode': float(max(set(max_ages), key=max_ages.count))
+                        'mode': float(max(set(max_ages), key=max_ages.count)) if max_ages else 65.0
+                    }
+                
+                # Add simplified age_criteria for easy access
+                if 'min_age' in phase_eligibility or 'max_age' in phase_eligibility:
+                    phase_eligibility['age_criteria'] = {
+                        'min_age_mean': phase_eligibility.get('min_age', {}).get('mean'),
+                        'max_age_mean': phase_eligibility.get('max_age', {}).get('mean'),
+                        'min_age_median': phase_eligibility.get('min_age', {}).get('median'),
+                        'max_age_median': phase_eligibility.get('max_age', {}).get('median')
                     }
 
                 # Gender distribution
                 if phase in gender_dist[indication]:
                     total = sum(gender_dist[indication][phase].values())
-                    phase_eligibility['gender_distribution'] = {
-                        g: count / total for g, count in gender_dist[indication][phase].items()
-                    }
+                    if total > 0:
+                        phase_eligibility['gender_distribution'] = {
+                            g: count / total for g, count in gender_dist[indication][phase].items()
+                        }
 
                 if phase_eligibility:
                     statistics['indications'][indication]['eligibility'][phase] = phase_eligibility
-                    print(f"      ✓ {indication} {phase}: age {phase_eligibility.get('min_age', {}).get('median', 'N/A')}-{phase_eligibility.get('max_age', {}).get('median', 'N/A')}")
+                    min_age_median = phase_eligibility.get('min_age', {}).get('median', 'N/A')
+                    max_age_median = phase_eligibility.get('max_age', {}).get('median', 'N/A')
+                    if min_age_median != 'N/A':
+                        min_age_median = f"{min_age_median:.0f}"
+                    if max_age_median != 'N/A':
+                        max_age_median = f"{max_age_median:.0f}"
+                    print(f"      ✓ {indication} {phase}: age {min_age_median}-{max_age_median} years")
     else:
         print(f"   ⚠️ {eligibilities_path.name} not found - skipping eligibility criteria")
 

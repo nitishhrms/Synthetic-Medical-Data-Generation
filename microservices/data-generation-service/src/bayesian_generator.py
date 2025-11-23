@@ -12,7 +12,7 @@ This addresses professor's feedback on:
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 import os
 from pathlib import Path
 
@@ -38,12 +38,12 @@ class BayesianNetworkGenerator:
     - Interpretable structure (DAG shows causal relationships)
     """
 
-    def __init__(self, real_data_path: Optional[str] = None):
+    def __init__(self, real_data: Optional[Union[str, pd.DataFrame]] = None):
         """
         Initialize generator with optional real data for training
 
         Args:
-            real_data_path: Path to real clinical trial data (CSV)
+            real_data: Path to real clinical trial data (CSV) OR DataFrame
         """
         if not PGMPY_AVAILABLE:
             raise ImportError("pgmpy required. Install with: pip install pgmpy")
@@ -52,9 +52,12 @@ class BayesianNetworkGenerator:
         self.real_data = None
         self.structure = None
 
-        if real_data_path and os.path.exists(real_data_path):
-            self.real_data = pd.read_csv(real_data_path)
-            print(f"Loaded real data: {len(self.real_data)} records")
+        if isinstance(real_data, pd.DataFrame):
+            self.real_data = real_data
+            print(f"Loaded real data from DataFrame: {len(self.real_data)} records")
+        elif isinstance(real_data, str) and os.path.exists(real_data):
+            self.real_data = pd.read_csv(real_data)
+            print(f"Loaded real data from file: {len(self.real_data)} records")
 
     def _discretize_continuous_vars(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -379,17 +382,15 @@ def generate_vitals_bayesian(
     Returns:
         DataFrame with synthetic vitals
     """
-    # Default to using pilot trial data
-    if real_data_path is None:
-        real_data_path = "/app/data/pilot_trial_cleaned.csv"
-        # Fallback paths
-        if not os.path.exists(real_data_path):
-            real_data_path = "data/pilot_trial_cleaned.csv"
-        if not os.path.exists(real_data_path):
-            real_data_path = "../../../data/pilot_trial_cleaned.csv"
-
     # Initialize and fit generator
-    generator = BayesianNetworkGenerator(real_data_path)
+    if real_data_path is None:
+        # Use AACT data
+        from generators import load_aact_vitals
+        real_data = load_aact_vitals()
+    else:
+        real_data = pd.read_csv(real_data_path)
+
+    generator = BayesianNetworkGenerator(real_data)
 
     if generator.real_data is not None:
         generator.fit(generator.real_data, learn_structure=False)

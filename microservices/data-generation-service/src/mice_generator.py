@@ -319,23 +319,21 @@ def generate_vitals_mice(
     Returns:
         DataFrame with synthetic vitals
     """
-    # Default to using pilot trial data
-    if real_data_path is None:
-        real_data_path = "/app/data/pilot_trial_cleaned.csv"
-        if not os.path.exists(real_data_path):
-            real_data_path = "data/pilot_trial_cleaned.csv"
-        if not os.path.exists(real_data_path):
-            real_data_path = "../../../data/pilot_trial_cleaned.csv"
-
     # Initialize generator
     generator = MICEGenerator(estimator_type=estimator)
 
     # Load and fit to real data
-    if os.path.exists(real_data_path):
+    if real_data_path is None:
+        # Use AACT data
+        from generators import load_aact_vitals
+        real_data = load_aact_vitals()
+    else:
         real_data = pd.read_csv(real_data_path)
+
+    if not real_data.empty:
         generator.fit(real_data)
     else:
-        print("Warning: Real data not found. Using synthetic data to train MICE.")
+        print("Warning: Real data not found or empty. Using synthetic data to train MICE.")
         from generators import generate_vitals_mvn
         synthetic_train = generate_vitals_mvn(n_per_arm=50, seed=seed)
         generator.fit(synthetic_train)

@@ -159,68 +159,43 @@ def fit_mvn_models(train_df: pd.DataFrame) -> Dict:
     return models
 
 
-def load_pilot_vitals(use_cleaned: bool = True) -> pd.DataFrame:
+def load_aact_vitals(indication: str = "hypertension", phase: str = "Phase 3") -> pd.DataFrame:
     """
-    Load pilot vitals data from CDISC clinical trial data.
-
-    This data is derived from real clinical trials and provides realistic
-    distributions for vital signs across different visits and treatment arms.
-
+    Load/Generate representative vitals data from AACT statistics.
+    
+    Replaces the old pilot trial data with AACT-derived synthetic data.
+    
     Args:
-        use_cleaned: If True (default), load the validated and repaired data.
-                    If False, load the original unprocessed data.
-
+        indication: Disease indication
+        phase: Trial phase
+        
     Returns:
         DataFrame with clinical trial vital signs data
-
-    Note:
-        The cleaned data has been validated and repaired to ensure:
-        - All values within valid clinical ranges
-        - No duplicate records
-        - No missing values
-        - Consistent treatment arms per subject
-
-        To generate cleaned data, run: python data/validate_and_repair_real_data.py
     """
-    # Locate the pilot data in the data directory
-    # Use Path for robust path resolution (works in both local and Docker)
-    current_file = Path(__file__).resolve()
-    if str(current_file).startswith("/app/"):
-        # Running in Docker: /app/src/generators.py -> /app
-        base_path = current_file.parents[1]
-    else:
-        # Running locally: .../microservices/data-generation-service/src/generators.py -> project root
-        base_path = current_file.parents[3]
-
-    if use_cleaned:
-        # Use validated and cleaned data (recommended)
-        pilot_data_path = base_path / "data" / "pilot_trial_cleaned.csv"
-
-        if not pilot_data_path.exists():
-            # Fall back to original if cleaned doesn't exist
-            print("⚠️  Warning: Cleaned data not found. Using original data.")
-            print("   Run 'python data/validate_and_repair_real_data.py' to generate cleaned data.")
-            pilot_data_path = base_path / "data" / "pilot_trial.csv"
-    else:
-        # Use original unprocessed data
-        pilot_data_path = base_path / "data" / "pilot_trial.csv"
-
-    if not pilot_data_path.exists():
-        raise FileNotFoundError(
-            f"Pilot data not found at: {pilot_data_path}. "
-            "Run 'python data/process_cdisc_data.py' to generate the pilot data from CDISC sources."
-        )
-
-    df = pd.read_csv(pilot_data_path)
-
-    # Validate expected columns
-    required_cols = ["SubjectID", "VisitName", "TreatmentArm",
-                     "SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
-    missing = [c for c in required_cols if c not in df.columns]
-    if missing:
-        raise ValueError(f"Pilot data missing required columns: {missing}")
-
-    return df
+    try:
+        from simple_diffusion import create_from_aact
+        generator = create_from_aact(indication=indication, phase=phase)
+        # Generate a representative dataset (e.g. 200 subjects)
+        df = generator.generate(n_samples=200, n_steps=10, seed=42)
+        return df
+    except Exception as e:
+        print(f"Warning: Failed to generate AACT data ({e}). Using fallback defaults.")
+        # Fallback to simple synthetic generation
+        rng = np.random.default_rng(42)
+        rows = []
+        for i in range(100):
+            sid = f"AACT-{i:03d}"
+            for visit in ["Screening", "Day 1", "Week 4", "Week 12"]:
+                rows.append({
+                    "SubjectID": sid,
+                    "VisitName": visit,
+                    "TreatmentArm": "Active" if i < 50 else "Placebo",
+                    "SystolicBP": int(rng.normal(140, 15)),
+                    "DiastolicBP": int(rng.normal(85, 10)),
+                    "HeartRate": int(rng.normal(72, 10)),
+                    "Temperature": 36.6
+                })
+        return pd.DataFrame(rows)
 
 
 def generate_vitals_mvn(n_per_arm=50, target_effect=-5.0, seed=123,
@@ -244,10 +219,8 @@ def generate_vitals_mvn(n_per_arm=50, target_effect=-5.0, seed=123,
     if train_source == "current" and isinstance(current_df, pd.DataFrame) and not current_df.empty:
         train_df = current_df.copy()
     else:
-        # Create synthetic baseline from default statistics (no pilot CSV needed)
-        baseline_rows = []
-        baseline_subjects = 50
-        for i in range(baseline_subjects):
+        # Use AACT data as baseline
+        train_df = load_aact_vitals()
             sid = f"BASE-{i+1:03d}"
             arm = "Active" if i < baseline_subjects // 2 else "Placebo"
             for visit in VISITS[:4]:

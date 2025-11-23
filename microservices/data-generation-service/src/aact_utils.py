@@ -757,6 +757,144 @@ class AACTStatisticsLoader:
         }
 
 
+    # ============================================================================
+    # PHASE 1 ENHANCEMENTS: Variance Sampling Methods
+    # ============================================================================
+    
+    def sample_dropout_rate(
+        self, 
+        indication: str, 
+        phase: str = "Phase 3",
+        seed: Optional[int] = None
+    ) -> float:
+        """
+        Sample a realistic dropout rate with trial-level variance
+        
+        This returns different values each time, simulating the natural variation
+        across real trials. For example, for hypertension Phase 3:
+        - Mean: 5.24%
+        - Std Dev: 17.46%
+        - Range: 0% to 104% (some trials have no dropout, others catastrophic)
+        
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+            seed: Optional random seed for reproducibility
+            
+        Returns:
+            Sampled dropout rate (0-1), varies each call unless seed is set
+            
+        Example:
+            >>> # Generate 5 trials with different dropout rates
+            >>> for i in range(5):
+            ...     rate = aact.sample_dropout_rate("hypertension", "Phase 3")
+            ...     print(f"Trial {i+1}: {rate:.1%} dropout")
+        """
+        if seed is not None:
+            import numpy as np
+            np.random.seed(seed)
+        
+        dropout_data = self.get_dropout_patterns(indication, phase)
+        
+        # Check if we have variance data from Phase 1 enhancements
+        if 'trial_variance' in dropout_data and dropout_data['trial_variance']:
+            import numpy as np
+            variance = dropout_data['trial_variance']
+            mean_rate = dropout_data['dropout_rate']
+            std_dev = variance.get('std_dev', 0)
+            
+            # Sample from normal distribution
+            sampled_rate = np.random.normal(mean_rate, std_dev)
+            
+            # Clip to observed range from real trials
+            min_rate = variance.get('min_rate', 0)
+            max_rate = variance.get('max_rate', 1.0)
+            
+            return float(np.clip(sampled_rate, min_rate, max_rate))
+        else:
+            # Fallback: return mean dropout rate (no variance)
+            warnings.warn(
+                f"No trial variance data for {indication} {phase}. "
+                f"Returning mean dropout rate. Re-run AACT processing to get variance.",
+                UserWarning
+            )
+            return dropout_data.get('dropout_rate', 0.15)
+
+    def get_arm_specific_dropout_rates(
+        self, 
+        indication: str, 
+        phase: str = "Phase 3"
+    ) -> Dict[str, float]:
+        """
+        Get dropout rates specific to each treatment arm
+        
+        Real trials show differential dropout between arms:
+        - Active arms often have 5-10% higher dropout due to side effects
+        - Placebo arms have lower dropout
+        
+        Args:
+            indication: Disease indication (e.g., 'hypertension')
+            phase: Trial phase (e.g., 'Phase 3')
+            
+        Returns:
+            Dict mapping arm codes to dropout rates
+            
+        Example:
+            >>> arm_rates = aact.get_arm_specific_dropout_rates("hypertension", "Phase 3")
+            >>> # Returns: {'FG000': 0.45, 'FG001': 0.23, ...}
+        """
+        dropout_data = self.get_dropout_patterns(indication, phase)
+        
+        # Check if we have arm-specific rates from Phase 1 enhancements
+        if 'arm_specific_rates' in dropout_data:
+            return dropout_data['arm_specific_rates']
+        else:
+            # Fallback: return overall dropout rate for all arms
+            warnings.warn(
+                f"No arm-specific dropout rates for {indication} {phase}. "
+                f"Using overall dropout rate. Re-run AACT processing.",
+                UserWarning
+            )
+            overall_rate = dropout_data.get('dropout_rate', 0.15)
+            return {
+                'active': overall_rate,
+                'placebo': overall_rate * 0.7  # Assume placebo has 30% less dropout
+            }
+
+    def get_dropout_variance_stats(
+        self, 
+        indication: str, 
+        phase: str = "Phase 3"
+    ) -> Dict[str, float]:
+        """
+        Get trial-level variance statistics for dropout rates
+        
+        Returns:
+            Dict with variance statistics
+        """
+        dropout_data = self.get_dropout_patterns(indication, phase)
+        
+        if 'trial_variance' in dropout_data and dropout_data['trial_variance']:
+            variance = dropout_data['trial_variance']
+            return {
+                'mean_rate': dropout_data.get('dropout_rate', 0),
+                'std_dev': variance.get('std_dev', 0),
+                'min_rate': variance.get('min_rate', 0),
+                'max_rate': variance.get('max_rate', 0),
+                'median_rate': variance.get('median_rate', 0),
+                'n_trials': variance.get('n_trials', 0)
+            }
+        else:
+            return {
+                'mean_rate': dropout_data.get('dropout_rate', 0.15),
+                'std_dev': 0.0,
+                'min_rate': 0.0,
+                'max_rate': 0.0,
+                'median_rate': dropout_data.get('dropout_rate', 0.15),
+                'n_trials': 0
+            }
+
+
 # Singleton instance for easy access
 _aact_loader_instance = None
 
@@ -839,3 +977,32 @@ def get_dropout_patterns(indication: str, phase: str = "Phase 3") -> Dict[str, A
 def get_adverse_events(indication: str, phase: str = "Phase 3", top_n: int = 20) -> List[Dict[str, Any]]:
     """Convenience function to get adverse event frequencies"""
     return get_aact_loader().get_adverse_events(indication, phase, top_n)
+
+
+# NEW: Phase 1 Enhancement Shortcuts
+def sample_dropout_rate(indication: str, phase: str = "Phase 3", seed: Optional[int] = None) -> float:
+    """
+    Sample realistic dropout rate with variance - returns different values each time!
+    
+    Example:
+        >>> from aact_utils import sample_dropout_rate
+        >>> rate = sample_dropout_rate("hypertension", "Phase 3")
+        >>> print(f"Sampled dropout rate: {rate:.1%}")
+    """
+    return get_aact_loader().sample_dropout_rate(indication, phase, seed)
+
+
+def get_arm_specific_dropout_rates(indication: str, phase: str = "Phase 3") -> Dict[str, float]:
+    """
+    Get arm-specific dropout rates (active often higher than placebo)
+    
+    Example:
+        >>> from aact_utils import get_arm_specific_dropout_rates
+        >>> arm_rates = get_arm_specific_dropout_rates("hypertension", "Phase 3")
+    """
+    return get_aact_loader().get_arm_specific_dropout_rates(indication, phase)
+
+
+def get_dropout_variance_stats(indication: str, phase: str = "Phase 3") -> Dict[str, float]:
+    """Get dropout variance statistics"""
+    return get_aact_loader().get_dropout_variance_stats(indication, phase)

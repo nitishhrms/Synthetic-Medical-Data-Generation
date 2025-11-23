@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { DataProvider } from "@/contexts/DataContext";
+import { LandingPage } from "@/components/screens/LandingPage";
 import { Login } from "@/components/screens/Login";
 import { Dashboard } from "@/components/screens/Dashboard";
 import { DataGeneration } from "@/components/screens/DataGeneration";
@@ -28,6 +29,7 @@ function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
   const [activeScreen, setActiveScreen] = useState<Screen>("dashboard");
   const [showSystemCheck, setShowSystemCheck] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
 
   // State for passing data between screens
@@ -72,7 +74,11 @@ function AppContent() {
       );
     }
 
-    return <Login onShowSystemCheck={() => setShowSystemCheck(true)} />;
+    if (showLogin) {
+      return <Login onShowSystemCheck={() => setShowSystemCheck(true)} />;
+    }
+
+    return <LandingPage onLogin={() => setShowLogin(true)} />;
   }
 
   const renderScreen = () => {
