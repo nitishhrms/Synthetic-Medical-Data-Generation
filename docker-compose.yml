@@ -173,6 +173,8 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
       - DATA_GEN_SERVICE_URL=http://data-generation-service:8002
+    volumes:
+      - ./microservices/analytics-service/src:/app/src
     depends_on:
       postgres:
         condition: service_healthy
@@ -205,33 +207,6 @@ services:
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8004/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  # AI Monitor Service - AI-powered medical monitoring
-  ai-monitor-service:
-    build:
-      context: ./microservices/ai-monitor-service
-      dockerfile: Dockerfile
-    container_name: ai-monitor-service
-    ports:
-      - "8008:8008"
-    environment:
-      - EDC_SERVICE_URL=http://edc-service:8001
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
-    depends_on:
-      edc-service:
-        condition: service_healthy
-    networks:
-      - clinical-trials-network
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8008/health" ]
       interval: 30s
       timeout: 10s
       retries: 3

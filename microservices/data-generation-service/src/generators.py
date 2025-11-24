@@ -221,19 +221,6 @@ def generate_vitals_mvn(n_per_arm=50, target_effect=-5.0, seed=123,
     else:
         # Use AACT data as baseline
         train_df = load_aact_vitals()
-            sid = f"BASE-{i+1:03d}"
-            arm = "Active" if i < baseline_subjects // 2 else "Placebo"
-            for visit in VISITS[:4]:
-                sbp = int(np.clip(rng.normal(140, 15), 95, 200))
-                dbp = int(np.clip(rng.normal(85, 10), 55, 130))
-                hr = int(np.clip(rng.normal(72, 10), 50, 120))
-                temp = float(np.clip(rng.normal(36.7, 0.3), 35.0, 40.0))
-                baseline_rows.append([sid, visit, arm, sbp, dbp, hr, temp])
-
-        train_df = pd.DataFrame(
-            baseline_rows,
-            columns=["SubjectID", "VisitName", "TreatmentArm", "SystolicBP", "DiastolicBP", "HeartRate", "Temperature"]
-        )
 
     models = fit_mvn_models(train_df)
 

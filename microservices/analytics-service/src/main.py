@@ -3214,5 +3214,254 @@ async def assess_trial_feasibility(request: FeasibilityAssessmentRequest):
         )
 
 
+# ============================================================================
+# ENHANCED VALIDATION ENDPOINTS - For ML Research-Grade Data
+# ============================================================================
+
+from validation_enhanced import (
+    TemporalCorrelationValidator,
+    HeterogeneousEffectsValidator,
+    MissingnessValidator,
+    validate_comprehensive
+)
+
+class EnhancedValidationRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Trial data as list of records")
+
+class TemporalValidationResponse(BaseModel):
+    status: str
+    grade: Optional[str] = None
+    metrics: Dict[str, Any]
+    interpretation: Optional[str] = None
+    recommendations: List[str]
+
+class HeterogeneityValidationResponse(BaseModel):
+    status: str
+    grade: Optional[str] = None
+    metrics: Dict[str, Any]
+    interpretation: Optional[str] = None
+    heterogeneity_score: Optional[int] = None
+    recommendations: List[str]
+
+class MissingnessValidationResponse(BaseModel):
+    status: str
+    classification: Optional[str] = None
+    mar_tests: Dict[str, Any]
+    interpretation: Optional[str] = None
+    recommendations: List[str]
+
+class ComprehensiveEnhancedValidationResponse(BaseModel):
+    timestamp: str
+    n_subjects: int
+    n_measurements: int
+    validations: Dict[str, Any]
+    overall: Dict[str, Any]
+
+
+@app.post("/validate/temporal-correlation", response_model=TemporalValidationResponse)
+async def validate_temporal_correlation(request: EnhancedValidationRequest):
+    """
+    Validate temporal correlation in longitudinal data
+    
+    Checks if visit-to-visit measurements show realistic autocorrelation (ρ~0.7).
+    This is critical for longitudinal ML models and mixed-effects regression.
+    
+    **What it validates:**
+    - Lag-1 autocorrelation between consecutive visits
+    - Expected range: ρ = 0.6-0.8 for vital signs
+    - Identifies subjects with suspicious patterns
+    
+    **Example request:**
+    ```json
+    {
+        "data": [
+            {"SubjectID": "S001", "VisitWeek": 0, "SystolicBP": 145, ...},
+            {"SubjectID": "S001", "VisitWeek": 4, "SystolicBP": 142, ...},
+            ...
+        ]
+    }
+    ```
+    
+    **Returns:**
+    - status: "pass" or "fail"
+    - grade: A/B/C/D based on quality
+    - mean_correlation: Observed ρ value
+    - recommendations: How to improve if needed
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if 'SubjectID' not in df.columns or 'SystolicBP' not in df.columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Data must contain SubjectID and SystolicBP columns"
+            )
+        
+        validator = TemporalCorrelationValidator()
+        result = validator.validate(df)
+        
+        return TemporalValidationResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Temporal correlation validation failed: {str(e)}"
+        )
+
+
+@app.post("/validate/heterogeneous-effects", response_model=HeterogeneityValidationResponse)
+async def validate_heterogeneous_effects(request: EnhancedValidationRequest):
+    """
+    Validate treatment effect heterogeneity
+    
+    Checks if treatment effects vary realistically across subjects.
+    Real trials show responders, non-responders, and moderate responders.
+    
+    **What it validates:**
+    - Standard deviation of treatment effects (should be >2 mmHg)
+    - Responder distribution (super/moderate/non-responder)  
+    - Comparison across treatment arms
+    
+    **Example request:**
+    ```json
+    {
+        "data": [
+            {"SubjectID": "S001", "VisitWeek": 0, "SystolicBP": 145, "TreatmentArm": "Active"},
+            {"SubjectID": "S001", "VisitWeek": 12, "SystolicBP": 138, "TreatmentArm": "Active"},
+            ...
+        ]
+    }
+    ```
+    
+    **Returns:**
+    - status: "pass" or "fail"
+    - Effect statistics by arm
+    - Responder distribution
+    - Heterogeneity score (0-100)
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        
+        required_cols = ['SubjectID', 'VisitWeek', 'SystolicBP', 'TreatmentArm']
+        if not all(col in df.columns for col in required_cols):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Data must contain columns: {required_cols}"
+            )
+        
+        validator = HeterogeneousEffectsValidator()
+        result = validator.validate(df)
+        
+        return HeterogeneityValidationResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Heterogeneity validation failed: {str(e)}"
+        )
+
+
+@app.post("/validate/missingness-mechanism", response_model=MissingnessValidationResponse)
+async def validate_missingness_mechanism(request: EnhancedValidationRequest):
+    """
+    Classify and validate missingness mechanism
+    
+    Determines if dropout follows realistic patterns:
+    - MCAR: Random (unrealistic)
+    - MAR: Correlated with observed data (realistic)
+    - MNAR: Correlated with unobserved factors (most realistic)
+    
+    **What it validates:**
+    - Association with adverse events
+    - Differential dropout by treatment arm
+    - Correlation with baseline vitals
+    
+    **Example request:**
+    ```json
+    {
+        "data": [
+            {"SubjectID": "S001", "dropout": false, "has_severe_ae": false, "TreatmentArm": "Active"},
+            {"SubjectID": "S002", "dropout": true, "has_severe_ae": true, "TreatmentArm": "Active"},
+            ...
+        ]
+    }
+    ```
+    
+    **Returns:**
+    - classification: "MCAR" / "MAR" / "MNAR"
+    - Statistical tests for MAR associations
+    - Interpretation and recommendations
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if 'dropout' not in df.columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Data must contain 'dropout' column"
+            )
+        
+        validator = MissingnessValidator()
+        result = validator.validate(df)
+        
+        # Import convert_numpy_types if not already done
+        from validation_enhanced import convert_numpy_types
+        result = convert_numpy_types(result)
+        
+        return MissingnessValidationResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Missingness validation failed: {str(e)}"
+        )
+
+
+@app.post("/validate/enhanced-comprehensive", response_model=ComprehensiveEnhancedValidationResponse)
+async def validate_enhanced_comprehensive(request: EnhancedValidationRequest):
+    """
+    Run all enhanced validations in one call
+    
+    Comprehensive validation of:
+    1. Temporal correlation (AR1 model)
+    2. Heterogeneous treatment effects
+    3. Missingness mechanisms (MAR/MNAR)
+    
+    **Use this for:**
+    - Quality assurance of generated data
+    - Validating before publication
+    - Comparing old vs new generators
+    - Regulatory submission prep
+    
+    **Returns:**
+    - Overall quality score (0-100)
+    - Grade (A/B/C/D)
+    - Detailed results for each validation
+    - Aggregate recommendations
+    
+    **Example:**
+    ```python
+    # Check if your enhanced generator is working
+    df = generate_vitals_enhanced(n_per_arm=100)
+    result = validate_enhanced_comprehensive(df.to_dict('records'))
+    
+    if result['overall']['grade'] == 'A':
+        print("✅ Publication-ready quality!")
+    ```
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        
+        result = validate_comprehensive(df)
+        
+        return ComprehensiveEnhancedValidationResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Comprehensive validation failed: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8003)

@@ -2678,105 +2678,10 @@ async def list_datasets(dataset_type: Optional[str] = None, limit: int = 50, off
         )
     except Exception as e:
         raise HTTPException(
-    ```
-    """
-    try:
-        # Import enhanced generator
-        from generate_vitals_enhanced import generate_vitals_enhanced
-        
-        # Generate data with enhancements
-        df = generate_vitals_enhanced(
-            n_per_arm=request.n_per_arm,
-            indication=request.indication,
-            phase=request.phase,
-            target_effect_mean=request.target_effect_mean,
-            target_effect_std=request.target_effect_std,
-            visit_weeks=request.visit_weeks,
-            use_temporal_correlation=request.use_temporal_correlation,
-            temporal_rho=request.temporal_rho,
-            use_heterogeneous_effects=request.use_heterogeneous_effects,
-            baseline_correlation=request.baseline_correlation,
-            missingness_mechanism=request.missingness_mechanism,
-            use_aact_dropout_variance=request.use_aact_dropout_variance,
-            seed=request.seed
-        )
-        
-        # Calculate quality metrics
-        import numpy as np
-        
-        # Temporal correlation
-        temporal_corr = 0.0
-        if request.use_temporal_correlation:
-            correlations = []
-            for subject_id, subject_df in df.groupby('SubjectID'):
-                sbp = subject_df.sort_values('VisitWeek')['SystolicBP'].values
-                if len(sbp) >= 2:
-                    corr = np.corrcoef(sbp[:-1], sbp[1:])[0, 1]
-                    if not np.isnan(corr):
-                        correlations.append(corr)
-            temporal_corr = float(np.mean(correlations)) if correlations else 0.0
-        
-        # Treatment heterogeneity
-        treatment_std = 0.0
-        if request.use_heterogeneous_effects:
-            active_effects = []
-            for subject_id, subject_df in df[df['TreatmentArm']=='Active'].groupby('SubjectID'):
-                sbp_vals = subject_df.sort_values('VisitWeek')['SystolicBP'].values
-                if len(sbp_vals) >= 2:
-                    effect = sbp_vals[-1] - sbp_vals[0]
-                    active_effects.append(effect)
-            treatment_std = float(np.std(active_effects)) if active_effects else 0.0
-        
-        # Missingness stats
-        dropout_stats = {}
-        if 'dropout' in df.columns:
-            dropout_stats = {
-                'overall_rate': float(df['dropout'].mean()),
-                'active_rate': float(df[df['TreatmentArm']=='Active']['dropout'].mean()) if 'Active' in df['TreatmentArm'].values else 0.0,
-                'placebo_rate': float(df[df['TreatmentArm']=='Placebo']['dropout'].mean()) if 'Placebo' in df['TreatmentArm'].values else 0.0
-            }
-        
-        # Convert to dict for JSON response
-        data_dict = df.to_dict(orient='records')
-        
-        return {
-            "status": "success",
-            "method": "enhanced_generator",
-            "n_subjects": df['SubjectID'].nunique(),
-            "n_measurements": len(df),
-            "enhancements_used": {
-                "temporal_correlation": request.use_temporal_correlation,
-                "heterogeneous_effects": request.use_heterogeneous_effects,
-                "missingness_mechanism": request.missingness_mechanism,
-                "aact_dropout_variance": request.use_aact_dropout_variance
-            },
-            "quality_metrics": {
-                "temporal_correlation": round(temporal_corr, 3),
-                "treatment_heterogeneity_std": round(treatment_std, 2),
-                "dropout_statistics": dropout_stats,
-                "grade": "A (85/100)" if request.use_temporal_correlation and request.use_heterogeneous_effects else "B"
-            },
-            "data": data_dict,
-            "metadata": {
-                "indication": request.indication,
-                "phase": request.phase,
-                "visit_weeks": request.visit_weeks,
-                "generated_at": datetime.now().isoformat()
-            }
-        }
-        
-    except ImportError as e:
-        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Enhanced generator modules not available: {str(e)}. Ensure temporal_generators.py, treatment_effect_sampler.py, and missingness_mechanisms.py are in src/"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Enhanced generation failed: {str(e)}"
+            detail=f"Failed to list datasets: {str(e)}"
         )
 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)
-```

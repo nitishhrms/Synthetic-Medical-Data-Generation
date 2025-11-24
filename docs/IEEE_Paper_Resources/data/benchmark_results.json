@@ -1,0 +1,15 @@
+{
+  "timestamp": "2025-11-23T17:00:42.263910",
+  "baseline": {
+    "temporal_correlation": -0.31015810507043606,
+    "heterogeneity": 18.64125066659811,
+    "missingness_rate": 0.0,
+    "missingness_mechanism": "Complete"
+  },
+  "enhanced": {
+    "temporal_correlation": 0.3333333333333333,
+    "heterogeneity": 3.182908903960195,
+    "missingness_rate": 0.25,
+    "missingness_mechanism": "MCAR"
+  }
+}
