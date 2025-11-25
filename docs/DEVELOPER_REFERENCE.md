@@ -798,6 +798,268 @@ Request:
 {
   "vitals_data": [ /* VitalsRecord[] */ ]
 }
+```
+
+#### 6. Enhanced Comprehensive Validation
+```http
+POST /validate/enhanced-comprehensive
+Content-Type: application/json
+
+Request:
+{
+  "data": [ /* VitalsRecord[] */ ]
+}
+
+Response:
+{
+  "overall": {
+    "score": 91.7,
+    "grade": "A",
+    "summary": "Data quality: 92/100"
+  },
+  "validations": {
+    "temporal_correlation": {
+      "status": "pass",
+      "grade": "A",
+      "metrics": { "mean_correlation": 0.72 }
+    },
+    "heterogeneous_effects": {
+      "status": "pass",
+      "grade": "A",
+      "heterogeneity_score": 100
+    },
+    "missingness": {
+      "status": "success",
+      "classification": "MAR"
+    }
+  }
+}
+```
+
+#### 7. Validate Temporal Correlation
+```http
+POST /validate/temporal-correlation
+Content-Type: application/json
+
+Request:
+{
+  "data": [ /* VitalsRecord[] */ ]
+}
+```
+
+#### 8. Validate Heterogeneous Effects
+```http
+POST /validate/heterogeneous-effects
+Content-Type: application/json
+
+Request:
+{
+  "data": [ /* VitalsRecord[] */ ]
+}
+```
+
+#### 6. Enhanced Comprehensive Validation
+```http
+POST /validate/enhanced-comprehensive
+Content-Type: application/json
+
+Request:
+{
+  "vitals_data": [ /* VitalsRecord[] */ ],
+  "config": {
+    "check_temporal": true,
+    "check_heterogeneity": true,
+    "check_missingness": true
+  }
+}
+
+Response:
+{
+  "is_valid": true,
+  "quality_score": 95.5,
+  "metrics": {
+    "temporal_correlation": 0.72,
+    "heterogeneity_score": 0.85,
+    "missingness_mechanism": "MAR"
+  },
+  "issues": []
+}
+```
+
+---
+
+## 🚀 Daft Analytics Service (Port 8007)
+
+**Base URL**: `http://localhost:8007`
+**Purpose**: High-performance distributed data analysis using Daft
+
+### Endpoints
+
+#### 1. Analyze Treatment Effect
+```http
+POST /analyze/treatment-effect
+Content-Type: application/json
+
+Request:
+{
+  "data": [ /* VitalsRecord[] */ ]
+}
+
+Response:
+{
+  "effect_size": -5.2,
+  "p_value": 0.01,
+  "confidence_interval": [-8.1, -2.3]
+}
+```
+
+#### 2. Responder Analysis
+```http
+POST /analyze/responders
+Content-Type: application/json
+
+Request:
+{
+  "data": [ /* VitalsRecord[] */ ],
+  "threshold": -10.0
+}
+```
+
+#### 3. Kaplan-Meier Survival Analysis
+```http
+POST /daft/survival-analysis/kaplan-meier
+Content-Type: application/json
+
+Request:
+{
+  "data": [ /* VitalsRecord[] */ ],
+  "time_col": "Time",
+  "event_col": "Event",
+  "group_col": "TreatmentArm"
+}
+
+Response:
+{
+  "Active": {
+    "median_survival_time": 120.5,
+    "curve": [
+      { "time": 0, "survival_prob": 1.0 },
+      { "time": 30, "survival_prob": 0.95 }
+    ]
+  }
+}
+```
+
+#### 4. Log-Rank Test
+```http
+POST /daft/survival-analysis/log-rank
+Content-Type: application/json
+
+Request:
+{
+  "data": [ /* VitalsRecord[] */ ],
+  "time_col": "Time",
+  "event_col": "Event",
+  "group1": "Active",
+  "group2": "Placebo"
+}
+
+Response:
+{
+  "test_statistic": 4.5,
+  "p_value": 0.03,
+  "significant": true
+}
+```
+
+---
+
+## 🧠 Linkup Integration Service (Port 8008)
+
+**Base URL**: `http://localhost:8008`
+**Purpose**: Regulatory intelligence, evidence generation, and compliance monitoring.
+
+### Endpoints
+
+#### 1. Fetch Regulatory Citations
+```http
+POST /evidence/fetch-citations
+Content-Type: application/json
+
+Request:
+{
+  "metric_name": "Wasserstein distance",
+  "metric_value": 0.05,
+  "context": "clinical trial data quality"
+}
+```
+
+#### 2. Generate Edit Check Rule (AI)
+```http
+POST /edit-checks/generate-rule
+Content-Type: application/json
+
+Request:
+{
+  "variable": "systolic_bp",
+  "indication": "hypertension"
+}
+
+Response:
+{
+  "yaml_rule": "- name: Systolic BP Range\n  type: range...",
+  "citations": [...]
+}
+```
+
+#### 3. Compliance Scan
+```http
+POST /compliance/scan
+```
+
+---
+
+## 🤖 AI Medical Monitor Service (Port 8011)
+
+**Base URL**: `http://localhost:8011`
+**Purpose**: Automated clinical review using LLMs (OpenAI/Anthropic).
+
+### Endpoints
+
+#### 1. Review Subject Data
+```http
+POST /review/subject
+Content-Type: application/json
+
+Request:
+{
+  "study_id": "STUDY-001",
+  "subject_id": "SUBJ-101"
+}
+
+Response:
+{
+  "findings": [
+    {
+      "issue_description": "BP 180/110 is critically high",
+      "severity": "critical",
+      "suggested_action": "Verify immediately"
+    }
+  ]
+}
+```
+
+#### 2. Review Study & Post Queries
+```http
+POST /review/study/post-queries
+Content-Type: application/json
+
+Request:
+{
+  "study_id": "STUDY-001",
+  "max_subjects": 10
+}
+```
 
 Response:
 {
@@ -1087,9 +1349,9 @@ Response:
 
 ---
 
-## 🔍 Quality Service (Port 8006)
+## 🔍 Quality Service (Port 8004)
 
-**Base URL**: `http://localhost:8006`
+**Base URL**: `http://localhost:8004`
 **Purpose**: Data validation and quality checks
 
 ### Endpoints

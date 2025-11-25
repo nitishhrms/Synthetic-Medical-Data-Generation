@@ -56,8 +56,19 @@ This project transforms the monolithic Streamlit application into a scalable mic
    - High-performance distributed DataFrame processing
    - Treatment effect analysis
    - Responder analysis
+   - Survival analysis (Kaplan-Meier, Log-Rank)
    - Outlier detection
    - SQL-like queries on clinical data
+
+8. **Linkup Integration Service** (Port 8008) - Regulatory Intelligence
+   - Evidence Pack Citation Service (Regulatory citations)
+   - Edit-Check Authoring Assistant (AI rule generation)
+   - Compliance/RBQM Watcher (FDA/ICH updates)
+
+9. **AI Medical Monitor** (Port 8011) - Clinical Review
+   - LLM-based subject review (OpenAI/Anthropic)
+   - Automated query generation
+   - Safety signal detection
 
 ## 🚀 Quick Start
 
@@ -91,6 +102,14 @@ python3 -m uvicorn main:app --reload --port 8005
 # Quality Service (Port 8004)
 cd microservices/quality-service/src
 python3 -m uvicorn main:app --reload --port 8004
+
+# Linkup Integration Service (Port 8008)
+cd microservices/linkup-integration-service/src
+python3 -m uvicorn main:app --reload --port 8008
+
+# AI Medical Monitor (Port 8011)
+cd microservices/ai-monitor-service/src
+python3 -m uvicorn main:app --reload --port 8011
 ```
 
 **Frontend Application**:
@@ -143,8 +162,18 @@ kubectl get svc -n clinical-trials
 minikube service api-gateway -n clinical-trials
 
 # Or with port forwarding
+# Or with port forwarding
 kubectl port-forward -n clinical-trials svc/api-gateway 8000:80
 ```
+
+## ☁️ Deployment & Infrastructure
+
+We provide comprehensive guides for deploying to AWS using Terraform and Kubernetes:
+
+- **[AWS Infrastructure Plan](docs/AWS_INFRASTRUCTURE_PLAN.md)**: Detailed architecture, EKS setup, and implementation phases.
+- **[AWS Deployment Operations](docs/AWS_DEPLOYMENT_OPERATIONS.md)**: Operational guide, connection strings, and CI/CD workflows.
+- **[Terraform Guide](terraform/README.md)**: Infrastructure-as-Code setup.
+- **[Kubernetes Guide](k8s/README.md)**: Manifest deployment steps.
 
 ## 📊 Service Details
 

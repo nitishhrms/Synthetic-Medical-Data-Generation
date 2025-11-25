@@ -22,8 +22,10 @@ This guide provides step-by-step instructions for performing end-to-end testing 
 - **Security Service**: Port 8005
 - **Data Generation Service**: Port 8002
 - **Analytics Service**: Port 8003
-- **Quality Service**: Port 8004 (renamed from Quality Service port 8006 in CLAUDE.md)
+- **Quality Service**: Port 8004
 - **EDC Service**: Port 8001
+- **Linkup Service**: Port 8008
+- **AI Monitor**: Port 8011
 
 ---
 
@@ -88,6 +90,14 @@ uvicorn main:app --reload --port 8001
 # API Gateway (Port 8000)
 cd microservices/api-gateway/src
 uvicorn main:app --reload --port 8000
+
+# Linkup Service (Port 8008)
+cd microservices/linkup-integration-service/src
+uvicorn main:app --reload --port 8008
+
+# AI Monitor (Port 8011)
+cd microservices/ai-monitor-service/src
+uvicorn main:app --reload --port 8011
 ```
 
 #### 3. Verify Services Are Running
@@ -100,6 +110,8 @@ curl http://localhost:8003/health  # Analytics
 curl http://localhost:8004/health  # Quality
 curl http://localhost:8001/health  # EDC
 curl http://localhost:8000/health  # API Gateway
+curl http://localhost:8008/health  # Linkup
+curl http://localhost:8011/health  # AI Monitor
 
 # All should return: {"status": "healthy"}
 ```

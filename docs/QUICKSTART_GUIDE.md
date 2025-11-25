@@ -137,60 +137,65 @@ api-gateway                 Up (healthy)        0.0.0.0:8000->8000/tcp
 clinical_postgres           Up (healthy)        0.0.0.0:5432->5432/tcp
 clinical_redis              Up (healthy)        0.0.0.0:6379->6379/tcp
 data-generation-service     Up (healthy)        0.0.0.0:8002->8002/tcp
-analytics-service           Up (healthy)        0.0.0.0:8003->8003/tcp
-edc-service                 Up (healthy)        0.0.0.0:8001->8001/tcp
-quality-service             Up (healthy)        0.0.0.0:8004->8004/tcp
-security-service            Up (healthy)        0.0.0.0:8005->8005/tcp
-```
+  analytics-service           Up (healthy)        0.0.0.0:8003->8003/tcp
+  edc-service                 Up (healthy)        0.0.0.0:8001->8001/tcp
+  quality-service             Up (healthy)        0.0.0.0:8004->8004/tcp
+  security-service            Up (healthy)        0.0.0.0:8005->8005/tcp
+  daft-analytics-service      Up (healthy)        0.0.0.0:8007->8007/tcp
+  ```
 
-All services should show **"Up (healthy)"** status.
+  All services should show **"Up (healthy)"** status.
 
----
+  ---
 
-## Verifying Installation
+  ## Verifying Installation
 
-### Health Check
+  ### Health Check
 
-```bash
-# Test API Gateway health
-curl http://localhost:8000/health
-```
+  ```bash
+  # Test API Gateway health
+  curl http://localhost:8000/health
+  ```
 
-**Expected response:**
-```json
-{
-  "status": "healthy",
-  "api_gateway": "healthy",
-  "security_service": "connected",
-  "database": "connected",
-  "cache": "connected",
-  "services": {
-    "edc": "healthy",
-    "generation": "healthy",
-    "analytics": "healthy",
-    "quality": "healthy"
+  **Expected response:**
+  ```json
+  {
+    "status": "healthy",
+    "api_gateway": "healthy",
+    "security_service": "connected",
+    "database": "connected",
+    "cache": "connected",
+    "services": {
+      "edc": "healthy",
+      "generation": "healthy",
+      "analytics": "healthy",
+      "quality": "healthy",
+      "daft_analytics": "healthy"
+    }
   }
-}
-```
+  ```
 
-### Check Individual Services
+  ### Check Individual Services
 
-```bash
-# Security Service
-curl http://localhost:8005/health
+  ```bash
+  # Security Service
+  curl http://localhost:8005/health
 
-# EDC Service
-curl http://localhost:8001/health
+  # EDC Service
+  curl http://localhost:8001/health
 
-# Data Generation Service
-curl http://localhost:8002/health
+  # Data Generation Service
+  curl http://localhost:8002/health
 
-# Analytics Service
-curl http://localhost:8003/health
+  # Analytics Service
+  curl http://localhost:8003/health
 
-# Quality Service
-curl http://localhost:8004/health
-```
+  # Quality Service
+  curl http://localhost:8004/health
+
+  # Daft Analytics Service
+  curl http://localhost:8007/health
+  ```
 
 All should return `{"status": "healthy"}`.
 
