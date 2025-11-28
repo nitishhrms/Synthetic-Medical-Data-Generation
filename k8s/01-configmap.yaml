@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clinical-config
+  namespace: clinical-trials
+data:
+  # Database Configuration
+  DATABASE_HOST: "clinical-trials-db.c4lokm6ie8ag.us-east-1.rds.amazonaws.com"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "clinical_trials"
+  DATABASE_USER: "clinical_user"
+
+  # Redis Configuration
+  REDIS_HOST: "clinical-redis.c67nel.ng.0001.use1.cache.amazonaws.com"
+  REDIS_PORT: "6379"
+
+  # S3 Configuration
+  S3_BUCKET: "clinical-trials-documents-99f5df1683ef3929"
+  AWS_REGION: "us-east-1"
+
+  # Service URLs (internal DNS)
+  API_GATEWAY_URL: "http://api-gateway:8000"
+  EDC_SERVICE_URL: "http://edc-service:8001"
+  DATA_GENERATION_SERVICE_URL: "http://data-generation-service:8002"
+  ANALYTICS_SERVICE_URL: "http://analytics-service:8003"
+  QUALITY_SERVICE_URL: "http://quality-service:8004"
+  SECURITY_SERVICE_URL: "http://security-service:8005"
+  DAFT_ANALYTICS_SERVICE_URL: "http://daft-analytics-service:8006"
+
+  # Environment
+  ENVIRONMENT: "staging"
+  LOG_LEVEL: "INFO"

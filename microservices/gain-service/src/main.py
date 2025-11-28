@@ -254,4 +254,5 @@ def impute_with_fallback(df: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8007)
+    # Port 8009 (changed from 8007 to avoid conflict with Daft Analytics Service)
+    uvicorn.run(app, host="0.0.0.0", port=8009)

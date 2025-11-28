@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: daft-analytics-service
+  namespace: clinical-trials
+  labels:
+    app: daft-analytics-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: daft-analytics-service
+  template:
+    metadata:
+      labels:
+        app: daft-analytics-service
+        tier: backend
+    spec:
+      containers:
+      - name: daft-analytics-service
+        image: 432180555044.dkr.ecr.us-east-1.amazonaws.com/clinical-trials/daft-analytics-service:latest
+        ports:
+        - containerPort: 8006
+          name: http
+        env:
+        - name: PORT
+          value: "8006"
+        envFrom:
+        - configMapRef:
+            name: clinical-config
+        - secretRef:
+            name: clinical-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: daft-analytics-service
+  namespace: clinical-trials
+  labels:
+    app: daft-analytics-service
+spec:
+  type: ClusterIP
+  selector:
+    app: daft-analytics-service
+  ports:
+  - port: 8006
+    targetPort: 8006
+    protocol: TCP
+    name: http

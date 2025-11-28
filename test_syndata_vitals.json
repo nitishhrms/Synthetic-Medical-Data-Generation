@@ -1,0 +1,56 @@
+{
+    "real_data": [
+        {
+            "SystolicBP": 120,
+            "DiastolicBP": 80,
+            "HeartRate": 70
+        },
+        {
+            "SystolicBP": 130,
+            "DiastolicBP": 85,
+            "HeartRate": 75
+        },
+        {
+            "SystolicBP": 140,
+            "DiastolicBP": 90,
+            "HeartRate": 80
+        },
+        {
+            "SystolicBP": 125,
+            "DiastolicBP": 82,
+            "HeartRate": 72
+        },
+        {
+            "SystolicBP": 135,
+            "DiastolicBP": 88,
+            "HeartRate": 78
+        }
+    ],
+    "synthetic_data": [
+        {
+            "SystolicBP": 122,
+            "DiastolicBP": 81,
+            "HeartRate": 71
+        },
+        {
+            "SystolicBP": 132,
+            "DiastolicBP": 86,
+            "HeartRate": 76
+        },
+        {
+            "SystolicBP": 142,
+            "DiastolicBP": 91,
+            "HeartRate": 81
+        },
+        {
+            "SystolicBP": 127,
+            "DiastolicBP": 83,
+            "HeartRate": 73
+        },
+        {
+            "SystolicBP": 137,
+            "DiastolicBP": 89,
+            "HeartRate": 79
+        }
+    ]
+}

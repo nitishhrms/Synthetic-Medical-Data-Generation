@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edc-service
+  namespace: clinical-trials
+  labels:
+    app: edc-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: edc-service
+  template:
+    metadata:
+      labels:
+        app: edc-service
+        tier: backend
+    spec:
+      containers:
+      - name: edc-service
+        image: 432180555044.dkr.ecr.us-east-1.amazonaws.com/clinical-trials/edc-service:latest
+        ports:
+        - containerPort: 8001
+          name: http
+        env:
+        - name: PORT
+          value: "8001"
+        envFrom:
+        - configMapRef:
+            name: clinical-config
+        - secretRef:
+            name: clinical-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: edc-service
+  namespace: clinical-trials
+  labels:
+    app: edc-service
+spec:
+  type: ClusterIP
+  selector:
+    app: edc-service
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+    name: http

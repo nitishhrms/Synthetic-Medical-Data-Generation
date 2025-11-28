@@ -6,7 +6,7 @@ Enterprise-grade microservices platform for clinical trial management with Kuber
 
 This project transforms the monolithic Streamlit application into a scalable microservices architecture:
 
-### Microservices (6 Core Services)
+### Microservices (7 Core Services)
 
 1. **API Gateway** (Port 8000) - Central Routing
    - Request routing to all services
@@ -23,7 +23,13 @@ This project transforms the monolithic Streamlit application into a scalable mic
 3. **Data Generation Service** (Port 8002) - Synthetic Data
    - Rules-based generation
    - MVN (Multivariate Normal) generation
+   - Bootstrap resampling
+   - Bayesian Network generation
+   - MICE (Multiple Imputation by Chained Equations)
+   - Diffusion model generation
    - LLM-based generation with auto-repair
+   - **AACT-enhanced versions** (uses real data from 557K+ ClinicalTrials.gov trials)
+   - Complete Study generation (coordinates Vitals, Demographics, Labs, AEs)
    - Oncology AE generation
 
 4. **Analytics Service** (Port 8003) - Statistics & Reporting
@@ -46,6 +52,24 @@ This project transforms the monolithic Streamlit application into a scalable mic
    - PHI detection
    - HIPAA audit logging
 
+7. **Daft Analytics Service** (Port 8007) - Distributed Data Analysis
+   - High-performance distributed DataFrame processing
+   - Treatment effect analysis
+   - Responder analysis
+   - Survival analysis (Kaplan-Meier, Log-Rank)
+   - Outlier detection
+   - SQL-like queries on clinical data
+
+8. **Linkup Integration Service** (Port 8008) - Regulatory Intelligence
+   - Evidence Pack Citation Service (Regulatory citations)
+   - Edit-Check Authoring Assistant (AI rule generation)
+   - Compliance/RBQM Watcher (FDA/ICH updates)
+
+9. **AI Medical Monitor** (Port 8011) - Clinical Review
+   - LLM-based subject review (OpenAI/Anthropic)
+   - Automated query generation
+   - Safety signal detection
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -67,17 +91,25 @@ python3 -m uvicorn main:app --reload --port 8002
 cd microservices/analytics-service/src
 python3 -m uvicorn main:app --reload --port 8003
 
-# EDC Service (Port 8004)
+# EDC Service (Port 8001)
 cd microservices/edc-service/src
-python3 -m uvicorn main:app --reload --port 8004
+python3 -m uvicorn main:app --reload --port 8001
 
 # Security Service (Port 8005)
 cd microservices/security-service/src
 python3 -m uvicorn main:app --reload --port 8005
 
-# Quality Service (Port 8006)
+# Quality Service (Port 8004)
 cd microservices/quality-service/src
-python3 -m uvicorn main:app --reload --port 8006
+python3 -m uvicorn main:app --reload --port 8004
+
+# Linkup Integration Service (Port 8008)
+cd microservices/linkup-integration-service/src
+python3 -m uvicorn main:app --reload --port 8008
+
+# AI Medical Monitor (Port 8011)
+cd microservices/ai-monitor-service/src
+python3 -m uvicorn main:app --reload --port 8011
 ```
 
 **Frontend Application**:
@@ -93,9 +125,10 @@ npm run dev
 - **Frontend UI**: http://localhost:3000
 - **Data Generation**: http://localhost:8002
 - **Analytics**: http://localhost:8003
-- **EDC Service**: http://localhost:8004
+- **EDC Service**: http://localhost:8001
 - **Security**: http://localhost:8005
-- **Quality**: http://localhost:8006
+- **Quality**: http://localhost:8004
+- **Daft Analytics**: http://localhost:8007
 
 ### Docker Compose Deployment (Alternative)
 
@@ -129,10 +162,22 @@ kubectl get svc -n clinical-trials
 minikube service api-gateway -n clinical-trials
 
 # Or with port forwarding
+# Or with port forwarding
 kubectl port-forward -n clinical-trials svc/api-gateway 8000:80
 ```
 
+## ☁️ Deployment & Infrastructure
+
+We provide comprehensive guides for deploying to AWS using Terraform and Kubernetes:
+
+- **[AWS Infrastructure Plan](docs/AWS_INFRASTRUCTURE_PLAN.md)**: Detailed architecture, EKS setup, and implementation phases.
+- **[AWS Deployment Operations](docs/AWS_DEPLOYMENT_OPERATIONS.md)**: Operational guide, connection strings, and CI/CD workflows.
+- **[Terraform Guide](terraform/README.md)**: Infrastructure-as-Code setup.
+- **[Kubernetes Guide](k8s/README.md)**: Manifest deployment steps.
+
 ## 📊 Service Details
+
+**For a comprehensive reference of all services, architecture, and endpoints, see [DEVELOPER_REFERENCE.md](docs/DEVELOPER_REFERENCE.md).**
 
 ### EDC Service API
 
@@ -289,7 +334,7 @@ kubectl get hpa -n clinical-trials --watch
 
 ## 🧪 Testing
 
-**For comprehensive testing procedures, see [COMPREHENSIVE_TESTING_GUIDE.md](COMPREHENSIVE_TESTING_GUIDE.md)**
+**For comprehensive testing procedures, see [COMPREHENSIVE_TESTING_GUIDE.md](docs/COMPREHENSIVE_TESTING_GUIDE.md)**
 
 This guide includes:
 - ✅ Complete frontend + backend testing workflows
@@ -357,8 +402,7 @@ Synthetic-Medical-Data-Generation/
 ├── data/                      # Sample data
 ├── docker-compose.yml
 ├── README.md
-├── CLAUDE.md                  # Backend API reference
-└── QUICKSTART_GUIDE.md        # Getting started guide
+└── docs/                      # Documentation (Quickstart, Guides, etc.)
 ```
 
 ## 🛠️ Development
@@ -433,11 +477,7 @@ This project was developed as part of a 2-week sprint to transform a monolithic 
 
 MIT License - See existing-app/LICENSE
 
-## 🔗 Related Documentation
 
-- [Original Monolithic App](../existing-app/README.md)
-- [Realistic Microservices Plan](../REALISTIC_MICROSERVICES_PLAN.md)
-- [AI-Accelerated Development Strategy](../ai_accelerated_development_strategy.md)
 
 ## 📞 Support
 

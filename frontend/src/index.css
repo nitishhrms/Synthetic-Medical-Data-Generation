@@ -1,14 +1,111 @@
+/* Tailwind CSS v4 Configuration */
 @import "tailwindcss";
+@source "../node_modules/@tremor/react/dist";
+
+@theme {
+  /* Tremor Palette - Mapped to Clinical Dark Mode (Zinc/Teal) */
+
+  /* Brand - Teal */
+  --color-tremor-brand-faint: #f0fdfa;
+  /* teal-50 */
+  --color-tremor-brand-muted: #ccfbf1;
+  /* teal-100 */
+  --color-tremor-brand-subtle: #5eead4;
+  /* teal-300 */
+  --color-tremor-brand: #14b8a6;
+  /* teal-500 */
+  --color-tremor-brand-emphasis: #0f766e;
+  /* teal-700 */
+  --color-tremor-brand-inverted: #ffffff;
+
+  /* Background - Zinc */
+  --color-tremor-background-muted: #f4f4f5;
+  /* zinc-100 */
+  --color-tremor-background-subtle: #e4e4e7;
+  /* zinc-200 */
+  --color-tremor-background: #ffffff;
+  --color-tremor-background-emphasis: #3f3f46;
+  /* zinc-700 */
+
+  /* Border - Zinc */
+  --color-tremor-border: #e4e4e7;
+  /* zinc-200 */
+
+  /* Ring - Zinc */
+  --color-tremor-ring: #e4e4e7;
+  /* zinc-200 */
+
+  /* Content - Zinc */
+  --color-tremor-content-subtle: #a1a1aa;
+  /* zinc-400 */
+  --color-tremor-content: #71717a;
+  /* zinc-500 */
+  --color-tremor-content-emphasis: #3f3f46;
+  /* zinc-700 */
+  --color-tremor-content-strong: #18181b;
+  /* zinc-900 */
+  --color-tremor-content-inverted: #ffffff;
+
+  /* Dark Mode - Tremor */
+  /* Brand - Teal */
+  --color-dark-tremor-brand-faint: #0f2e2a;
+  /* teal-950/50 approx */
+  --color-dark-tremor-brand-muted: #134e4a;
+  /* teal-900 */
+  --color-dark-tremor-brand-subtle: #115e59;
+  /* teal-800 */
+  --color-dark-tremor-brand: #14b8a6;
+  /* teal-500 */
+  --color-dark-tremor-brand-emphasis: #2dd4bf;
+  /* teal-400 */
+  --color-dark-tremor-brand-inverted: #09090b;
+  /* zinc-950 */
+
+  /* Background - Zinc */
+  --color-dark-tremor-background-muted: #18181b;
+  /* zinc-900 */
+  --color-dark-tremor-background-subtle: #27272a;
+  /* zinc-800 */
+  --color-dark-tremor-background: #09090b;
+  /* zinc-950 */
+  --color-dark-tremor-background-emphasis: #52525b;
+  /* zinc-600 */
+
+  /* Border - Zinc */
+  --color-dark-tremor-border: #27272a;
+  /* zinc-800 */
+
+  /* Ring - Zinc */
+  --color-dark-tremor-ring: #27272a;
+  /* zinc-800 */
+
+  /* Content - Zinc */
+  --color-dark-tremor-content-subtle: #52525b;
+  /* zinc-600 */
+  --color-dark-tremor-content: #71717a;
+  /* zinc-500 */
+  --color-dark-tremor-content-emphasis: #e4e4e7;
+  /* zinc-200 */
+  --color-dark-tremor-content-strong: #fafafa;
+  /* zinc-50 */
+  --color-dark-tremor-content-inverted: #09090b;
+  /* zinc-950 */
+}
 
 @layer base {
   :root {
+    /* Default to Dark Mode values or keep light mode if needed, but user emphasized Dark Mode */
+    /* Using Zinc-950 for background, Zinc-900 for cards, Teal-500 for primary */
+
+    /* Light mode (optional, keeping it neutral but aligned) */
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 262 83% 58%;
+    --primary: 173 80% 40%;
+    /* Teal-500 */
     --primary-foreground: 0 0% 100%;
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
@@ -20,40 +117,58 @@
     --destructive-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
-    --ring: 262 83% 58%;
-    --chart-1: 262 83% 58%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --ring: 173 80% 40%;
     --radius: 0.75rem;
+
+    /* Chart colors (Tremor-like) */
+    --chart-1: 173 80% 40%;
+    /* Teal */
+    --chart-2: 197 37% 24%;
+    /* Slate/Blue */
+    --chart-3: 43 74% 66%;
+    /* Yellow/Amber */
+    --chart-4: 27 87% 67%;
+    /* Orange */
+    --chart-5: 262 83% 58%;
+    /* Purple */
   }
 
   .dark {
-    --background: 240 10% 3.9%;
+    /* Clinical Dark Mode */
+    --background: 240 5.9% 3.9%;
+    /* Zinc-950 #09090b */
     --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
+    --card: 240 5.9% 10%;
+    /* Zinc-900 #18181b */
     --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
+    --popover: 240 5.9% 3.9%;
     --popover-foreground: 0 0% 98%;
-    --primary: 263 70% 50%;
+    --primary: 173 80% 40%;
+    /* Teal-500 #14b8a6 */
     --primary-foreground: 0 0% 100%;
     --secondary: 240 3.7% 15.9%;
+    /* Zinc-800 */
     --secondary-foreground: 0 0% 98%;
     --muted: 240 3.7% 15.9%;
     --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 173 80% 40%;
+    /* Teal accent */
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 3.7% 15.9%;
+    /* Zinc-800 */
     --input: 240 3.7% 15.9%;
-    --ring: 263 70% 50%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --ring: 173 80% 40%;
+
+    /* Chart colors */
+    --chart-1: 173 80% 40%;
+    /* Teal */
+    --chart-2: 217 91% 60%;
+    /* Blue */
+    --chart-3: 43 74% 66%;
+    --chart-4: 27 87% 67%;
+    --chart-5: 262 83% 58%;
   }
 }
 
@@ -61,9 +176,32 @@
   * {
     border-color: hsl(var(--border));
   }
+
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Add JetBrains Mono for code/data */
+  code,
+  kbd,
+  samp,
+  pre,
+  .font-mono {
+    font-family: 'JetBrains Mono', 'Geist Mono', monospace;
+  }
+}
+
+/* Custom Utilities for Glassmorphism and Gradients */
+@layer utilities {
+  .glass {
+    @apply backdrop-blur-md bg-zinc-950/80 border-b border-zinc-800;
+  }
+
+  .card-gradient {
+    @apply bg-gradient-to-br from-zinc-900 to-zinc-950;
   }
 }

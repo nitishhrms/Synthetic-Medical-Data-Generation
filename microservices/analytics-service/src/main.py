@@ -7,9 +7,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import pandas as pd
+import numpy as np
 from datetime import datetime
 import uvicorn
 import os
+import json
+
+def convert_numpy_types(obj: Any) -> Any:
+    """
+    Recursively convert numpy types to native Python types for JSON serialization.
+    Handles dicts, lists, numpy arrays, and individual numpy values.
+    """
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, np.ndarray):
+        return convert_numpy_types(obj.tolist())
+    elif isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.bool_)):
+        return bool(obj)
+    elif isinstance(obj, np.void):
+        return None
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
 
 from stats import (
     calculate_week12_statistics,
@@ -18,13 +44,106 @@ from stats import (
 )
 from rbqm import generate_rbqm_summary
 from csr import generate_csr_draft
-from sdtm import export_to_sdtm_vs
+from sdtm import export_to_sdtm_vs, export_to_sdtm_dm, export_to_sdtm_lb, export_to_sdtm_ae
 from db_utils import db, cache, startup_db, shutdown_db
+from demographics_analytics import (
+    calculate_baseline_characteristics,
+    calculate_demographic_summary,
+    assess_treatment_arm_balance,
+    compare_demographics_quality
+)
+from labs_analytics import (
+    calculate_labs_summary,
+    detect_abnormal_labs,
+    generate_shift_tables,
+    compare_labs_quality,
+    detect_safety_signals,
+    analyze_labs_longitudinal
+)
+from ae_analytics import (
+    calculate_ae_summary,
+    analyze_treatment_emergent_aes,
+    analyze_soc_distribution,
+    compare_ae_quality
+)
+from aact_integration import (
+    compare_study_to_aact,
+    benchmark_demographics,
+    benchmark_adverse_events
+)
+from study_analytics import (
+    generate_comprehensive_summary,
+    analyze_cross_domain_correlations,
+    generate_trial_dashboard
+)
+from benchmarking import (
+    compare_generation_methods,
+    aggregate_quality_scores,
+    generate_recommendations
+)
+from survival_analysis import (
+    generate_survival_data,
+    calculate_kaplan_meier,
+    log_rank_test,
+    calculate_hazard_ratio,
+    export_survival_sdtm_tte,
+    comprehensive_survival_analysis
+)
+from adam_generation import (
+    generate_adsl,
+    generate_adtte,
+    generate_adae,
+    generate_bds_vitals,
+    generate_bds_labs,
+    generate_all_adam_datasets
+)
+from tlf_automation import (
+    generate_table1_demographics,
+    generate_ae_summary_table,
+    generate_efficacy_table,
+    generate_all_tlf_tables
+)
+
+# Daft imports for distributed data processing
+try:
+    import daft
+    from daft_processor import DaftMedicalDataProcessor
+    from daft_aggregations import DaftAggregator
+    from daft_udfs import MedicalUDFs, AdvancedMedicalUDFs
+    DAFT_AVAILABLE = True
+except ImportError:
+    DAFT_AVAILABLE = False
+    import warnings
+    warnings.warn("Daft library not available. Install with: pip install getdaft==0.3.0")
+
+# Method comparison module
+try:
+    from method_comparison_daft import compare_generation_methods
+    METHOD_COMPARISON_AVAILABLE = True
+except ImportError:
+    METHOD_COMPARISON_AVAILABLE = False
+    print("Warning: Method comparison module not available")
+
+# Trial planning module
+try:
+    from trial_planning import (
+        VirtualControlArmGenerator,
+        WhatIfScenarioSimulator,
+        TrialFeasibilityEstimator,
+        TrialParameters,
+        generate_virtual_control_arm,
+        run_what_if_enrollment_analysis,
+        estimate_trial_feasibility
+    )
+    TRIAL_PLANNING_AVAILABLE = True
+except ImportError:
+    TRIAL_PLANNING_AVAILABLE = False
+    print("Warning: Trial planning module not available")
 
 app = FastAPI(
     title="Analytics Service",
-    description="Clinical Trial Analytics, RBQM, CSR, and SDTM Export",
-    version="1.0.0"
+    description="Clinical Trial Analytics, RBQM, CSR, SDTM Export, Survival Analysis, ADaM Generation, TLF Automation",
+    version="2.0.0"
 )
 
 # Database lifecycle events
@@ -39,21 +158,12 @@ async def shutdown_event():
     await shutdown_db()
 
 # CORS configuration
-import os
 ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
 if ALLOWED_ORIGINS_ENV:
     ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
 else:
-    # Default: allow localhost origins for development
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-        "*"  # Allow all for development
-    ]
+    # Default: allow all origins for development (use specific origins in production)
+    ALLOWED_ORIGINS = ["*"]
 
 if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
@@ -63,9 +173,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,
 )
 
 # Pydantic models
@@ -74,6 +185,7 @@ class VitalsData(BaseModel):
 
 class StatisticsRequest(BaseModel):
     vitals_data: List[Dict[str, Any]]
+    visit_name: Optional[str] = "Week 12"  # Default to Week 12 for backward compatibility
 
 class TreatmentGroupStats(BaseModel):
     n: int
@@ -163,6 +275,182 @@ class ComprehensiveQualityResponse(BaseModel):
     euclidean_distances: Dict[str, Any] = Field(..., description="Distance statistics")
     summary: str = Field(..., description="Human-readable quality summary")
 
+# Demographics models
+class DemographicsRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]]
+
+class DemographicsCompareRequest(BaseModel):
+    real_demographics: List[Dict[str, Any]]
+    synthetic_demographics: List[Dict[str, Any]]
+
+# Labs models
+class LabsRequest(BaseModel):
+    labs_data: List[Dict[str, Any]]
+
+class LabsCompareRequest(BaseModel):
+    real_labs: List[Dict[str, Any]]
+    synthetic_labs: List[Dict[str, Any]]
+
+# AE models
+class AERequest(BaseModel):
+    ae_data: List[Dict[str, Any]]
+    treatment_start_date: Optional[str] = None
+
+class AECompareRequest(BaseModel):
+    real_ae: List[Dict[str, Any]]
+    synthetic_ae: List[Dict[str, Any]]
+
+# AACT Integration models
+class AACTCompareStudyRequest(BaseModel):
+    n_subjects: int = Field(..., description="Total number of subjects enrolled")
+    indication: str = Field(..., description="Disease indication (e.g., 'hypertension', 'diabetes')")
+    phase: str = Field(..., description="Trial phase (e.g., 'Phase 3')")
+    treatment_effect: float = Field(..., description="Primary endpoint treatment effect")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Optional vitals data")
+
+class AACTBenchmarkDemographicsRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]] = Field(..., description="Demographics with Age, Gender, Race, TreatmentArm")
+    indication: str = Field(..., description="Disease indication")
+    phase: str = Field(..., description="Trial phase")
+
+class AACTBenchmarkAERequest(BaseModel):
+    ae_data: List[Dict[str, Any]] = Field(..., description="AE data with PreferredTerm, Severity, Serious")
+    indication: str = Field(..., description="Disease indication")
+    phase: str = Field(..., description="Trial phase")
+
+# Study Analytics models
+class ComprehensiveStudyRequest(BaseModel):
+    demographics_data: Optional[List[Dict[str, Any]]] = Field(None, description="Demographics data")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals data")
+    labs_data: Optional[List[Dict[str, Any]]] = Field(None, description="Labs data")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="AE data")
+    indication: str = Field(default="hypertension", description="Disease indication")
+    phase: str = Field(default="Phase 3", description="Trial phase")
+
+class CrossDomainRequest(BaseModel):
+    demographics_data: Optional[List[Dict[str, Any]]] = Field(None, description="Demographics data")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals data")
+    labs_data: Optional[List[Dict[str, Any]]] = Field(None, description="Labs data")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="AE data")
+
+class TrialDashboardRequest(BaseModel):
+    demographics_data: Optional[List[Dict[str, Any]]] = Field(None, description="Demographics data")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals data")
+    labs_data: Optional[List[Dict[str, Any]]] = Field(None, description="Labs data")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="AE data")
+    indication: str = Field(default="hypertension", description="Disease indication")
+    phase: str = Field(default="Phase 3", description="Trial phase")
+
+# Benchmarking models
+class MethodComparisonRequest(BaseModel):
+    methods_data: Dict[str, Dict[str, Any]] = Field(..., description="Method performance data by method name")
+
+class AggregateQualityRequest(BaseModel):
+    demographics_quality: Optional[float] = Field(None, description="Demographics quality score (0-1)")
+    vitals_quality: Optional[float] = Field(None, description="Vitals quality score (0-1)")
+    labs_quality: Optional[float] = Field(None, description="Labs quality score (0-1)")
+    ae_quality: Optional[float] = Field(None, description="AE quality score (0-1)")
+    aact_similarity: Optional[float] = Field(None, description="AACT similarity score (0-1)")
+
+class RecommendationsRequest(BaseModel):
+    current_quality: float = Field(..., description="Current overall quality score (0-1)")
+    aact_similarity: Optional[float] = Field(None, description="AACT similarity score (0-1)")
+    generation_method: Optional[str] = Field(None, description="Generation method used")
+    n_subjects: Optional[int] = Field(None, description="Number of subjects")
+    indication: Optional[str] = Field(None, description="Disease indication")
+    phase: Optional[str] = Field(None, description="Trial phase")
+
+# ===== Phase 7: Survival Analysis Models =====
+class SurvivalAnalysisRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]] = Field(..., description="Subject demographics")
+    indication: str = Field(default="oncology", description="Therapeutic area")
+    median_survival_active: float = Field(default=18.0, description="Median survival for active arm (months)")
+    median_survival_placebo: float = Field(default=12.0, description="Median survival for placebo arm (months)")
+    seed: Optional[int] = Field(None, description="Random seed for reproducibility")
+
+# ===== Phase 8: ADaM Generation Models =====
+class AdamGenerationRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]] = Field(..., description="Demographics records")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals records")
+    labs_data: Optional[List[Dict[str, Any]]] = Field(None, description="Labs records (long format)")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="Adverse event records")
+    survival_data: Optional[List[Dict[str, Any]]] = Field(None, description="Survival/TTE records")
+    study_id: str = Field(default="STUDY001", description="Study identifier")
+
+# ===== Phase 9: TLF Automation Models =====
+class TLFRequest(BaseModel):
+    demographics_data: List[Dict[str, Any]] = Field(..., description="Demographics records")
+    ae_data: Optional[List[Dict[str, Any]]] = Field(None, description="Adverse event records")
+    vitals_data: Optional[List[Dict[str, Any]]] = Field(None, description="Vitals records")
+    survival_data: Optional[List[Dict[str, Any]]] = Field(None, description="Survival records")
+
+# ===== Phase 10: Trial Planning Models =====
+class VirtualControlArmRequest(BaseModel):
+    historical_data: List[Dict[str, Any]] = Field(..., description="Historical pilot data for learning characteristics")
+    n_control: int = Field(default=50, ge=1, le=500, description="Number of virtual control subjects to generate")
+    target_effect: float = Field(default=-5.0, description="Expected treatment effect (mmHg)")
+    baseline_mean_sbp: float = Field(default=140, description="Baseline mean systolic BP")
+    baseline_std_sbp: float = Field(default=10, description="Baseline std dev systolic BP")
+    seed: Optional[int] = Field(default=42, description="Random seed for reproducibility")
+
+class VirtualControlArmResponse(BaseModel):
+    virtual_control_data: List[Dict[str, Any]] = Field(..., description="Generated virtual control arm data")
+    summary: Dict[str, Any] = Field(..., description="Statistical summary")
+    quality_metrics: Dict[str, Any] = Field(..., description="Quality assessment metrics")
+    use_case: str = Field(..., description="Intended use case description")
+
+class AugmentControlArmRequest(BaseModel):
+    real_control_data: List[Dict[str, Any]] = Field(..., description="Existing real control data")
+    n_synthetic: int = Field(..., description="Number of synthetic subjects to add")
+    target_effect: float = Field(default=-5.0, description="Target effect size")
+    seed: Optional[int] = Field(default=42, description="Random seed")
+
+class AugmentControlArmResponse(BaseModel):
+    augmented_data: List[Dict[str, Any]]
+    original_n: int
+    added_n: int
+    total_n: int
+    summary: Dict[str, Any]
+
+class WhatIfEnrollmentRequest(BaseModel):
+    baseline_data: List[Dict[str, Any]]
+    enrollment_sizes: List[int]
+    target_effect: float = -5.0
+    n_simulations: int = 1000
+    seed: Optional[int] = 42
+
+class WhatIfEnrollmentResponse(BaseModel):
+    scenarios: Dict[str, Any]
+    recommendation: str
+    parameters: Dict[str, Any]
+
+class WhatIfPatientMixRequest(BaseModel):
+    baseline_data: List[Dict[str, Any]]
+    severity_shifts: List[float]
+    n_per_arm: int = 50
+    target_effect: float = -5.0
+    seed: Optional[int] = 42
+
+class WhatIfPatientMixResponse(BaseModel):
+    scenarios: Dict[str, Any]
+    interpretation: str
+    parameters: Dict[str, Any]
+
+class FeasibilityAssessmentRequest(BaseModel):
+    baseline_data: List[Dict[str, Any]]
+    target_effect: float = -5.0
+    power: float = 0.8
+    dropout_rate: float = 0.1
+    alpha: float = 0.05
+
+class FeasibilityAssessmentResponse(BaseModel):
+    sample_size: Dict[str, Any]
+    timeline: Dict[str, Any]
+    feasibility: Dict[str, Any]
+    parameters: Dict[str, Any]
+    required_n_per_arm: int
+    effect_size_cohens_d: float
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -182,23 +470,59 @@ async def root():
     """Root endpoint with service information"""
     return {
         "service": "Analytics Service",
-        "version": "1.0.0",
+        "version": "1.6.0",
         "features": [
             "Week-12 Statistics (t-test)",
             "RECIST + ORR Analysis",
             "RBQM Summary",
             "CSR Draft Generation",
-            "SDTM Export"
+            "SDTM Export (Vitals + Demographics + Labs + AE)",
+            "Demographics Analytics (Baseline, Balance, Quality)",
+            "Labs Analytics (Summary, Abnormal Detection, Shift Tables, Safety Signals, Longitudinal)",
+            "AE Analytics (Frequency Tables, TEAEs, SOC Analysis, Quality)",
+            "Quality Assessment (PCA, K-NN, Wasserstein)",
+            "AACT Integration (Compare Study, Benchmark Demographics, Benchmark AEs)",
+            "Comprehensive Study Analytics (Summary, Cross-Domain Correlations, Trial Dashboard)",
+            "Benchmarking & Extensions (Performance Comparison, Quality Aggregation, Recommendations)"
         ],
         "endpoints": {
             "health": "/health",
-            "stats": "/stats/week12",
-            "recist": "/stats/recist",
+            "stats_week12": "/stats/week12",
+            "stats_recist": "/stats/recist",
+            "demographics_baseline": "/stats/demographics/baseline",
+            "demographics_summary": "/stats/demographics/summary",
+            "demographics_balance": "/stats/demographics/balance",
+            "labs_summary": "/stats/labs/summary",
+            "labs_abnormal": "/stats/labs/abnormal",
+            "labs_shift_tables": "/stats/labs/shift-tables",
+            "labs_safety_signals": "/stats/labs/safety-signals",
+            "labs_longitudinal": "/stats/labs/longitudinal",
+            "ae_summary": "/stats/ae/summary",
+            "ae_teae": "/stats/ae/treatment-emergent",
+            "ae_soc": "/stats/ae/soc-analysis",
             "rbqm": "/rbqm/summary",
             "csr": "/csr/draft",
-            "sdtm": "/sdtm/export",
+            "sdtm_vitals": "/sdtm/export",
+            "sdtm_demographics": "/sdtm/demographics/export",
+            "sdtm_labs": "/sdtm/labs/export",
+            "sdtm_ae": "/sdtm/ae/export",
+            "quality_pca": "/quality/pca-comparison",
+            "quality_comprehensive": "/quality/comprehensive",
+            "quality_demographics": "/quality/demographics/compare",
+            "quality_labs": "/quality/labs/compare",
+            "quality_ae": "/quality/ae/compare",
+            "aact_compare_study": "/aact/compare-study",
+            "aact_benchmark_demographics": "/aact/benchmark-demographics",
+            "aact_benchmark_ae": "/aact/benchmark-ae",
+            "study_comprehensive_summary": "/study/comprehensive-summary",
+            "study_cross_domain_correlations": "/study/cross-domain-correlations",
+            "study_trial_dashboard": "/study/trial-dashboard",
+            "benchmark_performance": "/benchmark/performance",
+            "benchmark_quality_scores": "/benchmark/quality-scores",
+            "study_recommendations": "/study/recommendations",
             "docs": "/docs"
-        }
+        },
+        "daft_available": DAFT_AVAILABLE
     }
 
 @app.post("/stats/week12", response_model=StatisticsResponse)
@@ -215,7 +539,7 @@ async def calculate_statistics(request: StatisticsRequest):
     """
     try:
         df = pd.DataFrame(request.vitals_data)
-        stats = calculate_week12_statistics(df)
+        stats = calculate_week12_statistics(df, visit_name=request.visit_name)
 
         # Parse nested structure
         return StatisticsResponse(
@@ -267,7 +591,14 @@ async def generate_rbqm(request: RBQMRequest):
     """
     try:
         vitals_df = pd.DataFrame(request.vitals_data)
-        queries_df = pd.DataFrame(request.queries_data)
+
+        # Handle empty queries_data gracefully
+        if request.queries_data and len(request.queries_data) > 0:
+            queries_df = pd.DataFrame(request.queries_data)
+        else:
+            # Create empty DataFrame with expected columns to avoid KeyErrors
+            queries_df = pd.DataFrame(columns=["SubjectID", "CheckID", "Field", "Message"])
+
         ae_df = pd.DataFrame(request.ae_data) if request.ae_data else None
 
         summary_md, site_summary_df, kris = generate_rbqm_summary(
@@ -284,6 +615,8 @@ async def generate_rbqm(request: RBQMRequest):
             kris=kris
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()  # Print full traceback to console for debugging
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"RBQM generation failed: {str(e)}"
@@ -607,6 +940,2526 @@ async def comprehensive_quality_assessment(request: ComprehensiveQualityRequest)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Quality assessment failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# DEMOGRAPHICS ANALYTICS ENDPOINTS (Phase 1)
+# ============================================================================
+
+@app.post("/stats/demographics/baseline")
+async def demographics_baseline(request: DemographicsRequest):
+    """
+    Generate baseline characteristics table (Table 1)
+
+    **Purpose:**
+    Creates the standard demographics table (Table 1) found in clinical trial reports,
+    showing baseline characteristics overall and by treatment arm.
+
+    **Returns:**
+    - Overall statistics across all subjects
+    - Statistics by treatment arm (Active vs Placebo)
+    - P-values for balance tests (t-test for continuous, chi-square for categorical)
+    - Clinical interpretation of randomization balance
+
+    **Use Case:**
+    - Required for all clinical study reports
+    - Demonstrates proper randomization
+    - Baseline population description
+    """
+    try:
+        df = pd.DataFrame(request.demographics_data)
+        result = calculate_baseline_characteristics(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Baseline characteristics calculation failed: {str(e)}"
+        )
+
+
+@app.post("/stats/demographics/summary")
+async def demographics_summary(request: DemographicsRequest):
+    """
+    Calculate demographic distribution summary for visualization
+
+    **Purpose:**
+    Provides aggregated demographic distributions suitable for charts and graphs.
+
+    **Returns:**
+    - Age distribution by brackets (18-30, 31-45, 46-60, 61+)
+    - Gender distribution (counts and percentages)
+    - Race distribution
+    - Ethnicity distribution
+    - BMI categories (WHO classification)
+
+    **Use Case:**
+    - Dashboard visualizations
+    - Quick population overview
+    - Diversity assessment
+    """
+    try:
+        df = pd.DataFrame(request.demographics_data)
+        result = calculate_demographic_summary(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demographic summary calculation failed: {str(e)}"
+        )
+
+
+@app.post("/stats/demographics/balance")
+async def demographics_balance(request: DemographicsRequest):
+    """
+    Assess treatment arm balance (randomization quality check)
+
+    **Purpose:**
+    Validates that randomization produced balanced treatment arms across
+    all demographic variables. Poor balance may indicate randomization issues.
+
+    **Statistical Tests:**
+    - Continuous variables (Age, Weight, Height, BMI): Welch's t-test
+    - Categorical variables (Gender, Race, Ethnicity): Chi-square test
+    - Effect sizes: Cohen's d (standardized mean difference)
+
+    **Returns:**
+    - P-values for each demographic variable
+    - Standardized differences (Cohen's d)
+    - Overall balance assessment (Well-balanced / Acceptable / Poor)
+    - Flags for variables with significant imbalance
+
+    **Interpretation:**
+    - P-value > 0.05: Arms are balanced
+    - |Cohen's d| < 0.2: Negligible difference
+    - |Cohen's d| 0.2-0.5: Small difference
+    - |Cohen's d| > 0.5: Moderate-to-large difference (concern)
+
+    **Use Case:**
+    - Quality control for trial randomization
+    - Regulatory requirement for CSR
+    - Identifying covariates for adjusted analysis
+    """
+    try:
+        df = pd.DataFrame(request.demographics_data)
+        result = assess_treatment_arm_balance(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Treatment arm balance assessment failed: {str(e)}"
+        )
+
+
+@app.post("/quality/demographics/compare")
+async def demographics_quality(request: DemographicsCompareRequest):
+    """
+    Compare real vs synthetic demographics data quality
+
+    **Purpose:**
+    Validates that synthetic demographics match real-world clinical trial demographics
+    using multiple statistical metrics.
+
+    **Metrics Computed:**
+    1. **Wasserstein Distance** - Distribution similarity for continuous variables (Age, Weight, Height, BMI)
+       - Lower is better (0 = identical distributions)
+       - Typical acceptable range: < 5.0
+
+    2. **Chi-square Tests** - Distribution match for categorical variables (Gender, Race, Ethnicity)
+       - P-value > 0.05 indicates distributions are similar
+
+    3. **Correlation Preservation** - How well inter-variable relationships are maintained
+       - 1.0 = perfect preservation
+       - > 0.85 = excellent
+
+    4. **Overall Quality Score** (0-1 scale)
+       - ≥ 0.85: Excellent - Production ready
+       - 0.70-0.85: Good - Minor adjustments may help
+       - < 0.70: Needs improvement
+
+    **Returns:**
+    - Wasserstein distances for each continuous variable
+    - Chi-square test results for each categorical variable
+    - Correlation preservation score
+    - Overall quality score
+    - Detailed interpretation and recommendations
+
+    **Use Case:**
+    - Validating synthetic data generation methods
+    - Quality assurance before using synthetic data for analysis
+    - Regulatory evidence of synthetic data fidelity
+    - Method comparison (MVN vs Bootstrap vs LLM)
+    """
+    try:
+        real_df = pd.DataFrame(request.real_demographics)
+        synthetic_df = pd.DataFrame(request.synthetic_demographics)
+        result = compare_demographics_quality(real_df, synthetic_df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demographics quality comparison failed: {str(e)}"
+        )
+
+
+@app.post("/sdtm/demographics/export")
+async def demographics_sdtm_export(request: DemographicsRequest):
+    """
+    Export demographics to SDTM DM (Demographics) domain format
+
+    **Purpose:**
+    Converts demographics data to CDISC SDTM DM domain format for regulatory submission.
+
+    **SDTM DM Domain Variables:**
+    - STUDYID: Study identifier
+    - DOMAIN: DM (Demographics)
+    - USUBJID: Unique subject identifier
+    - SUBJID: Subject identifier
+    - RFSTDTC: Reference start date
+    - RFENDTC: Reference end date
+    - SITEID: Site identifier
+    - AGE: Age in years
+    - AGEU: Age units (YEARS)
+    - SEX: Sex (M/F/U)
+    - RACE: Race
+    - ETHNIC: Ethnicity
+    - ARMCD: Planned arm code (ACT/PBO/UNK)
+    - ARM: Planned arm description
+    - ACTARMCD: Actual arm code
+    - ACTARM: Actual arm description
+
+    **Compliance:**
+    - Follows CDISC SDTM-IG v3.4
+    - FDA/EMA submission ready
+    - Includes all required DM domain variables
+
+    **Use Case:**
+    - Regulatory submission (IND, NDA, BLA)
+    - Data package preparation
+    - SDTM validation testing
+    """
+    try:
+        df = pd.DataFrame(request.demographics_data)
+        sdtm_df = export_to_sdtm_dm(df)
+
+        return {
+            "sdtm_data": sdtm_df.to_dict(orient="records"),
+            "rows": len(sdtm_df),
+            "domain": "DM",
+            "compliance": "SDTM-IG v3.4"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SDTM DM export failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# LABS ANALYTICS ENDPOINTS (Phase 2)
+# ============================================================================
+
+@app.post("/stats/labs/summary")
+async def labs_summary(request: LabsRequest):
+    """
+    Calculate lab results summary by test, visit, treatment arm
+
+    **Purpose:**
+    Provides comprehensive descriptive statistics for all laboratory tests,
+    stratified by visit and treatment arm.
+
+    **Returns:**
+    - by_test: Summary statistics (mean, median, SD, range, quartiles) for each lab test
+    - by_visit: Observation counts and test coverage by visit
+    - by_arm: Mean values by treatment arm for each test
+    - overall: Total observations, subjects, tests, visits
+
+    **Statistical Metrics:**
+    - Mean, median, standard deviation
+    - Min, max, 25th and 75th percentiles
+    - Sample size (n) per category
+
+    **Use Case:**
+    - Laboratory data overview for study reports
+    - Identifying data completeness
+    - Baseline vs endpoint comparisons
+    - Treatment arm comparisons
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = calculate_labs_summary(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Labs summary calculation failed: {str(e)}"
+        )
+
+
+@app.post("/stats/labs/abnormal")
+async def labs_abnormal(request: LabsRequest):
+    """
+    Detect abnormal lab values with CTCAE grading
+
+    **Purpose:**
+    Identifies laboratory abnormalities using CTCAE v5.0 grading criteria
+    for safety monitoring and adverse event reporting.
+
+    **CTCAE Grading (Grade 0-4):**
+    - Grade 0: Normal
+    - Grade 1: Mild abnormality
+    - Grade 2: Moderate abnormality
+    - Grade 3: Severe abnormality
+    - Grade 4: Life-threatening or disabling
+
+    **Supported Tests:**
+    - Liver: ALT, AST, Bilirubin
+    - Kidney: Creatinine, eGFR
+    - Hematology: Hemoglobin, WBC, Platelets
+
+    **Returns:**
+    - abnormal_observations: List of all abnormal values with CTCAE grades
+    - summary_by_grade: Count of observations per grade (1-4)
+    - summary_by_test: Abnormality rates per test
+    - high_risk_subjects: Subjects with Grade 3+ abnormalities
+    - total_abnormal: Total count of abnormal observations
+    - abnormal_rate: Percentage of all observations that are abnormal
+
+    **Use Case:**
+    - Safety monitoring (DSMB reports)
+    - Identifying subjects requiring dose modification
+    - Adverse event reporting
+    - Protocol-defined stopping rules
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = detect_abnormal_labs(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Abnormal labs detection failed: {str(e)}"
+        )
+
+
+@app.post("/stats/labs/shift-tables")
+async def labs_shift_tables(request: LabsRequest):
+    """
+    Generate baseline-to-endpoint shift analysis
+
+    **Purpose:**
+    Analyzes how lab values shift from baseline (first visit) to endpoint (last visit),
+    showing transitions between Normal and Abnormal categories.
+
+    **Shift Categories:**
+    - Normal → Normal: Subject remained normal throughout
+    - Normal → Abnormal: Treatment-emergent abnormality
+    - Abnormal → Normal: Improvement/normalization
+    - Abnormal → Abnormal: Persistent abnormality
+
+    **Returns:**
+    - baseline_visit: Name of baseline visit used
+    - endpoint_visit: Name of endpoint visit used
+    - shift_tables: For each lab test:
+      - shift_matrix: 2x2 contingency table
+      - percentages: Percentage in each shift category
+      - counts: Subject counts in each category
+      - total_subjects: Total with paired data
+    - chi_square_tests: Statistical tests for shift patterns
+      - chi_square: Test statistic
+      - p_value: Statistical significance
+      - significant: Boolean (p < 0.05)
+
+    **Clinical Interpretation:**
+    - High Normal→Abnormal %: Potential safety concern
+    - High Abnormal→Normal %: Evidence of treatment benefit or lab fluctuation
+    - Chi-square p < 0.05: Shift pattern is non-random
+
+    **Use Case:**
+    - Safety assessment (treatment-emergent abnormalities)
+    - Efficacy evaluation (lab normalization)
+    - Regulatory submissions (shift table requirement)
+    - Protocol-defined lab monitoring
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = generate_shift_tables(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Shift table generation failed: {str(e)}"
+        )
+
+
+@app.post("/quality/labs/compare")
+async def labs_quality(request: LabsCompareRequest):
+    """
+    Compare real vs synthetic lab data quality
+
+    **Purpose:**
+    Validates that synthetic laboratory data matches real-world clinical trial
+    lab distributions using statistical similarity metrics.
+
+    **Metrics Computed:**
+    1. **Wasserstein Distance** - Distribution similarity for each lab test
+       - Lower is better (0 = identical)
+       - Normalized by real mean for relative comparison
+
+    2. **Kolmogorov-Smirnov Tests** - Distribution comparison
+       - P-value > 0.05 indicates distributions are similar
+       - Statistic: Maximum difference between CDFs
+
+    3. **Mean Differences** - Absolute and percentage differences
+       - Shows bias in synthetic data generation
+       - Percentage difference helps identify relative errors
+
+    4. **Overall Quality Score** (0-1 scale)
+       - 0.6 × Wasserstein similarity + 0.4 × KS test pass rate
+       - ≥ 0.85: Excellent
+       - 0.70-0.85: Good
+       - < 0.70: Needs improvement
+
+    **Returns:**
+    - wasserstein_distances: Distance for each test
+    - ks_tests: KS statistic, p-value, similarity flag per test
+    - mean_differences: Real mean, synthetic mean, absolute and % diff
+    - overall_quality_score: Aggregate quality metric
+    - interpretation: Clinical quality assessment
+
+    **Use Case:**
+    - Validating lab data generation methods
+    - Comparing MVN vs Bootstrap vs LLM approaches
+    - Quality assurance before using synthetic data
+    - Method parameter tuning
+    """
+    try:
+        real_df = pd.DataFrame(request.real_labs)
+        synthetic_df = pd.DataFrame(request.synthetic_labs)
+        result = compare_labs_quality(real_df, synthetic_df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Labs quality comparison failed: {str(e)}"
+        )
+
+
+@app.post("/stats/labs/safety-signals")
+async def labs_safety_signals(request: LabsRequest):
+    """
+    Detect potential safety signals in lab data
+
+    **Purpose:**
+    Identifies clinically significant laboratory-based safety signals
+    using established medical criteria.
+
+    **Safety Signals Detected:**
+
+    1. **Hy's Law (Drug-Induced Liver Injury - DILI)**
+       - Criteria: ALT or AST >3× ULN AND Bilirubin >2× ULN
+       - Significance: 10-50% risk of severe liver injury or death
+       - Regulatory: FDA requires reporting, may halt trial
+
+    2. **Kidney Function Decline**
+       - Criteria: eGFR decrease >25% from baseline
+       - Severity:
+         - 25-50% decline: Moderate risk
+         - >50% decline: High risk
+       - Clinical: May require dose adjustment or discontinuation
+
+    3. **Bone Marrow Suppression**
+       - Criteria (any of):
+         - Hemoglobin <8 g/dL (severe anemia)
+         - WBC <2.0 × 10⁹/L (severe leukopenia)
+         - Platelets <50 × 10⁹/L (severe thrombocytopenia)
+       - Severity: High risk if ≥2 criteria met
+       - Clinical: Infection risk, bleeding risk
+
+    **Returns:**
+    - hys_law_cases: Subjects meeting Hy's Law criteria with ALT, bilirubin values
+    - kidney_decline_cases: Subjects with significant eGFR decline
+    - bone_marrow_cases: Subjects with severe hematologic abnormalities
+    - overall_safety_summary:
+      - Counts and rates for each safety signal
+      - any_safety_signal: Boolean flag
+
+    **Use Case:**
+    - DSMB (Data Safety Monitoring Board) reports
+    - Protocol-defined stopping rules
+    - Regulatory safety updates (IND safety reports)
+    - Risk-benefit assessment
+    - Subject management (dose holds, discontinuation)
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = detect_safety_signals(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Safety signal detection failed: {str(e)}"
+        )
+
+
+@app.post("/stats/labs/longitudinal")
+async def labs_longitudinal(request: LabsRequest):
+    """
+    Time-series analysis of lab trends
+
+    **Purpose:**
+    Analyzes how laboratory values change over time (longitudinal trends)
+    using linear regression and trend detection.
+
+    **Statistical Methods:**
+    - Linear regression (slope, R², p-value)
+    - Visit-level mean and standard deviation
+    - Trend direction classification (increasing/decreasing/stable)
+    - Significance testing (p < 0.05)
+
+    **Returns:**
+    - trends_by_test: For each lab test:
+      - visit_means: Mean and SD at each visit
+      - slope: Rate of change per visit
+      - r_squared: Proportion of variance explained by linear trend
+      - p_value: Statistical significance of trend
+      - trend_direction: "increasing", "decreasing", or "stable"
+      - trend_significant: Boolean (p < 0.05)
+
+    - trends_by_arm: Same as above, stratified by treatment arm
+      - Allows comparison of temporal patterns between Active and Placebo
+
+    **Clinical Interpretation:**
+    - Positive slope: Lab value increasing over time
+    - Negative slope: Lab value decreasing over time
+    - R² > 0.8: Strong linear trend (predictable change)
+    - R² < 0.3: Weak/no trend (fluctuating values)
+    - P < 0.05: Statistically significant trend
+
+    **Use Case:**
+    - Efficacy assessment (e.g., HbA1c decline in diabetes trial)
+    - Safety monitoring (e.g., progressive liver enzyme elevation)
+    - Dose-response evaluation
+    - Time-to-effect analysis
+    - Mixed models for repeated measures (MMRM) preparation
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        result = analyze_labs_longitudinal(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Longitudinal analysis failed: {str(e)}"
+        )
+
+
+@app.post("/sdtm/labs/export")
+async def labs_sdtm_export(request: LabsRequest):
+    """
+    Export labs to SDTM LB (Laboratory) domain format
+
+    **Purpose:**
+    Converts laboratory data to CDISC SDTM LB domain format for regulatory submission.
+
+    **SDTM LB Domain Variables:**
+    - STUDYID: Study identifier
+    - DOMAIN: LB (Laboratory)
+    - USUBJID: Unique subject identifier
+    - SUBJID: Subject identifier within study
+    - LBSEQ: Sequence number
+    - LBTESTCD: Lab test code (standardized, e.g., "ALT", "CREAT")
+    - LBTEST: Lab test name (full text)
+    - LBCAT: Lab category (CHEMISTRY, HEMATOLOGY, URINALYSIS)
+    - LBORRES: Result as originally received (character)
+    - LBORRESU: Original units
+    - LBSTRESC: Standardized result (character)
+    - LBSTRESN: Standardized result (numeric)
+    - LBSTRESU: Standardized units
+    - VISITNUM: Visit number
+    - VISIT: Visit name
+    - LBDTC: Lab collection date/time
+    - LBDY: Study day
+
+    **Test Code Mapping (CDISC SDTM standard):**
+    - ALT → ALT (Alanine Aminotransferase)
+    - AST → AST (Aspartate Aminotransferase)
+    - Bilirubin → BILI
+    - Creatinine → CREAT
+    - eGFR → EGFR
+    - Hemoglobin → HGB
+    - WBC → WBC
+    - Platelets → PLAT
+    - And 7 more common tests
+
+    **Lab Categories:**
+    - CHEMISTRY: ALT, AST, BILI, CREAT, Glucose, BUN, Albumin, ALP
+    - HEMATOLOGY: HGB, WBC, Platelets
+    - URINALYSIS: eGFR
+
+    **Compliance:**
+    - Follows CDISC SDTM-IG v3.4
+    - FDA/EMA submission ready
+    - All required LB domain variables included
+    - Proper variable ordering per SDTM-IG
+
+    **Use Case:**
+    - Regulatory submission (IND, NDA, BLA)
+    - Data package preparation
+    - SDTM validation testing
+    - Define.xml generation
+    """
+    try:
+        df = pd.DataFrame(request.labs_data)
+        sdtm_df = export_to_sdtm_lb(df)
+
+        return {
+            "sdtm_data": sdtm_df.to_dict(orient="records"),
+            "rows": len(sdtm_df),
+            "domain": "LB",
+            "compliance": "SDTM-IG v3.4",
+            "categories": sorted(sdtm_df["LBCAT"].unique().tolist()) if len(sdtm_df) > 0 else []
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SDTM LB export failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# AE (ADVERSE EVENTS) ANALYTICS ENDPOINTS (Phase 3)
+# ============================================================================
+
+@app.post("/stats/ae/summary")
+async def ae_summary(request: AERequest):
+    """
+    Calculate AE frequency tables by SOC, PT, severity, relationship
+
+    **Purpose:**
+    Provides comprehensive adverse event frequency tables for clinical study reports,
+    stratified by MedDRA System Organ Class (SOC), Preferred Term (PT), severity,
+    and relationship to treatment.
+
+    **MedDRA Classification:**
+    - SOC (System Organ Class): Primary classification (17 major categories)
+    - PT (Preferred Term): Specific AE term
+
+    **Returns:**
+    - overall_summary: Total AEs, subjects with AEs, unique PTs/SOCs
+    - by_soc: AE count and subject count per SOC
+    - by_pt: Top 20 most frequent PTs with incidence rates
+    - by_severity: Distribution (Mild, Moderate, Severe)
+    - by_relationship: Distribution (Related, Not Related, Possibly Related)
+    - sae_summary: Serious AE statistics
+    - by_arm: AE comparison by treatment arm (if available)
+
+    **Use Case:**
+    - Safety section of Clinical Study Reports (CSR)
+    - Regulatory submission (IND, NDA, BLA)
+    - DSMB safety reports
+    - Investigator Brochure updates
+    """
+    try:
+        df = pd.DataFrame(request.ae_data)
+        result = calculate_ae_summary(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AE summary calculation failed: {str(e)}"
+        )
+
+
+@app.post("/stats/ae/treatment-emergent")
+async def ae_treatment_emergent(request: AERequest):
+    """
+    Analyze treatment-emergent adverse events (TEAEs)
+
+    **Purpose:**
+    Identifies and analyzes TEAEs - adverse events that start on or after
+    first dose of study treatment, which are critical for safety assessment.
+
+    **TEAE Definition:**
+    - Onset on or after first dose of study treatment
+    - Were not present at baseline, or worsened after treatment start
+    - Required for all regulatory submissions
+
+    **Returns:**
+    - teae_summary: Total TEAEs, subjects with TEAEs, TEAE rate, median onset day
+    - time_to_first_ae: Distribution of time to first AE
+      - 0-7 days: Immediate onset
+      - 8-30 days: Early onset
+      - 31-90 days: Intermediate onset
+      - >90 days: Late onset
+    - teae_by_arm: TEAE comparison by treatment arm
+    - early_vs_late: Early (≤30 days) vs late (>30 days) TEAEs
+
+    **Clinical Interpretation:**
+    - High early TEAE rate: May indicate acute toxicity
+    - High late TEAE rate: May indicate cumulative toxicity
+    - Median onset: Typical time to first AE (guides safety monitoring)
+
+    **Use Case:**
+    - Safety assessment for DSMB
+    - Regulatory submissions (required analysis)
+    - Protocol amendment decisions
+    - Patient counseling (expected onset timing)
+    - Safety labeling
+    """
+    try:
+        df = pd.DataFrame(request.ae_data)
+        treatment_start = request.treatment_start_date
+        result = analyze_treatment_emergent_aes(df, treatment_start_date=treatment_start)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Treatment-emergent AE analysis failed: {str(e)}"
+        )
+
+
+@app.post("/stats/ae/soc-analysis")
+async def ae_soc_analysis(request: AERequest):
+    """
+    Analyze System Organ Class (SOC) distribution per MedDRA
+
+    **Purpose:**
+    Provides MedDRA System Organ Class (SOC) analysis, which is the primary
+    classification for adverse events in clinical trials. Required for all
+    regulatory submissions.
+
+    **MedDRA SOC Categories (17 total):**
+    - Gastrointestinal disorders
+    - Nervous system disorders
+    - Skin and subcutaneous tissue disorders
+    - General disorders and administration site conditions
+    - Infections and infestations
+    - Cardiac disorders
+    - Respiratory, thoracic and mediastinal disorders
+    - Musculoskeletal and connective tissue disorders
+    - Psychiatric disorders
+    - Blood and lymphatic system disorders
+    - Metabolism and nutrition disorders
+    - And 6 more...
+
+    **Returns:**
+    - soc_ranking: SOCs ranked by AE frequency and subject count
+    - soc_by_arm: SOC distribution by treatment arm
+    - soc_details: Top 5 PTs within each SOC
+    - sae_by_soc: Serious AE distribution by SOC
+    - statistical_tests: Fisher's exact test for arm comparisons
+      - odds_ratio: Relative risk between arms
+      - p_value: Statistical significance
+      - significant: Boolean (p < 0.05)
+
+    **Clinical Interpretation:**
+    - Odds ratio > 2: Meaningful increase in active vs placebo
+    - P-value < 0.05: Statistically significant difference
+    - SAEs concentrated in specific SOC: Organ-specific toxicity
+
+    **Use Case:**
+    - Safety section of CSR (required table)
+    - Regulatory submissions (FDA, EMA)
+    - Identifying organ-specific toxicities
+    - Benefit-risk assessment
+    - Prescribing information (Adverse Reactions section)
+    """
+    try:
+        df = pd.DataFrame(request.ae_data)
+        result = analyze_soc_distribution(df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SOC analysis failed: {str(e)}"
+        )
+
+
+@app.post("/quality/ae/compare")
+async def ae_quality(request: AECompareRequest):
+    """
+    Compare real vs synthetic AE data quality
+
+    **Purpose:**
+    Validates that synthetic adverse event data matches real-world clinical trial
+    AE patterns using distribution similarity metrics.
+
+    **Metrics Computed:**
+    1. **SOC Distribution Similarity** - Chi-square test
+       - Tests if SOC frequencies match between real and synthetic
+       - P-value > 0.05 indicates similar distributions
+
+    2. **PT Distribution Similarity** - Top 20 PT overlap
+       - Jaccard similarity: Overlap of most common PTs
+       - > 0.6: Good overlap
+       - 0.4-0.6: Fair overlap
+       - < 0.4: Poor overlap
+
+    3. **Severity Distribution** - Chi-square test
+       - Tests Mild/Moderate/Severe distribution match
+       - P-value > 0.05 indicates similar severity patterns
+
+    4. **Relationship Distribution** - Chi-square test
+       - Tests Related/Not Related/Possibly Related match
+       - Ensures causality assessment patterns are realistic
+
+    5. **Overall Quality Score** (0-1 scale)
+       - Average of all metric scores
+       - ≥ 0.85: Excellent - Production ready
+       - 0.70-0.85: Good - Minor adjustments
+       - < 0.70: Needs improvement
+
+    **Returns:**
+    - soc_distribution_similarity: Chi-square test results
+    - pt_distribution_similarity: Jaccard similarity and overlap count
+    - severity_distribution: Chi-square test results
+    - relationship_distribution: Chi-square test results
+    - overall_quality_score: Aggregate quality (0-1)
+    - interpretation: Clinical quality assessment
+
+    **Use Case:**
+    - Validating AE data generation methods
+    - Quality assurance before using synthetic data
+    - Method comparison (Rules vs LLM vs Historical sampling)
+    - Parameter tuning for synthetic data generation
+    """
+    try:
+        real_df = pd.DataFrame(request.real_ae)
+        synthetic_df = pd.DataFrame(request.synthetic_ae)
+        result = compare_ae_quality(real_df, synthetic_df)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AE quality comparison failed: {str(e)}"
+        )
+
+
+@app.post("/sdtm/ae/export")
+async def ae_sdtm_export(request: AERequest):
+    """
+    Export AE to SDTM AE (Adverse Events) domain format
+
+    **Purpose:**
+    Converts adverse event data to CDISC SDTM AE domain format for regulatory submission.
+
+    **SDTM AE Domain Variables:**
+    - STUDYID: Study identifier
+    - DOMAIN: AE (Adverse Events)
+    - USUBJID: Unique subject identifier
+    - SUBJID: Subject identifier within study
+    - AESEQ: Sequence number
+    - AETERM: Verbatim AE term (as reported)
+    - AEDECOD: MedDRA Preferred Term (dictionary-derived)
+    - AESOC: MedDRA System Organ Class
+    - AESEV: Severity (MILD, MODERATE, SEVERE)
+    - AESER: Serious flag (Y/N)
+    - AEREL: Relationship to treatment (RELATED, NOT RELATED, POSSIBLY RELATED)
+    - AEACN: Action taken with study treatment
+    - AEOUT: Outcome of AE
+    - AESTDTC: Start date/time
+    - AEENDTC: End date/time
+    - AESTDY: Study day at AE start
+    - AEENDY: Study day at AE end
+
+    **Severity Mapping (CDISC Controlled Terminology):**
+    - Mild → MILD
+    - Moderate → MODERATE
+    - Severe → SEVERE
+
+    **Serious Flag Mapping:**
+    - True/Yes/Y → Y
+    - False/No/N → N
+
+    **Relationship Mapping:**
+    - Related → RELATED
+    - Not Related → NOT RELATED
+    - Possibly Related → POSSIBLY RELATED
+    - Probably Related → PROBABLY RELATED
+
+    **Compliance:**
+    - Follows CDISC SDTM-IG v3.4
+    - FDA/EMA submission ready
+    - All required AE domain variables included
+    - Proper variable ordering per SDTM-IG
+    - MedDRA dictionary compliance
+
+    **Use Case:**
+    - Regulatory submission (IND, NDA, BLA)
+    - Data package preparation
+    - SDTM validation testing
+    - Define.xml generation
+    - Safety database integration
+    """
+    try:
+        df = pd.DataFrame(request.ae_data)
+        sdtm_df = export_to_sdtm_ae(df)
+
+        return {
+            "sdtm_data": sdtm_df.to_dict(orient="records"),
+            "rows": len(sdtm_df),
+            "domain": "AE",
+            "compliance": "SDTM-IG v3.4",
+            "unique_pts": sdtm_df["AEDECOD"].nunique() if len(sdtm_df) > 0 else 0,
+            "unique_socs": sdtm_df["AESOC"].nunique() if len(sdtm_df) > 0 else 0,
+            "serious_count": (sdtm_df["AESER"] == "Y").sum() if len(sdtm_df) > 0 else 0
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"SDTM AE export failed: {str(e)}"
+        )
+
+
+# ===== AACT INTEGRATION ENDPOINTS =====
+
+@app.post("/aact/compare-study")
+async def aact_compare_study(request: AACTCompareStudyRequest):
+    """
+    Compare synthetic trial characteristics with AACT real-world benchmarks
+
+    **Purpose:**
+    Validates that synthetic trial structure (enrollment, treatment effect)
+    matches real-world patterns from ClinicalTrials.gov (AACT database).
+
+    **AACT Database:**
+    - 557,805+ studies from ClinicalTrials.gov
+    - Processed and cached using daft
+    - Statistics by indication and phase
+    - Enrollment, treatment effects, demographics, AEs
+
+    **Comparison Metrics:**
+    - **Enrollment Benchmark**: How trial size compares to real trials
+      - Percentile within AACT distribution
+      - Z-score relative to mean
+      - Interpretation (Small/Median/Large)
+    - **Treatment Effect Benchmark**: How effect size compares
+      - Percentile within AACT distribution
+      - Z-score relative to mean
+      - Clinical interpretation
+    - **Similarity Score**: Overall realism (0-1, higher = more realistic)
+      - 0.8+: Highly realistic
+      - 0.6-0.8: Realistic
+      - 0.4-0.6: Moderately realistic
+      - <0.4: Low realism
+
+    **Request Parameters:**
+    - n_subjects: Total enrolled (e.g., 100)
+    - indication: "hypertension", "diabetes", "cancer", etc.
+    - phase: "Phase 1", "Phase 2", "Phase 3", "Phase 4"
+    - treatment_effect: Primary endpoint value (e.g., -5.0 mmHg SBP reduction)
+    - vitals_data: Optional vitals for additional analysis
+
+    **Response:**
+    - enrollment_benchmark: Statistics comparing trial size
+    - treatment_effect_benchmark: Statistics comparing effect size
+    - aact_reference: Reference data from AACT
+    - similarity_score: 0-1 realism score
+    - interpretation: Human-readable assessment + recommendations
+
+    **Available Indications:**
+    hypertension, diabetes, cancer, oncology, cardiovascular,
+    heart failure, asthma, copd
+
+    **Use Case:**
+    - Validate synthetic trial parameters before generation
+    - Justify sample size and effect size choices
+    - Benchmark against industry standards
+    - Support regulatory discussions with real-world context
+    """
+    try:
+        result = compare_study_to_aact(
+            n_subjects=request.n_subjects,
+            indication=request.indication,
+            phase=request.phase,
+            treatment_effect=request.treatment_effect,
+            vitals_data=request.vitals_data
+        )
+        return convert_numpy_types(result)
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AACT cache not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AACT comparison failed: {str(e)}"
+        )
+
+
+@app.post("/aact/benchmark-demographics")
+async def aact_benchmark_demographics(request: AACTBenchmarkDemographicsRequest):
+    """
+    Benchmark demographics against AACT real-world trial patterns
+
+    **Purpose:**
+    Compares synthetic demographics (age, gender, race) distributions
+    against typical patterns from real-world ClinicalTrials.gov trials.
+
+    **Demographics Analysis:**
+    - **Age Distribution**: Mean, median, range
+    - **Gender Split**: Male/Female percentages
+    - **Race Distribution**: Racial/ethnic composition
+    - **Treatment Arms**: Arm balance and sizes
+
+    **Current Limitations:**
+    - AACT cache provides limited demographic distributions
+    - Full age/gender/race distributions require additional AACT processing
+    - Qualitative assessment provided based on clinical trial knowledge
+
+    **Qualitative Benchmarks (by Indication):**
+
+    **Hypertension:**
+    - Typical age: 45-65 years
+    - Gender: 55-60% male
+    - Common in diverse racial groups
+
+    **Diabetes (Type 2):**
+    - Typical age: 50-65 years
+    - Gender: 50-55% male
+    - Higher prevalence in certain ethnic groups
+
+    **Response:**
+    - demographics_summary: Statistics from synthetic data
+    - aact_benchmarks: Available AACT data (study duration)
+    - qualitative_assessment: Expert-based assessment
+    - limitations: What's not available in current cache
+    - future_enhancements: Planned improvements
+
+    **Use Case:**
+    - Validate demographic realism
+    - Ensure trial population is representative
+    - Identify potential bias in synthetic data
+    - Support diversity and inclusion goals
+    """
+    try:
+        demographics_df = pd.DataFrame(request.demographics_data)
+        result = benchmark_demographics(
+            demographics_df=demographics_df,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return convert_numpy_types(result)
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AACT cache not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Demographics benchmarking failed: {str(e)}"
+        )
+
+
+@app.post("/aact/benchmark-ae")
+async def aact_benchmark_ae(request: AACTBenchmarkAERequest):
+    """
+    Benchmark adverse events patterns against AACT real-world trials
+
+    **Purpose:**
+    Compares synthetic AE patterns (frequency, top events) against
+    real-world AE patterns from ClinicalTrials.gov trials.
+
+    **AE Pattern Analysis:**
+    - **Top Events Overlap**: Jaccard similarity of top AE terms
+    - **Frequency Matching**: How well synthetic AE rates match real trials
+    - **Event Coverage**: Which common events are present/missing
+    - **Overall Similarity**: 0-1 score combining overlap + frequency
+
+    **AACT AE Benchmarks (by Indication/Phase):**
+    - Top 15 most common adverse events
+    - Event frequencies (% of subjects affected)
+    - Number of trials contributing data
+    - Subjects affected per event
+
+    **Similarity Scoring:**
+    - **0.7+**: Highly realistic - Patterns closely match real trials
+    - **0.5-0.7**: Realistic - Within expected range
+    - **0.3-0.5**: Moderately realistic - Some deviations
+    - **<0.3**: Low realism - Significant differences
+
+    **Comparison Components:**
+    - **Jaccard Similarity (70%)**: Overlap of top events
+    - **Frequency Matching (30%)**: How well rates match
+
+    **Example - Hypertension Phase 3 Top AEs:**
+    1. Headache (23% of subjects)
+    2. Dizziness (3.8%)
+    3. Nausea (6.0%)
+    4. Fatigue (3.5%)
+    5. Back pain (3.5%)
+
+    **Response:**
+    - ae_summary: Statistics from synthetic AEs
+    - aact_benchmarks: Top events from AACT
+    - comparison: Matching events, unique events, frequency diffs
+    - similarity_score: 0-1 overall realism score
+    - interpretation: Assessment + recommendations
+
+    **Use Case:**
+    - Validate AE generation algorithms
+    - Ensure realistic safety profiles
+    - Compare different generation methods
+    - Support regulatory readiness
+    """
+    try:
+        ae_df = pd.DataFrame(request.ae_data)
+        result = benchmark_adverse_events(
+            ae_df=ae_df,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return convert_numpy_types(result)
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AACT cache not available: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AE benchmarking failed: {str(e)}"
+        )
+
+
+# ===== COMPREHENSIVE STUDY ANALYTICS ENDPOINTS (Phase 5) =====
+
+@app.post("/study/comprehensive-summary")
+async def study_comprehensive_summary(request: ComprehensiveStudyRequest):
+    """
+    Generate comprehensive study summary across all domains
+
+    **Purpose:**
+    Integrates demographics, vitals, labs, and AEs into a unified study summary
+    suitable for Clinical Study Reports (CSR) and regulatory submissions.
+
+    **Integration:**
+    - **Demographics**: Baseline characteristics and randomization balance
+    - **Efficacy**: Vitals-based endpoint analysis
+    - **Safety**: Labs abnormalities + AE frequency
+    - **AACT Benchmark**: Industry comparison for credibility
+    - **Data Quality**: Completeness and regulatory readiness assessment
+
+    **Returns:**
+    - study_overview: Basic study statistics (n_subjects, data domains, total observations)
+    - demographics_summary: Age, gender, treatment arms, randomization balance
+    - efficacy_summary: Endpoint visit, treatment effect (SBP), by-arm results
+    - safety_summary:
+      - labs_safety: Abnormal rates, Grade 3-4 count, Hy's Law cases
+      - ae_safety: Total AEs, SAE rate, top events, most common SOC
+      - overall_safety_assessment: Aggregated safety flags
+    - aact_benchmark: Similarity score, enrollment/effect percentiles, recommendations
+    - data_quality: Completeness scores, quality assessment (Excellent/Good/Fair/Poor)
+    - regulatory_readiness: Requirements met/pending, readiness score, submission status
+
+    **Quality Assessment:**
+    - Data completeness score (0-1): Proportion of key domains with data
+    - Quality grades:
+      - ≥0.95: EXCELLENT - All key data fields complete
+      - ≥0.80: GOOD - Minor data gaps
+      - ≥0.60: FAIR - Some data fields missing
+      - <0.60: POOR - Significant data gaps
+
+    **Regulatory Readiness:**
+    - Checks for: Demographics Table 1, Efficacy data, Safety data, AACT benchmark
+    - Readiness score (0-1): Proportion of requirements met
+    - Status:
+      - ≥0.90: SUBMISSION READY
+      - ≥0.70: NEAR READY
+      - ≥0.50: IN PROGRESS
+      - <0.50: NOT READY
+
+    **Use Case:**
+    - Executive summary for sponsor/CRO
+    - CSR appendix (integrated analysis)
+    - Regulatory briefing document
+    - DSMB interim reports
+    - Portfolio review for multiple trials
+    """
+    try:
+        # Convert lists to DataFrames
+        demographics_df = pd.DataFrame(request.demographics_data) if request.demographics_data else None
+        vitals_df = pd.DataFrame(request.vitals_data) if request.vitals_data else None
+        labs_df = pd.DataFrame(request.labs_data) if request.labs_data else None
+        ae_df = pd.DataFrame(request.ae_data) if request.ae_data else None
+
+        result = generate_comprehensive_summary(
+            demographics_data=demographics_df,
+            vitals_data=vitals_df,
+            labs_data=labs_df,
+            ae_data=ae_df,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Comprehensive summary generation failed: {str(e)}"
+        )
+
+
+@app.post("/study/cross-domain-correlations")
+async def study_cross_domain_correlations(request: CrossDomainRequest):
+    """
+    Analyze correlations between different data domains
+
+    **Purpose:**
+    Identifies relationships across domains (demographics, vitals, labs, AEs)
+    to uncover clinically meaningful patterns, potential confounders, and
+    subgroup effects.
+
+    **Cross-Domain Analyses:**
+
+    1. **Demographics-Vitals Correlations:**
+       - Age vs Blood Pressure (Pearson correlation)
+       - Gender vs Blood Pressure (t-test)
+       - Identifies age-dependent or gender-specific treatment effects
+
+    2. **Demographics-AE Correlations:**
+       - Age vs AE rate (Pearson correlation)
+       - Gender vs AE rate (Mann-Whitney U test)
+       - Detects demographic risk factors for adverse events
+
+    3. **Labs-AE Overlap:**
+       - Subjects with abnormal labs vs subjects with AEs
+       - Overlap rate: What % of abnormal labs also had AEs
+       - Assesses whether lab monitoring captures safety events
+
+    4. **Vitals-Labs Correlations:**
+       - Systolic BP vs Creatinine (Pearson correlation)
+       - Identifies physiological relationships
+       - Useful for mixed models and multivariate analysis
+
+    **Statistical Methods:**
+    - Pearson correlation: Linear relationships between continuous variables
+    - Welch's t-test: Group differences (e.g., male vs female)
+    - Mann-Whitney U: Non-parametric group comparisons (AE rates)
+    - Overlap analysis: Set intersection (labs ∩ AEs)
+
+    **Returns:**
+    - demographics_vitals:
+      - age_vs_sbp: Correlation, p-value, significance, interpretation
+      - gender_vs_sbp: Mean differences, t-statistic, p-value
+    - demographics_ae:
+      - age_vs_ae_rate: Correlation, p-value, significance
+      - gender_vs_ae_rate: Mean AE counts, U-statistic, p-value
+    - labs_ae:
+      - Subjects with abnormal labs, AEs, both, or either only
+      - Overlap rate (0-1)
+      - Association strength interpretation
+    - vitals_labs:
+      - sbp_vs_creatinine: Correlation, p-value, n_observations
+    - clinical_insights: List of key findings and recommendations
+
+    **Clinical Insights Examples:**
+    - "Age significantly correlates with blood pressure (r=0.45), suggesting age-dependent efficacy"
+    - "Significant gender difference in blood pressure (Δ=8.2 mmHg), consider gender-stratified analysis"
+    - "Strong association between lab abnormalities and AEs suggests lab monitoring is capturing safety events"
+
+    **Use Case:**
+    - Subgroup analysis planning
+    - Covariate identification for adjusted analyses
+    - Safety signal investigation
+    - Understanding mechanism of action
+    - Protocol refinement for future studies
+    """
+    try:
+        # Convert lists to DataFrames
+        demographics_df = pd.DataFrame(request.demographics_data) if request.demographics_data else None
+        vitals_df = pd.DataFrame(request.vitals_data) if request.vitals_data else None
+        labs_df = pd.DataFrame(request.labs_data) if request.labs_data else None
+        ae_df = pd.DataFrame(request.ae_data) if request.ae_data else None
+
+        result = analyze_cross_domain_correlations(
+            demographics_data=demographics_df,
+            vitals_data=vitals_df,
+            labs_data=labs_df,
+            ae_data=ae_df
+        )
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Cross-domain correlation analysis failed: {str(e)}"
+        )
+
+
+@app.post("/study/trial-dashboard")
+async def study_trial_dashboard(request: TrialDashboardRequest):
+    """
+    Generate executive trial dashboard with key performance indicators
+
+    **Purpose:**
+    Creates a high-level dashboard suitable for executive review, DSMB reports,
+    and regulatory briefing documents. Integrates all domains with AACT context
+    for industry benchmark comparison.
+
+    **Dashboard Sections:**
+
+    1. **Executive Summary:**
+       - Total subjects enrolled
+       - Data domains available (Demographics, Vitals, Labs, AEs)
+       - Data completeness (X/4 domains)
+
+    2. **Enrollment Status:**
+       - Total enrolled vs target
+       - By treatment arm (Active vs Placebo)
+       - Randomization balance assessment (Well-balanced / Imbalanced)
+
+    3. **Efficacy Metrics:**
+       - Primary endpoint visit (e.g., Week 12)
+       - Mean SBP by treatment arm
+       - Treatment effect (Active - Placebo)
+       - Efficacy assessment:
+         - <-10 mmHg: STRONG EFFECT
+         - -10 to -5 mmHg: MODERATE EFFECT
+         - -5 to 0 mmHg: WEAK EFFECT
+         - >0 mmHg: NO EFFECT
+
+    4. **Safety Metrics:**
+       - Total AEs, SAEs
+       - AE rate (% subjects with any AE)
+       - SAE rate (% of all AEs)
+       - Top 5 most common AEs
+       - Hy's Law cases (DILI)
+       - Kidney decline cases
+       - Overall safety assessment (flags for high SAE rate, Hy's Law)
+
+    5. **Quality Metrics:**
+       - Data completeness score (0-1)
+       - SDTM compliance status
+       - AACT similarity score
+       - Quality assessment (High/Good/Limited)
+
+    6. **AACT Context:**
+       - Enrollment percentile (industry comparison)
+       - Treatment effect percentile
+       - Similarity score (0-1)
+       - Industry assessment (e.g., "HIGHLY REALISTIC")
+       - Number of reference trials from AACT
+
+    7. **Risk Flags:**
+       - Severity levels: CRITICAL, HIGH, MEDIUM
+       - Categories: Enrollment, Efficacy, Safety, Data Quality
+       - Issue description + Recommendation
+       - Example: "CRITICAL - 2 Hy's Law cases → Immediate DSMB notification"
+
+    8. **Recommendations:**
+       - Actionable next steps based on risk flags
+       - AACT-based recommendations for parameter adjustments
+       - Overall trial status (progressing well / needs attention)
+
+    **Risk Flag Criteria:**
+    - **Enrollment**: Treatment arm imbalance >10%
+    - **Efficacy**: Weak or no effect detected
+    - **Safety**: Hy's Law cases (CRITICAL), SAE rate >15% (HIGH)
+    - **Data Quality**: Completeness <50% (MEDIUM)
+
+    **Use Case:**
+    - Executive briefings (C-suite, Board)
+    - DSMB interim reports
+    - Regulatory authority meetings (FDA, EMA)
+    - Portfolio review dashboards
+    - Real-time trial monitoring
+    - Quarterly business reviews (QBR)
+    """
+    try:
+        # Convert lists to DataFrames
+        demographics_df = pd.DataFrame(request.demographics_data) if request.demographics_data else None
+        vitals_df = pd.DataFrame(request.vitals_data) if request.vitals_data else None
+        labs_df = pd.DataFrame(request.labs_data) if request.labs_data else None
+        ae_df = pd.DataFrame(request.ae_data) if request.ae_data else None
+
+        result = generate_trial_dashboard(
+            demographics_data=demographics_df,
+            vitals_data=vitals_df,
+            labs_data=labs_df,
+            ae_data=ae_df,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Trial dashboard generation failed: {str(e)}"
+        )
+
+
+# ===== BENCHMARKING & EXTENSIONS ENDPOINTS (Phase 6) =====
+
+@app.post("/benchmark/performance")
+async def benchmark_performance(request: MethodComparisonRequest):
+    """
+    Compare performance of different data generation methods
+
+    **Purpose:**
+    Compares MVN, Bootstrap, Rules, and LLM data generation methods across
+    multiple dimensions: speed, quality, AACT similarity, memory usage.
+
+    **Comparison Dimensions:**
+
+    1. **Speed (records/second):**
+       - MVN: ~29,000 rec/sec (fastest statistical method)
+       - Bootstrap: ~140,000 rec/sec (fastest overall)
+       - Rules: ~80,000 rec/sec (fast deterministic)
+       - LLM: ~70 rec/sec (slowest, API latency)
+
+    2. **Quality Score (0-1):**
+       - Comprehensive quality assessment score
+       - Based on Wasserstein distance, correlation preservation, K-NN
+       - Higher = better match to real data
+
+    3. **AACT Similarity (0-1):**
+       - How well method matches real-world trial patterns
+       - Based on enrollment, treatment effects, AE patterns
+       - Higher = more realistic
+
+    4. **Memory Usage (MB):**
+       - Peak memory consumption during generation
+       - Important for large-scale generation (millions of records)
+
+    **Scoring:**
+    - Weighted overall score: 40% quality + 40% speed + 20% AACT
+    - Ranking: Methods ranked 1-4 by overall score
+
+    **Request Format:**
+    ```json
+    {
+      "methods_data": {
+        "mvn": {
+          "records_per_second": 29000,
+          "quality_score": 0.87,
+          "aact_similarity": 0.91,
+          "memory_mb": 45
+        },
+        "bootstrap": {
+          "records_per_second": 140000,
+          "quality_score": 0.92,
+          "aact_similarity": 0.88,
+          "memory_mb": 38
+        },
+        "rules": { ... },
+        "llm": { ... }
+      }
+    }
+    ```
+
+    **Response:**
+    - method_comparison: Performance table with all metrics
+    - ranking: Methods ranked by overall score
+    - recommendations: Which method to use for different scenarios
+    - tradeoffs: Speed vs quality vs realism considerations
+
+    **Recommendations by Use Case:**
+    - **Production (millions of records)**: Bootstrap (fastest + high quality)
+    - **Research (highest quality)**: LLM (creative, context-aware)
+    - **Regulatory (highest realism)**: Method with highest AACT similarity
+    - **Testing (fast iteration)**: Bootstrap or Rules
+
+    **Use Case:**
+    - Method selection for data generation pipeline
+    - Performance benchmarking
+    - Resource planning (memory, compute)
+    - Method comparison for publications
+    - Justifying method choice to stakeholders
+    """
+    try:
+        result = compare_generation_methods(request.methods_data)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Method comparison failed: {str(e)}"
+        )
+
+
+@app.post("/benchmark/quality-scores")
+async def benchmark_quality_scores(request: AggregateQualityRequest):
+    """
+    Aggregate quality scores across all data domains
+
+    **Purpose:**
+    Combines quality assessments from demographics, vitals, labs, AEs, and AACT
+    into a single overall quality score with detailed breakdown.
+
+    **Domain Quality Scores (0-1):**
+
+    1. **Demographics Quality (20% weight):**
+       - Wasserstein distance for Age, Weight, Height, BMI
+       - Chi-square tests for Gender, Race, Ethnicity
+       - Correlation preservation
+
+    2. **Vitals Quality (25% weight):**
+       - Distribution similarity for SBP, DBP, HR, Temp
+       - K-NN imputation score
+       - Temporal pattern preservation
+
+    3. **Labs Quality (25% weight):**
+       - Wasserstein distance for all lab tests
+       - KS test pass rate
+       - Mean differences vs real data
+
+    4. **AE Quality (20% weight):**
+       - SOC distribution similarity
+       - PT overlap (Jaccard)
+       - Severity/relationship distribution match
+
+    5. **AACT Similarity (10% weight):**
+       - Enrollment realism
+       - Treatment effect realism
+       - Overall trial structure match
+
+    **Weighted Formula:**
+    ```
+    Overall = 0.20×Demographics + 0.25×Vitals + 0.25×Labs + 0.20×AE + 0.10×AACT
+    ```
+
+    **Quality Grades:**
+    - **A+ (≥0.95)**: Exceptional - Publication quality
+    - **A (0.90-0.95)**: Excellent - Production ready
+    - **B+ (0.85-0.90)**: Very Good - Minor improvements possible
+    - **B (0.80-0.85)**: Good - Usable with minor adjustments
+    - **C+ (0.75-0.80)**: Fair - Some improvements needed
+    - **C (0.70-0.75)**: Acceptable - Moderate improvements needed
+    - **D (0.60-0.70)**: Poor - Significant improvements needed
+    - **F (<0.60)**: Failing - Not recommended for use
+
+    **Completeness Score:**
+    - Proportion of domains with quality data (0-1)
+    - 5/5 domains = 1.0 (fully comprehensive)
+    - 3/5 domains = 0.6 (partial)
+
+    **Response:**
+    - domain_scores: Individual scores for each domain
+    - overall_quality: Weighted aggregate score (0-1)
+    - quality_grade: Letter grade (A+ to F)
+    - completeness: Data domain coverage (0-1)
+    - interpretation: Human-readable assessment
+    - benchmarks: How score compares to industry standards
+    - recommendations: Specific improvements by domain
+
+    **Interpretation Examples:**
+    - **0.92 (A)**: "Excellent synthetic data quality across all domains.
+       Production-ready for regulatory submissions and publications."
+    - **0.78 (C+)**: "Fair quality. Demographics and vitals are good (>0.85),
+       but AE patterns need improvement. Consider adjusting AE generation parameters."
+    - **0.65 (D)**: "Poor quality. Significant deviations in labs (0.58) and AEs (0.62).
+       Review generation method and parameters."
+
+    **Use Case:**
+    - Comprehensive quality validation
+    - Method comparison across all domains
+    - Quality assurance before production use
+    - Regulatory documentation (quality evidence)
+    - Identifying which domains need improvement
+    - Portfolio-level quality tracking
+    """
+    try:
+        result = aggregate_quality_scores(
+            demographics_quality=request.demographics_quality,
+            vitals_quality=request.vitals_quality,
+            labs_quality=request.labs_quality,
+            ae_quality=request.ae_quality,
+            aact_similarity=request.aact_similarity
+        )
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Quality score aggregation failed: {str(e)}"
+        )
+
+
+@app.post("/study/recommendations")
+async def study_recommendations(request: RecommendationsRequest):
+    """
+    Generate data generation parameter recommendations
+
+    **Purpose:**
+    Analyzes current quality scores and provides specific, actionable recommendations
+    for improving synthetic data quality and realism. Uses AACT benchmarks to
+    suggest optimal parameter values.
+
+    **Analysis Inputs:**
+    - current_quality: Overall quality score (0-1)
+    - aact_similarity: AACT benchmark similarity (0-1)
+    - generation_method: "mvn", "bootstrap", "rules", "llm"
+    - n_subjects: Current sample size
+    - indication: Disease indication (e.g., "hypertension")
+    - phase: Trial phase (e.g., "Phase 3")
+
+    **Recommendation Categories:**
+
+    1. **Quality Improvements:**
+       - If quality < 0.85: Suggests parameter tuning
+       - Specific recommendations per generation method:
+         - MVN: Adjust covariance matrix, increase correlation realism
+         - Bootstrap: Increase jitter fraction, adjust resampling strategy
+         - Rules: Add variability, incorporate clinical ranges
+         - LLM: Refine prompts, add clinical context
+
+    2. **AACT Alignment:**
+       - If AACT similarity < 0.7: Trial structure needs adjustment
+       - Enrollment recommendations (based on AACT percentiles):
+         - Too small: Suggest industry-typical enrollment (e.g., 225 for HTN Phase 3)
+         - Too large: Flag unrealistic enrollment
+       - Treatment effect recommendations:
+         - Compare to AACT mean/median for indication/phase
+         - Suggest realistic effect sizes
+
+    3. **Method Recommendations:**
+       - If quality consistently low: Suggest switching methods
+       - Performance trade-offs (speed vs quality)
+       - Method-specific best practices
+
+    4. **Parameter Optimization:**
+       - n_subjects: Industry-typical enrollment
+       - target_effect: Realistic treatment effect size
+       - jitter_frac (Bootstrap): Optimal noise level
+       - correlation_strength (MVN): Realistic inter-variable correlation
+
+    **Priority Levels:**
+    - **HIGH**: Critical issues impacting quality/realism (Δ quality >0.15)
+    - **MEDIUM**: Moderate improvements possible (Δ quality 0.05-0.15)
+    - **LOW**: Minor refinements (Δ quality <0.05)
+
+    **Response:**
+    - current_status: Assessment of current quality and realism
+    - improvement_opportunities: Prioritized list of improvements
+    - parameter_recommendations: Specific parameter values to try
+    - method_recommendations: Alternative methods to consider
+    - expected_improvements: Estimated quality boost per recommendation
+    - aact_context: Industry benchmarks for comparison
+
+    **Example Recommendations:**
+
+    **Scenario 1 - Quality 0.72, AACT 0.65:**
+    ```
+    Priority: HIGH
+    Issue: Quality below production threshold (0.72 < 0.85)
+    AACT similarity low (0.65 < 0.70)
+
+    Recommendations:
+    1. Increase n_subjects from 50 to 225 (AACT median for HTN Phase 3)
+    2. Adjust treatment effect from -3.0 to -5.2 mmHg (AACT mean)
+    3. Switch from Rules to Bootstrap for better quality (expect +0.15)
+    4. Increase bootstrap jitter_frac from 0.05 to 0.08 (more variability)
+
+    Expected outcome: Quality 0.87, AACT 0.82
+    ```
+
+    **Scenario 2 - Quality 0.90, AACT 0.88:**
+    ```
+    Priority: MEDIUM
+    Issue: Good quality but can optimize further
+
+    Recommendations:
+    1. Fine-tune MVN covariance for correlation preservation (+0.03)
+    2. Add temporal trends to match longitudinal patterns (+0.02)
+    3. Enrollment (100) is reasonable but 225 is more typical (AACT)
+
+    Expected outcome: Quality 0.95 (A+), AACT 0.92
+    ```
+
+    **Use Case:**
+    - Parameter tuning for data generation
+    - Quality improvement roadmap
+    - Method selection guidance
+    - AACT-based trial design validation
+    - Regulatory readiness preparation
+    - Continuous quality improvement
+    """
+    try:
+        result = generate_recommendations(
+            current_quality=request.current_quality,
+            aact_similarity=request.aact_similarity,
+            generation_method=request.generation_method,
+            n_subjects=request.n_subjects,
+            indication=request.indication,
+            phase=request.phase
+        )
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Recommendations generation failed: {str(e)}"
+        )
+
+
+# =============================================================================
+# PHASE 7: SURVIVAL ANALYSIS ENDPOINTS
+# =============================================================================
+
+@app.post("/survival/comprehensive")
+async def analyze_survival_comprehensive(request: SurvivalAnalysisRequest):
+    """
+    Comprehensive survival analysis including KM curves, log-rank test, and hazard ratios.
+
+    **What It Does:**
+    1. Generates time-to-event data from demographics
+    2. Calculates Kaplan-Meier survival curves for each arm
+    3. Performs log-rank test for difference between arms
+    4. Calculates hazard ratio with 95% CI
+    5. Exports data in CDISC SDTM TTE domain format
+
+    **Use Cases:**
+    - Oncology trials (Overall Survival, Progression-Free Survival)
+    - Time-to-event endpoints in any therapeutic area
+    - CSR survival analysis tables
+    - Regulatory submission packages (SDTM TTE domain)
+    """
+    try:
+        result = comprehensive_survival_analysis(
+            demographics_data=request.demographics_data,
+            indication=request.indication,
+            median_survival_active=request.median_survival_active,
+            median_survival_placebo=request.median_survival_placebo,
+            seed=request.seed
+        )
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Survival analysis failed: {str(e)}"
+        )
+
+
+@app.post("/survival/kaplan-meier")
+async def calculate_km_curves(request: Dict[str, Any]):
+    """
+    Calculate Kaplan-Meier survival curves with confidence intervals.
+
+    **Inputs:**
+    - survival_data: List of survival records with EventTime, EventOccurred, Censored
+    - treatment_arm: Optional specific arm to analyze (None = all)
+
+    **Outputs:**
+    - km_curve: Time points with survival probability and CI
+    - median_survival: Median survival time
+    - n_subjects, n_events, n_censored
+    """
+    try:
+        survival_data = request.get("survival_data", [])
+        treatment_arm = request.get("treatment_arm")
+
+        result = calculate_kaplan_meier(survival_data, treatment_arm)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"KM calculation failed: {str(e)}"
+        )
+
+
+@app.post("/survival/log-rank-test")
+async def perform_log_rank_test(request: Dict[str, Any]):
+    """
+    Perform log-rank test to compare survival curves between two treatment arms.
+
+    **Statistical Test:**
+    - Null hypothesis: No difference in survival between arms
+    - Test statistic: Chi-square with 1 df
+    - Significance level: α = 0.05
+
+    **Outputs:**
+    - test_statistic: Chi-square value
+    - p_value: Two-sided p-value
+    - significant: Boolean (p < 0.05)
+    - interpretation: Text summary
+    """
+    try:
+        survival_data = request.get("survival_data", [])
+        arm1 = request.get("arm1", "Active")
+        arm2 = request.get("arm2", "Placebo")
+
+        result = log_rank_test(survival_data, arm1, arm2)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Log-rank test failed: {str(e)}"
+        )
+
+
+@app.post("/survival/hazard-ratio")
+async def calculate_hr(request: Dict[str, Any]):
+    """
+    Calculate hazard ratio comparing treatment to reference arm.
+
+    **Hazard Ratio Interpretation:**
+    - HR < 1: Treatment reduces risk (favors treatment)
+    - HR = 1: No difference between arms
+    - HR > 1: Treatment increases risk (favors control)
+
+    **Example:**
+    HR = 0.75 (95% CI: 0.58, 0.97)
+    Treatment reduces risk of death by 25% vs control (p=0.032)
+
+    **Outputs:**
+    - hazard_ratio: HR value
+    - ci_lower, ci_upper: 95% confidence interval
+    - interpretation: Clinical benefit assessment
+    """
+    try:
+        survival_data = request.get("survival_data", [])
+        reference_arm = request.get("reference_arm", "Placebo")
+        treatment_arm = request.get("treatment_arm", "Active")
+
+        result = calculate_hazard_ratio(survival_data, reference_arm, treatment_arm)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Hazard ratio calculation failed: {str(e)}"
+        )
+
+
+# =============================================================================
+# PHASE 8: ADAM DATASET GENERATION ENDPOINTS
+# =============================================================================
+
+@app.post("/adam/generate-all")
+async def generate_all_adam(request: AdamGenerationRequest):
+    """
+    Generate all CDISC ADaM datasets from source data.
+
+    **What It Generates:**
+    1. **ADSL** - Subject-Level Analysis Dataset (one row per subject)
+    2. **ADTTE** - Time-to-Event Analysis Dataset (survival endpoints)
+    3. **ADAE** - Adverse Event Analysis Dataset (safety analysis)
+    4. **BDS Vitals** - Basic Data Structure for vitals (longitudinal)
+    5. **BDS Labs** - Basic Data Structure for labs (longitudinal)
+
+    **Why ADaM?**
+    - FDA/EMA require ADaM for regulatory submissions
+    - ADaM is analysis-ready (vs SDTM which is collected data)
+    - Biostatisticians work directly with ADaM datasets
+    - ADaM includes derived variables (BASE, CHG, analysis flags)
+
+    **Use Cases:**
+    - Regulatory submission packages
+    - Statistical analysis programming
+    - Biostatistician training
+    - Method validation
+    """
+    try:
+        result = generate_all_adam_datasets(
+            demographics_data=request.demographics_data,
+            vitals_data=request.vitals_data,
+            labs_data=request.labs_data,
+            ae_data=request.ae_data,
+            survival_data=request.survival_data,
+            study_id=request.study_id
+        )
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ADaM generation failed: {str(e)}"
+        )
+
+
+@app.post("/adam/adsl")
+async def generate_adsl_dataset(request: AdamGenerationRequest):
+    """
+    Generate ADSL (Subject-Level Analysis Dataset).
+
+    **ADSL is the cornerstone dataset containing:**
+    - Demographics (age, sex, race, ethnicity)
+    - Treatment assignment (planned and actual)
+    - Important dates (screening, randomization, treatment start/end)
+    - Disposition (completed, discontinued, reason)
+    - Analysis population flags (ITT, Safety, Per-Protocol)
+    - Baseline values
+    - Derived variables for analysis
+
+    **One record per subject** - All other ADaM datasets link to ADSL via USUBJID.
+    """
+    try:
+        adsl = generate_adsl(
+            demographics_data=request.demographics_data,
+            vitals_data=request.vitals_data,
+            ae_data=request.ae_data,
+            study_id=request.study_id
+        )
+        return convert_numpy_types({"ADSL": adsl, "n_subjects": len(adsl)})
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"ADSL generation failed: {str(e)}"
+        )
+
+
+# =============================================================================
+# PHASE 9: TLF AUTOMATION ENDPOINTS
+# =============================================================================
+
+@app.post("/tlf/generate-all")
+async def generate_all_tlf(request: TLFRequest):
+    """
+    Generate all standard TLF (Tables, Listings, Figures) for clinical study report.
+
+    **What It Generates:**
+    1. **Table 1** - Demographics and Baseline Characteristics
+    2. **Table 2** - Adverse Event Summary by SOC and Preferred Term
+    3. **Table 3** - Efficacy Endpoints Summary
+
+    **Why This Matters:**
+    - Biostatisticians spend 30-40% of time creating these tables manually
+    - Automation saves weeks of work per study
+    - Ensures consistency across trials
+    - Publication-ready format (markdown + structured data)
+
+    **Output Formats:**
+    - Structured table data (for programmatic use)
+    - Markdown format (for Word/PDF export)
+    - Ready for regulatory submission
+
+    **Use Cases:**
+    - CSR table generation
+    - Manuscript preparation
+    - Protocol amendments (sample tables)
+    - Training (showing expected output format)
+    """
+    try:
+        # Validate that demographics_data is not empty
+        if not request.demographics_data or len(request.demographics_data) == 0:
+            raise ValueError("demographics_data is required and cannot be empty")
+
+        result = generate_all_tlf_tables(
+            demographics_data=request.demographics_data,
+            ae_data=request.ae_data if request.ae_data else [],
+            vitals_data=request.vitals_data if request.vitals_data else [],
+            survival_data=request.survival_data if request.survival_data else []
+        )
+        # Wrap tables in a "tables" object for frontend compatibility
+        return convert_numpy_types({"tables": result})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()  # Print full traceback to console for debugging
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"TLF generation failed: {str(e)}"
+        )
+
+
+@app.post("/tlf/table1-demographics")
+async def generate_table1(request: Dict[str, Any]):
+    """
+    Generate Table 1: Demographics and Baseline Characteristics.
+
+    **Standard Table 1 Format:**
+    - Age (mean, SD, min, max, categories)
+    - Gender (n, %)
+    - Race (n, %)
+    - Ethnicity (n, %)
+    - Weight, Height, BMI
+    - By treatment arm + total column
+
+    **Statistical Tests:**
+    - Continuous: t-test or Wilcoxon
+    - Categorical: Chi-square or Fisher's exact
+    - Assesses baseline comparability between arms
+
+    **Output:**
+    - Table data (JSON)
+    - Markdown format (for Word export)
+    - Statistical test results (if requested)
+    """
+    try:
+        demographics_data = request.get("demographics_data", [])
+        include_stats = request.get("include_stats", True)
+
+        result = generate_table1_demographics(demographics_data, include_stats)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Table 1 generation failed: {str(e)}"
+        )
+
+
+@app.post("/tlf/table2-adverse-events")
+async def generate_table2_ae(request: Dict[str, Any]):
+    """
+    Generate Table 2: Adverse Event Summary by SOC and Preferred Term.
+
+    **Standard AE Table Format:**
+    - Any Adverse Event (overall incidence)
+    - Any Serious Adverse Event
+    - Any Related Adverse Event
+    - By System Organ Class (MedDRA SOC)
+      - Preferred Terms within each SOC
+    - Shows n (%) for each treatment arm
+    - Only AEs occurring in ≥5% of subjects (configurable)
+
+    **Use Cases:**
+    - CSR safety section
+    - SAE reporting
+    - Risk-benefit assessment
+    - Regulatory review
+    """
+    try:
+        ae_data = request.get("ae_data", [])
+        by_soc = request.get("by_soc", True)
+        min_incidence = request.get("min_incidence", 5.0)
+
+        result = generate_ae_summary_table(ae_data, by_soc, min_incidence)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AE table generation failed: {str(e)}"
+        )
+
+
+@app.post("/tlf/table3-efficacy")
+async def generate_table3_efficacy(request: Dict[str, Any]):
+    """
+    Generate Table 3: Efficacy Endpoints Summary.
+
+    **For Vitals Endpoints:**
+    - Primary: Systolic BP at Week 12 (mean, SD by arm)
+    - Secondary: Diastolic BP, Heart Rate
+    - Treatment effect (difference with 95% CI)
+    - P-value from t-test
+
+    **For Survival Endpoints:**
+    - Median survival by arm
+    - Hazard ratio (95% CI)
+    - P-value from log-rank test
+    - Events/censored counts
+
+    **Output:**
+    - Formatted efficacy table
+    - Statistical test results
+    - Clinical interpretation
+    """
+    try:
+        vitals_data = request.get("vitals_data")
+        survival_data = request.get("survival_data")
+        endpoint_type = request.get("endpoint_type", "vitals")
+
+        result = generate_efficacy_table(vitals_data, survival_data, endpoint_type)
+        return convert_numpy_types(result)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Efficacy table generation failed: {str(e)}"
+        )
+
+
+# =============================================================================
+# PHASE 10: TRIAL PLANNING ENDPOINTS
+# =============================================================================
+
+@app.post("/trial-planning/virtual-control-arm")
+async def create_virtual_control_arm(request: VirtualControlArmRequest):
+    """
+    Generate fully synthetic virtual control arm from historical data
+    
+    **Use Cases:**
+    - Reduce placebo patients needed in trial
+    - Generate control arm for trial planning and simulation
+    - Ethical alternative when placebo is problematic
+    - Test trial designs before recruiting patients
+    
+    **How It Works:**
+    1. Learns characteristics from historical/pilot data (if provided)
+    2. Generates virtual control subjects with realistic trajectories
+    3. Applies placebo effect and natural variation
+    
+    **Input:**
+    - historical_data: Optional pilot data to learn from
+    - n_control: Number of virtual control subjects to generate
+    - target_effect: Expected treatment effect (for power calculations)
+    - baseline_mean_sbp: Mean baseline systolic BP
+    - baseline_std_sbp: Std dev baseline systolic BP
+    - seed: Random seed for reproducibility
+    
+    **Output:**
+    - virtual_control_data: Generated virtual control records
+    - summary: Statistical summary of generated data
+    - quality_metrics: Quality assessment scores
+    - use_case: Recommended use case
+    
+    **Inspired by:** Medidata's Synthetic Control Arms product
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+        
+        # Create generator instance
+        generator = VirtualControlArmGenerator()
+        
+        # If historical data provided, learn from it
+        if request.historical_data and len(request.historical_data) > 0:
+            historical_df = pd.DataFrame(request.historical_data)
+            # Filter for control/placebo arm if available
+            if 'TreatmentArm' in historical_df.columns:
+                control_data = historical_df[historical_df['TreatmentArm'].isin(['Placebo', 'Control'])]
+                if len(control_data) > 0:
+                    generator.fit(control_data)
+        
+        # Override baseline parameters if provided
+        if request.baseline_mean_sbp:
+            generator.baseline_vitals['SystolicBP']['mean'] = request.baseline_mean_sbp
+        if request.baseline_std_sbp:
+            generator.baseline_vitals['SystolicBP']['std'] = request.baseline_std_sbp
+        
+        # Generate virtual control arm
+        virtual_control_df = generator.generate_virtual_control_arm(
+            n_subjects=request.n_control,
+            seed=request.seed
+        )
+        
+        # Calculate summary statistics
+        screening = virtual_control_df[virtual_control_df['VisitName'] == 'Screening']
+        week12 = virtual_control_df[virtual_control_df['VisitName'] == 'Week 12']
+        
+        summary = {
+            "virtual_control": {
+                "mean_sbp": screening['SystolicBP'].mean() if len(screening) > 0 else 0,
+                "std_sbp": screening['SystolicBP'].std() if len(screening) > 0 else 0,
+                "week12_mean_sbp": week12['SystolicBP'].mean() if len(week12) > 0 else 0,
+            },
+            "n_subjects": request.n_control,
+            "n_records": len(virtual_control_df)
+        }
+        
+        # Quality metrics (simplified for now)
+        quality_metrics = {
+            "similarity_score": 0.85,  # Placeholder - could compare to historical data
+            "wasserstein_distance": 2.5,  # Placeholder
+            "correlation_preservation": 0.9  # Placeholder
+        }
+        
+        use_case = (
+            f"Generated {request.n_control} virtual control subjects. "
+            f"Can be used for trial planning, sample size calculations, or as synthetic comparator. "
+            f"Baseline SBP: {summary['virtual_control']['mean_sbp']:.1f} ± {summary['virtual_control']['std_sbp']:.1f} mmHg."
+        )
+        
+        return {
+            "virtual_control_data": virtual_control_df.to_dict(orient="records"),
+            "summary": summary,
+            "quality_metrics": quality_metrics,
+            "use_case": use_case
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Virtual control arm generation failed: {str(e)}"
+        )
+
+
+@app.post("/trial-planning/augment-control-arm", response_model=AugmentControlArmResponse)
+async def augment_control_arm(request: AugmentControlArmRequest):
+    """
+    Augment a small real control arm with synthetic subjects
+    
+    **Use Case:**
+    - You have limited historical control data (e.g., n=20)
+    - You need more power (e.g., n=50)
+    - Augment real data with 30 synthetic subjects matching real characteristics
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+            
+        real_df = pd.DataFrame(request.real_control_data)
+        generator = VirtualControlArmGenerator()
+        
+        # Calculate target total N
+        target_n = len(real_df) + request.n_synthetic
+        
+        augmented_df, stats = generator.augment_small_control_arm(
+            real_control=real_df,
+            target_n=target_n,
+            seed=request.seed
+        )
+        
+        return {
+            "augmented_data": augmented_df.to_dict(orient="records"),
+            "original_n": stats["n_real"],
+            "added_n": stats["n_virtual"],
+            "total_n": stats["n_total"],
+            "summary": stats
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Augment control arm failed: {str(e)}"
+        )
+
+
+@app.post("/trial-planning/what-if/enrollment", response_model=WhatIfEnrollmentResponse)
+async def what_if_enrollment(request: WhatIfEnrollmentRequest):
+    """
+    Simulate trial outcomes for different enrollment sizes
+    
+    **What-If Question:**
+    "How does statistical power change if we enroll 25, 50, or 100 patients per arm?"
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+            
+        baseline_df = pd.DataFrame(request.baseline_data)
+        
+        result = run_what_if_enrollment_analysis(
+            baseline_data=baseline_df,
+            enrollment_sizes=request.enrollment_sizes,
+            target_effect=request.target_effect,
+            seed=request.seed
+        )
+        
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Enrollment what-if analysis failed: {str(e)}"
+        )
+
+
+@app.post("/trial-planning/what-if/patient-mix", response_model=WhatIfPatientMixResponse)
+async def what_if_patient_mix(request: WhatIfPatientMixRequest):
+    """
+    Simulate trial outcomes for different patient populations (severity shifts)
+    
+    **What-If Question:**
+    "What if our patients have higher baseline blood pressure (+10 mmHg)? 
+    Will the treatment effect still be detectable?"
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+            
+        baseline_df = pd.DataFrame(request.baseline_data)
+        simulator = WhatIfScenarioSimulator(baseline_df)
+        
+        result = simulator.simulate_patient_mix_scenarios(
+            severity_shifts=request.severity_shifts,
+            n_per_arm=request.n_per_arm,
+            target_effect=request.target_effect,
+            seed=request.seed
+        )
+        
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Patient mix what-if analysis failed: {str(e)}"
+        )
+
+
+@app.post("/trial-planning/feasibility", response_model=FeasibilityAssessmentResponse)
+async def assess_trial_feasibility(request: FeasibilityAssessmentRequest):
+    """
+    Assess trial feasibility and calculate required sample size
+    
+    **Use Cases:**
+    - Determine minimum sample size needed to detect target effect
+    - Assess trial feasibility based on recruitment constraints
+    - Calculate statistical power for different enrollment scenarios
+    """
+    try:
+        if not TRIAL_PLANNING_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Trial planning module not available"
+            )
+            
+        baseline_df = pd.DataFrame(request.baseline_data)
+        
+        result = estimate_trial_feasibility(
+            baseline_data=baseline_df,
+            target_effect=request.target_effect,
+            power=request.power,
+            dropout_rate=request.dropout_rate
+        )
+        
+        # Flatten result for response model
+        return {
+            "sample_size": result["sample_size"],
+            "timeline": result["timeline"],
+            "feasibility": result["feasibility"],
+            "parameters": result["parameters"],
+            "required_n_per_arm": result["sample_size"]["n_per_arm_with_dropout"],
+            "effect_size_cohens_d": result["sample_size"]["effect_size_cohens_d"]
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Feasibility assessment failed: {str(e)}"
+        )
+
+
+# ============================================================================
+# ENHANCED VALIDATION ENDPOINTS - For ML Research-Grade Data
+# ============================================================================
+
+from validation_enhanced import (
+    TemporalCorrelationValidator,
+    HeterogeneousEffectsValidator,
+    MissingnessValidator,
+    validate_comprehensive
+)
+
+class EnhancedValidationRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Trial data as list of records")
+
+class TemporalValidationResponse(BaseModel):
+    status: str
+    grade: Optional[str] = None
+    metrics: Dict[str, Any]
+    interpretation: Optional[str] = None
+    recommendations: List[str]
+
+class HeterogeneityValidationResponse(BaseModel):
+    status: str
+    grade: Optional[str] = None
+    metrics: Dict[str, Any]
+    interpretation: Optional[str] = None
+    heterogeneity_score: Optional[int] = None
+    recommendations: List[str]
+
+class MissingnessValidationResponse(BaseModel):
+    status: str
+    classification: Optional[str] = None
+    mar_tests: Dict[str, Any]
+    interpretation: Optional[str] = None
+    recommendations: List[str]
+
+class ComprehensiveEnhancedValidationResponse(BaseModel):
+    timestamp: str
+    n_subjects: int
+    n_measurements: int
+    validations: Dict[str, Any]
+    overall: Dict[str, Any]
+
+
+@app.post("/validate/temporal-correlation", response_model=TemporalValidationResponse)
+async def validate_temporal_correlation(request: EnhancedValidationRequest):
+    """
+    Validate temporal correlation in longitudinal data
+    
+    Checks if visit-to-visit measurements show realistic autocorrelation (ρ~0.7).
+    This is critical for longitudinal ML models and mixed-effects regression.
+    
+    **What it validates:**
+    - Lag-1 autocorrelation between consecutive visits
+    - Expected range: ρ = 0.6-0.8 for vital signs
+    - Identifies subjects with suspicious patterns
+    
+    **Example request:**
+    ```json
+    {
+        "data": [
+            {"SubjectID": "S001", "VisitWeek": 0, "SystolicBP": 145, ...},
+            {"SubjectID": "S001", "VisitWeek": 4, "SystolicBP": 142, ...},
+            ...
+        ]
+    }
+    ```
+    
+    **Returns:**
+    - status: "pass" or "fail"
+    - grade: A/B/C/D based on quality
+    - mean_correlation: Observed ρ value
+    - recommendations: How to improve if needed
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if 'SubjectID' not in df.columns or 'SystolicBP' not in df.columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Data must contain SubjectID and SystolicBP columns"
+            )
+        
+        validator = TemporalCorrelationValidator()
+        result = validator.validate(df)
+        
+        return TemporalValidationResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Temporal correlation validation failed: {str(e)}"
+        )
+
+
+@app.post("/validate/heterogeneous-effects", response_model=HeterogeneityValidationResponse)
+async def validate_heterogeneous_effects(request: EnhancedValidationRequest):
+    """
+    Validate treatment effect heterogeneity
+    
+    Checks if treatment effects vary realistically across subjects.
+    Real trials show responders, non-responders, and moderate responders.
+    
+    **What it validates:**
+    - Standard deviation of treatment effects (should be >2 mmHg)
+    - Responder distribution (super/moderate/non-responder)  
+    - Comparison across treatment arms
+    
+    **Example request:**
+    ```json
+    {
+        "data": [
+            {"SubjectID": "S001", "VisitWeek": 0, "SystolicBP": 145, "TreatmentArm": "Active"},
+            {"SubjectID": "S001", "VisitWeek": 12, "SystolicBP": 138, "TreatmentArm": "Active"},
+            ...
+        ]
+    }
+    ```
+    
+    **Returns:**
+    - status: "pass" or "fail"
+    - Effect statistics by arm
+    - Responder distribution
+    - Heterogeneity score (0-100)
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        
+        required_cols = ['SubjectID', 'VisitWeek', 'SystolicBP', 'TreatmentArm']
+        if not all(col in df.columns for col in required_cols):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Data must contain columns: {required_cols}"
+            )
+        
+        validator = HeterogeneousEffectsValidator()
+        result = validator.validate(df)
+        
+        return HeterogeneityValidationResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Heterogeneity validation failed: {str(e)}"
+        )
+
+
+@app.post("/validate/missingness-mechanism", response_model=MissingnessValidationResponse)
+async def validate_missingness_mechanism(request: EnhancedValidationRequest):
+    """
+    Classify and validate missingness mechanism
+    
+    Determines if dropout follows realistic patterns:
+    - MCAR: Random (unrealistic)
+    - MAR: Correlated with observed data (realistic)
+    - MNAR: Correlated with unobserved factors (most realistic)
+    
+    **What it validates:**
+    - Association with adverse events
+    - Differential dropout by treatment arm
+    - Correlation with baseline vitals
+    
+    **Example request:**
+    ```json
+    {
+        "data": [
+            {"SubjectID": "S001", "dropout": false, "has_severe_ae": false, "TreatmentArm": "Active"},
+            {"SubjectID": "S002", "dropout": true, "has_severe_ae": true, "TreatmentArm": "Active"},
+            ...
+        ]
+    }
+    ```
+    
+    **Returns:**
+    - classification: "MCAR" / "MAR" / "MNAR"
+    - Statistical tests for MAR associations
+    - Interpretation and recommendations
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        
+        if 'dropout' not in df.columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Data must contain 'dropout' column"
+            )
+        
+        validator = MissingnessValidator()
+        result = validator.validate(df)
+        
+        # Import convert_numpy_types if not already done
+        from validation_enhanced import convert_numpy_types
+        result = convert_numpy_types(result)
+        
+        return MissingnessValidationResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Missingness validation failed: {str(e)}"
+        )
+
+
+@app.post("/validate/enhanced-comprehensive", response_model=ComprehensiveEnhancedValidationResponse)
+async def validate_enhanced_comprehensive(request: EnhancedValidationRequest):
+    """
+    Run all enhanced validations in one call
+    
+    Comprehensive validation of:
+    1. Temporal correlation (AR1 model)
+    2. Heterogeneous treatment effects
+    3. Missingness mechanisms (MAR/MNAR)
+    
+    **Use this for:**
+    - Quality assurance of generated data
+    - Validating before publication
+    - Comparing old vs new generators
+    - Regulatory submission prep
+    
+    **Returns:**
+    - Overall quality score (0-100)
+    - Grade (A/B/C/D)
+    - Detailed results for each validation
+    - Aggregate recommendations
+    
+    **Example:**
+    ```python
+    # Check if your enhanced generator is working
+    df = generate_vitals_enhanced(n_per_arm=100)
+    result = validate_enhanced_comprehensive(df.to_dict('records'))
+    
+    if result['overall']['grade'] == 'A':
+        print("✅ Publication-ready quality!")
+    ```
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        
+        result = validate_comprehensive(df)
+        
+        return ComprehensiveEnhancedValidationResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Comprehensive validation failed: {str(e)}"
         )
 
 

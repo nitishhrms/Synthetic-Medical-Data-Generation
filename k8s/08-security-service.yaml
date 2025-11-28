@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: security-service
+  namespace: clinical-trials
+  labels:
+    app: security-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: security-service
+  template:
+    metadata:
+      labels:
+        app: security-service
+        tier: backend
+    spec:
+      containers:
+      - name: security-service
+        image: 432180555044.dkr.ecr.us-east-1.amazonaws.com/clinical-trials/security-service:latest
+        ports:
+        - containerPort: 8005
+          name: http
+        env:
+        - name: PORT
+          value: "8005"
+        envFrom:
+        - configMapRef:
+            name: clinical-config
+        - secretRef:
+            name: clinical-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: security-service
+  namespace: clinical-trials
+  labels:
+    app: security-service
+spec:
+  type: ClusterIP
+  selector:
+    app: security-service
+  ports:
+  - port: 8005
+    targetPort: 8005
+    protocol: TCP
+    name: http

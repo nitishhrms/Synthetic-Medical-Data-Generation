@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
-import { Home, Activity, BarChart3, Beaker, FileText, Settings, TrendingUp, MessageSquare, ClipboardEdit } from "lucide-react";
+import { Home, Activity, BarChart3, Beaker, FileText, Settings, MessageSquare, ClipboardEdit, Table, FlaskConical, Brain } from "lucide-react";
 
-export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry";
+export type Screen = "dashboard" | "generate" | "analytics" | "studies" | "quality" | "settings" | "system-check" | "rbqm" | "queries" | "data-entry" | "survival" | "adam" | "tlf" | "trial-planning" | "linkup" | "medical-imaging" | "ai-monitor";
 
 interface NavigationRailProps {
   activeScreen: Screen;
@@ -12,8 +12,10 @@ const navItems = [
   { id: "dashboard" as Screen, label: "Dashboard", icon: Home },
   { id: "generate" as Screen, label: "Generate", icon: Beaker },
   { id: "analytics" as Screen, label: "Analytics", icon: BarChart3 },
+  { id: "tlf" as Screen, label: "TLF", icon: Table },
   { id: "quality" as Screen, label: "Quality", icon: Activity },
-  { id: "rbqm" as Screen, label: "RBQM", icon: TrendingUp },
+  { id: "trial-planning" as Screen, label: "Planning", icon: FlaskConical },
+  { id: "ai-monitor" as Screen, label: "AI Monitor", icon: Brain },
   { id: "queries" as Screen, label: "Queries", icon: MessageSquare },
   { id: "data-entry" as Screen, label: "Data Entry", icon: ClipboardEdit },
   { id: "studies" as Screen, label: "Studies", icon: FileText },

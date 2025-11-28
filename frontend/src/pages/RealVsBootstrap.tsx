@@ -5,7 +5,6 @@ import { SummaryTable, createNumericColumn, createTextColumn } from '@/component
 import ReactECharts from 'echarts-for-react';
 import {
   mean,
-  std,
   countUnique,
   extractField,
   groupBy,
@@ -66,7 +65,7 @@ export const RealVsBootstrap: React.FC<RealVsBootstrapProps> = ({
   const recordsPerVisitData = useMemo(() => {
     const realVisits = groupBy(realData, 'VisitName');
     const bootstrapVisits = groupBy(bootstrapData, 'VisitName');
-    const visitOrder = ['Screening', 'Day 1', 'Week 4', 'Week 12'];
+    const visitOrder = ['Screening', 'Day 1', 'Week 4', 'Week 12'] as const;
 
     return visitOrder.map(visit => ({
       visit,

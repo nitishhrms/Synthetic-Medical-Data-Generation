@@ -32,11 +32,11 @@ export const SummaryTable: React.FC<SummaryTableProps> = ({
 
     // Get headers from columns or data keys
     const headers = columns
-      ? columns.map(col => col.title as string)
+      ? columns.filter(col => 'dataIndex' in col).map(col => col.title as string)
       : Object.keys(data[0]);
 
     const dataKeys = columns
-      ? columns.map(col => col.dataIndex as string)
+      ? columns.filter(col => 'dataIndex' in col).map(col => (col as any).dataIndex as string)
       : Object.keys(data[0]);
 
     // Create CSV content

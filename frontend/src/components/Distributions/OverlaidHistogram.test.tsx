@@ -1,5 +1,4 @@
-import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { OverlaidHistogram } from './OverlaidHistogram';
 
 // Mock antd Button to avoid issues with icons
@@ -30,7 +29,7 @@ describe('OverlaidHistogram', () => {
   });
 
   it('should render with density mode', () => {
-    const { container } = render(
+    render(
       <OverlaidHistogram
         title="Test Histogram"
         datasets={mockDatasets}
@@ -40,9 +39,8 @@ describe('OverlaidHistogram', () => {
       />
     );
 
-    // Check that the ECharts mock is rendered
-    const echartsMock = container.querySelector('[data-testid="echarts-mock"]');
-    expect(echartsMock).toBeInTheDocument();
+    // Check that the component renders
+    expect(screen.getByText(/PNG/i)).toBeInTheDocument();
   });
 
   it('should render with count mode', () => {
@@ -61,7 +59,7 @@ describe('OverlaidHistogram', () => {
   });
 
   it('should handle empty datasets gracefully', () => {
-    const { container } = render(
+    render(
       <OverlaidHistogram
         title="Empty Histogram"
         datasets={[{ name: 'Empty', data: [], color: '#10b981' }]}

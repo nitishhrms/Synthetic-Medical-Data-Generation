@@ -20,23 +20,53 @@ def _phi(x: float) -> float:
     return 0.5 * (1.0 + erf(x / np.sqrt(2.0)))
 
 
-def calculate_week12_statistics(df: pd.DataFrame) -> Dict[str, Any]:
+def calculate_week12_statistics(df: pd.DataFrame, visit_name: str = "Week 12") -> Dict[str, Any]:
     """
-    Calculate Week-12 statistics (Active vs Placebo)
+    Calculate final visit statistics (Active vs Placebo)
 
-    Performs Welch's t-test on SystolicBP at Week 12
+    Performs Welch's t-test on SystolicBP at the specified final visit
 
     Args:
         df: DataFrame with vitals data
+        visit_name: Name of the visit to analyze (default: "Week 12")
+                   Can be "Week 12", "Month 6", "Month 12", "Week 16", etc.
+                   If specified visit not found, auto-detects final visit
 
     Returns:
         Dict with statistical test results in nested format
     """
-    # Filter to Week 12 only
-    wk12 = df[df["VisitName"] == "Week 12"].copy()
+    # Filter to specified visit only
+    wk12 = df[df["VisitName"] == visit_name].copy()
 
     if wk12.empty:
-        raise ValueError("No Week 12 data found")
+        # Auto-fallback: Try to find the final visit in the data
+        available_visits = sorted(df["VisitName"].unique().tolist())
+
+        # Try to auto-detect final visit using common visit order
+        visit_order = ["Screening", "Day 1", "Week 2", "Week 4", "Week 8", "Week 12", "Week 16", "Week 24",
+                      "Month 3", "Month 4", "Month 6", "Month 9", "Month 12", "Month 18", "Month 24"]
+
+        # Find the last visit in visit_order that exists in data
+        detected_visit = None
+        for v in reversed(visit_order):
+            if v in available_visits:
+                detected_visit = v
+                break
+
+        # If auto-detection worked, use it; otherwise, use the last available visit
+        if detected_visit:
+            visit_name = detected_visit
+        elif available_visits:
+            visit_name = available_visits[-1]
+        else:
+            raise ValueError(f"No visits found in the data")
+
+        print(f"[AUTO-DETECT] Requested visit '{visit_name}' not found. Using auto-detected final visit: '{visit_name}'")
+        wk12 = df[df["VisitName"] == visit_name].copy()
+
+        # If still empty after auto-detection, raise error
+        if wk12.empty:
+            raise ValueError(f"No data found even after auto-detection. Available visits: {available_visits}")
 
     # Split by treatment arm
     wk12["SystolicBP"] = pd.to_numeric(wk12["SystolicBP"], errors="coerce")
@@ -44,7 +74,19 @@ def calculate_week12_statistics(df: pd.DataFrame) -> Dict[str, Any]:
     placebo = wk12[wk12["TreatmentArm"] == "Placebo"]["SystolicBP"].dropna().values
 
     if len(active) == 0 or len(placebo) == 0:
-        raise ValueError("Insufficient data for both arms at Week 12")
+        # Provide detailed error message showing what data is available
+        arm_counts = wk12.groupby("TreatmentArm").size().to_dict()
+        missing_arms = []
+        if len(active) == 0:
+            missing_arms.append("Active")
+        if len(placebo) == 0:
+            missing_arms.append("Placebo")
+
+        error_msg = f"Insufficient data for both arms at '{visit_name}'. "
+        error_msg += f"Missing arms: {', '.join(missing_arms)}. "
+        error_msg += f"Available: {arm_counts}. "
+        error_msg += "Try generating data with more subjects per arm."
+        raise ValueError(error_msg)
 
     # Calculate basic statistics
     x_active = np.asarray(active, dtype=float)

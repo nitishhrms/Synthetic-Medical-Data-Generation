@@ -44,18 +44,26 @@ export function RBQMDashboard() {
       setLoading(true);
       setError(null);
 
-      // Fetch vitals data
-      const vitalsRes = await fetch('http://localhost:8004/vitals/all');
+      // Fetch queries data from EDC service (port 8001)
+      const queriesRes = await fetch('http://localhost:8001/queries');
+      let queries = [];
+      if (queriesRes.ok) {
+        const queriesData = await queriesRes.json();
+        queries = queriesData.queries || queriesData || [];
+      }
+
+      // Fetch vitals data from EDC service
+      const vitalsRes = await fetch('http://localhost:8001/vitals/all');
       let vitals = [];
       if (vitalsRes.ok) {
         vitals = await vitalsRes.json();
       }
 
-      // Fetch queries data
-      const queriesRes = await fetch('http://localhost:8004/queries');
-      let queries = [];
-      if (queriesRes.ok) {
-        queries = await queriesRes.json();
+      // Only call RBQM if we have some data
+      if (vitals.length === 0 && queries.length === 0) {
+        setError('No data available for RBQM analysis. Please import study data first.');
+        setLoading(false);
+        return;
       }
 
       // Call RBQM service
@@ -81,7 +89,8 @@ export function RBQMDashboard() {
         const rbqmDataResult = await rbqmRes.json();
         setRBQMData(rbqmDataResult);
       } else {
-        throw new Error('Failed to fetch RBQM data');
+        const errorData = await rbqmRes.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || 'Failed to fetch RBQM data');
       }
     } catch (err) {
       console.error('Failed to fetch RBQM data:', err);

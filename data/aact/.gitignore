@@ -1,0 +1,8 @@
+# Ignore raw AACT data (too large for git)
+raw/
+*.txt
+*.zip
+
+# Keep processed/cached files (small enough for git)
+!processed/
+!scripts/

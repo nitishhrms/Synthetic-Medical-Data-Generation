@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-generation-service
+  namespace: clinical-trials
+  labels:
+    app: data-generation-service
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: data-generation-service
+  template:
+    metadata:
+      labels:
+        app: data-generation-service
+        tier: backend
+    spec:
+      containers:
+      - name: data-generation-service
+        image: 432180555044.dkr.ecr.us-east-1.amazonaws.com/clinical-trials/data-generation-service:latest
+        ports:
+        - containerPort: 8002
+          name: http
+        env:
+        - name: PORT
+          value: "8002"
+        envFrom:
+        - configMapRef:
+            name: clinical-config
+        - secretRef:
+            name: clinical-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-generation-service
+  namespace: clinical-trials
+  labels:
+    app: data-generation-service
+spec:
+  type: ClusterIP
+  selector:
+    app: data-generation-service
+  ports:
+  - port: 8002
+    targetPort: 8002
+    protocol: TCP
+    name: http

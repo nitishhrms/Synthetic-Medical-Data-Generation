@@ -57,13 +57,16 @@ app.add_middleware(
 
 # Service Registry - Environment variables with defaults
 SERVICES = {
-    "security": os.getenv("SECURITY_SERVICE_URL", "http://security-service:8005"),
-    "edc": os.getenv("EDC_SERVICE_URL", "http://edc-service:8001"),
-    "generation": os.getenv("GENERATION_SERVICE_URL", "http://data-generation-service:8002"),
-    "analytics": os.getenv("ANALYTICS_SERVICE_URL", "http://analytics-service:8003"),
-    "quality": os.getenv("QUALITY_SERVICE_URL", "http://quality-service:8004"),
-    "daft": os.getenv("DAFT_SERVICE_URL", "http://daft-analytics-service:8007"),
-    "linkup": os.getenv("LINKUP_SERVICE_URL", "http://linkup-integration-service:8008"),
+    "security": os.getenv("SECURITY_SERVICE_URL", "http://localhost:8005"),
+    "edc": os.getenv("EDC_SERVICE_URL", "http://localhost:8001"),
+    "generation": os.getenv("GENERATION_SERVICE_URL", "http://localhost:8002"),
+    "analytics": os.getenv("ANALYTICS_SERVICE_URL", "http://localhost:8003"),
+    "quality": os.getenv("QUALITY_SERVICE_URL", "http://localhost:8004"),
+    "daft": os.getenv("DAFT_SERVICE_URL", "http://localhost:8007"),
+    "linkup": os.getenv("LINKUP_SERVICE_URL", "http://localhost:8008"),
+    "gain": os.getenv("GAIN_SERVICE_URL", "http://localhost:8009"),
+    "gan": os.getenv("GAN_SERVICE_URL", "http://localhost:8010"),
+    "ai_monitor": os.getenv("AI_MONITOR_SERVICE_URL", "http://localhost:8011"),
 }
 
 # Public endpoints that don't require authentication
@@ -144,12 +147,16 @@ async def root():
             "quality": "/quality/*",
             "daft": "/daft/* (Distributed Analytics - Port 8007)",
             "linkup": "/linkup/* (Regulatory Intelligence - Port 8008)",
+            "gain": "/gain/* (Missing Data Imputation - Port 8009)",
+            "gan": "/gan/* (GAN Synthetic Data - Port 8010)",
         },
         "authentication": "Bearer token required (except /security/auth/login)",
         "docs": "/docs",
         "new_services": {
             "daft": "High-performance distributed analytics using Daft library",
-            "linkup": "AI-powered regulatory intelligence and evidence generation"
+            "linkup": "AI-powered regulatory intelligence and evidence generation",
+            "gain": "GAN-based missing data imputation using CTGAN",
+            "gan": "Conditional synthetic data generation using CTGAN"
         }
     }
 

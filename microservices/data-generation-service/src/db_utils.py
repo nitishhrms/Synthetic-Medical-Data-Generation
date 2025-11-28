@@ -81,6 +81,135 @@ class DatabaseConnection:
         async with self.pool.acquire() as conn:
             return await conn.fetchval(query, *args)
 
+    async def create_tables(self):
+        """Create necessary tables if they don't exist"""
+        if not self.pool:
+            return
+
+        query = """
+        CREATE TABLE IF NOT EXISTS generated_datasets (
+            id SERIAL PRIMARY KEY,
+            dataset_name VARCHAR(255) NOT NULL,
+            dataset_type VARCHAR(50) NOT NULL,
+            data JSONB NOT NULL,
+            metadata JSONB,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_dataset_type ON generated_datasets(dataset_type);
+        CREATE INDEX IF NOT EXISTS idx_created_at ON generated_datasets(created_at DESC);
+        """
+        try:
+            await self.execute(query)
+            logger.info("Database tables initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize tables: {e}")
+
+    async def save_dataset(self, name: str, dtype: str, data: list, metadata: dict = None) -> int:
+        """Save a generated dataset"""
+        if not self.pool:
+            raise RuntimeError("Database not connected")
+        
+        import json
+        query = """
+        INSERT INTO generated_datasets (dataset_name, dataset_type, data, metadata)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        """
+        # Ensure data is JSON serializable
+        data_json = json.dumps(data)
+        metadata_json = json.dumps(metadata) if metadata else None
+        
+        return await self.fetchval(query, name, dtype, data_json, metadata_json)
+
+    async def get_latest_dataset(self, dtype: str):
+        """Get the most recently generated dataset of a specific type"""
+        if not self.pool:
+            raise RuntimeError("Database not connected")
+            
+        query = """
+        SELECT id, dataset_name, dataset_type, data, metadata, created_at
+        FROM generated_datasets
+        WHERE dataset_type = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+        row = await self.fetchrow(query, dtype)
+        if not row:
+            return None
+            
+        import json
+        return {
+            "id": row["id"],
+            "dataset_name": row["dataset_name"],
+            "dataset_type": row["dataset_type"],
+            "data": json.loads(row["data"]) if isinstance(row["data"], str) else row["data"],
+            "metadata": json.loads(row["metadata"]) if row["metadata"] and isinstance(row["metadata"], str) else row["metadata"],
+            "created_at": row["created_at"]
+        }
+
+    async def get_dataset_by_id(self, dataset_id: int):
+        """Get a specific dataset by ID"""
+        if not self.pool:
+            raise RuntimeError("Database not connected")
+            
+        query = """
+        SELECT id, dataset_name, dataset_type, data, metadata, created_at
+        FROM generated_datasets
+        WHERE id = $1
+        """
+        row = await self.fetchrow(query, dataset_id)
+        if not row:
+            return None
+            
+        import json
+        return {
+            "id": row["id"],
+            "dataset_name": row["dataset_name"],
+            "dataset_type": row["dataset_type"],
+            "data": json.loads(row["data"]) if isinstance(row["data"], str) else row["data"],
+            "metadata": json.loads(row["metadata"]) if row["metadata"] and isinstance(row["metadata"], str) else row["metadata"],
+            "created_at": row["created_at"]
+        }
+    
+    async def list_datasets(self, dtype: str = None, limit: int = 50, offset: int = 0):
+        """List all datasets, optionally filtered by type"""
+        if not self.pool:
+            raise RuntimeError("Database not connected")
+        
+        if dtype:
+            query = """
+            SELECT id, dataset_name, dataset_type, metadata, created_at,
+                   jsonb_array_length(data) as record_count
+            FROM generated_datasets
+            WHERE dataset_type = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+            """
+            rows = await self.fetch(query, dtype, limit, offset)
+        else:
+            query = """
+            SELECT id, dataset_name, dataset_type, metadata, created_at,
+                   jsonb_array_length(data) as record_count
+            FROM generated_datasets
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+            """
+            rows = await self.fetch(query, limit, offset)
+        
+        import json
+        return [
+            {
+                "id": row["id"],
+                "dataset_name": row["dataset_name"],
+                "dataset_type": row["dataset_type"],
+                "metadata": json.loads(row["metadata"]) if row["metadata"] and isinstance(row["metadata"], str) else row["metadata"],
+                "created_at": row["created_at"],
+                "record_count": row["record_count"]
+            }
+            for row in rows
+        ]
+
+
 
 class CacheConnection:
     """Async Redis cache manager"""
@@ -170,6 +299,7 @@ cache = CacheConnection()
 async def startup_db():
     """Startup event handler for FastAPI"""
     await db.connect()
+    await db.create_tables()
     await cache.connect()
 
 

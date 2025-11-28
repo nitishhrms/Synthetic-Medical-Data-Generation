@@ -2,8 +2,9 @@
 EDC Service - Electronic Data Capture
 Handles subject data, visits, validation, and auto-repair
 """
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import pandas as pd
@@ -15,6 +16,15 @@ import os
 from validation import validate_vitals
 from repair import auto_repair_vitals
 from db_utils import db, cache, startup_db, shutdown_db
+
+# Medical imaging support
+try:
+    from image_processor import MedicalImageProcessor, process_medical_image
+    IMAGING_AVAILABLE = True
+except ImportError:
+    IMAGING_AVAILABLE = False
+    import warnings
+    warnings.warn("Medical imaging not available. Install: pip install pydicom pillow opencv-python")
 
 app = FastAPI(
     title="EDC Service",
@@ -34,21 +44,12 @@ async def shutdown_event():
     await shutdown_db()
 
 # CORS configuration
-import os
 ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
 if ALLOWED_ORIGINS_ENV:
     ALLOWED_ORIGINS = ALLOWED_ORIGINS_ENV.split(",")
 else:
-    # Default: allow localhost origins for development
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-        "*"  # Allow all for development
-    ]
+    # Default: allow all origins for development (use specific origins in production)
+    ALLOWED_ORIGINS = ["*"]
 
 if "*" in ALLOWED_ORIGINS and os.getenv("ENVIRONMENT") == "production":
     import warnings
@@ -58,9 +59,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
+    max_age=3600,
 )
 
 # Pydantic models
@@ -341,127 +343,270 @@ async def store_vitals(request: VitalsBulkRequest):
 # Study Management Endpoints
 # ============================================================================
 
-# In-memory storage for studies and subjects (for development)
-# In production, these would be stored in a proper database
-studies_db: Dict[str, Dict] = {}
-subjects_db: Dict[str, Dict] = {}
+# ============================================================================
+# Study Management Endpoints
+# ============================================================================
+
+# Database operations replace in-memory storage
+
 
 @app.post("/studies")
 async def create_study(study: StudyCreate):
     """Create a new clinical trial study"""
-    study_id = f"STU{len(studies_db) + 1:03d}"
+    # Generate study ID (STU + 3 digits)
+    # In a real app, this might be a sequence or UUID
+    count = await db.fetchval("SELECT COUNT(*) FROM studies")
+    study_id = f"STU{count + 1:03d}"
 
-    study_data = {
-        "study_id": study_id,
-        "study_name": study.study_name,
-        "indication": study.indication,
-        "phase": study.phase,
-        "sponsor": study.sponsor,
-        "start_date": study.start_date,
-        "status": study.status,
-        "subjects_enrolled": 0,
-        "created_at": datetime.utcnow().isoformat()
-    }
-
-    studies_db[study_id] = study_data
-
-    return {
-        "study_id": study_id,
-        "message": "Study created successfully"
-    }
+    try:
+        await db.execute("""
+            INSERT INTO studies (
+                study_id, study_name, indication, phase, sponsor, 
+                start_date, status, subjects_enrolled, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, NOW())
+        """, 
+        study_id, study.study_name, study.indication, study.phase, 
+        study.sponsor, datetime.strptime(study.start_date, "%Y-%m-%d").date(), study.status)
+        
+        return {
+            "study_id": study_id,
+            "message": "Study created successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create study: {str(e)}")
 
 @app.get("/studies")
 async def list_studies():
     """List all studies"""
+    studies = await db.fetch("SELECT * FROM studies ORDER BY created_at DESC")
+    
+    # Convert to list of dicts and format dates
+    result = []
+    for s in studies:
+        s_dict = dict(s)
+        if s_dict.get('start_date'):
+            s_dict['start_date'] = s_dict['start_date'].isoformat()
+        if s_dict.get('created_at'):
+            s_dict['created_at'] = s_dict['created_at'].isoformat()
+        result.append(s_dict)
+        
     return {
-        "studies": list(studies_db.values())
+        "studies": result
     }
 
 @app.get("/studies/{study_id}")
 async def get_study(study_id: str):
     """Get study details"""
-    if study_id not in studies_db:
+    study = await db.fetchrow("SELECT * FROM studies WHERE study_id = $1", study_id)
+    
+    if not study:
         raise HTTPException(status_code=404, detail="Study not found")
 
-    return studies_db[study_id]
+    s_dict = dict(study)
+    if s_dict.get('start_date'):
+        s_dict['start_date'] = s_dict['start_date'].isoformat()
+    if s_dict.get('created_at'):
+        s_dict['created_at'] = s_dict['created_at'].isoformat()
+
+    return s_dict
+
+@app.get("/studies/{study_id}/subjects")
+async def list_study_subjects(study_id: str):
+    """List all subjects in a study"""
+    # Verify study exists
+    study_exists = await db.fetchval("SELECT 1 FROM studies WHERE study_id = $1", study_id)
+    if not study_exists:
+        raise HTTPException(status_code=404, detail="Study not found")
+
+    subjects = await db.fetch("""
+        SELECT * FROM subjects 
+        WHERE study_id = $1 
+        ORDER BY created_at DESC
+    """, study_id)
+    
+    # Convert to list of dicts and format dates
+    result = []
+    for s in subjects:
+        s_dict = dict(s)
+        if s_dict.get('enrollment_date'):
+            s_dict['enrollment_date'] = s_dict['enrollment_date'].isoformat()
+        if s_dict.get('created_at'):
+            s_dict['created_at'] = s_dict['created_at'].isoformat()
+        result.append(s_dict)
+        
+    return {
+        "subjects": result
+    }
+
 
 @app.post("/subjects")
 async def enroll_subject(subject: SubjectCreate):
     """Enroll a new subject in a study"""
     # Verify study exists
-    if subject.study_id not in studies_db:
+    study_exists = await db.fetchval("SELECT 1 FROM studies WHERE study_id = $1", subject.study_id)
+    if not study_exists:
         raise HTTPException(status_code=404, detail="Study not found")
 
-    # Generate subject ID
-    study_subjects = [s for s in subjects_db.values() if s["study_id"] == subject.study_id]
-    subject_num = len(study_subjects) + 1
-    subject_id = f"{subject.study_id.replace('STU', 'RA')}-{subject_num:03d}"
+    try:
+        # Generate subject ID
+        count = await db.fetchval("SELECT COUNT(*) FROM subjects WHERE study_id = $1", subject.study_id)
+        subject_num = count + 1
+        subject_id = f"{subject.study_id.replace('STU', 'RA')}-{subject_num:03d}"
 
-    subject_data = {
-        "subject_id": subject_id,
-        "study_id": subject.study_id,
-        "site_id": subject.site_id,
-        "treatment_arm": subject.treatment_arm,
-        "enrollment_date": datetime.utcnow().isoformat(),
-        "status": "enrolled"
-    }
+        # Enroll subject
+        await db.execute("""
+            INSERT INTO subjects (
+                subject_id, study_id, site_id, treatment_arm, 
+                enrollment_date, status, created_at
+            ) VALUES ($1, $2, $3, $4, NOW(), 'enrolled', NOW())
+        """, subject_id, subject.study_id, subject.site_id, subject.treatment_arm)
 
-    subjects_db[subject_id] = subject_data
+        # Update study subject count
+        await db.execute("""
+            UPDATE studies 
+            SET subjects_enrolled = subjects_enrolled + 1 
+            WHERE study_id = $1
+        """, subject.study_id)
 
-    # Update study subject count
-    studies_db[subject.study_id]["subjects_enrolled"] += 1
-
-    return {
-        "subject_id": subject_id,
-        "message": "Subject enrolled successfully"
-    }
+        return {
+            "subject_id": subject_id,
+            "message": "Subject enrolled successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enroll subject: {str(e)}")
 
 @app.get("/subjects/{subject_id}")
 async def get_subject(subject_id: str):
     """Get subject details"""
-    if subject_id not in subjects_db:
+    subject = await db.fetchrow("SELECT * FROM subjects WHERE subject_id = $1", subject_id)
+    
+    if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
 
-    return subjects_db[subject_id]
+    s_dict = dict(subject)
+    if s_dict.get('enrollment_date'):
+        s_dict['enrollment_date'] = s_dict['enrollment_date'].isoformat()
+    if s_dict.get('created_at'):
+        s_dict['created_at'] = s_dict['created_at'].isoformat()
+
+    return s_dict
+
 
 @app.post("/import/synthetic")
 async def import_synthetic_data(request: ImportSyntheticRequest):
     """Import synthetic data into a study"""
     # Verify study exists
-    if request.study_id not in studies_db:
+    study_exists = await db.fetchval("SELECT 1 FROM studies WHERE study_id = $1", request.study_id)
+    if not study_exists:
         raise HTTPException(status_code=404, detail="Study not found")
 
-    # Extract unique subjects from the data
-    unique_subjects = set(record.SubjectID for record in request.data)
+    try:
+        # Extract unique subjects from the data
+        unique_subjects = list(set(record.SubjectID for record in request.data))
+        unique_subjects.sort() # Ensure deterministic order
+        
+        subjects_created = 0
+        observations_imported = 0
+        
+        # Get current subject count for this study to generate new IDs
+        current_count = await db.fetchval("SELECT COUNT(*) FROM subjects WHERE study_id = $1", request.study_id)
+        
+        # Create a mapping from old ID to new ID
+        id_mapping = {}
+        
+        # 1. Create Subjects
+        for i, old_subject_id in enumerate(unique_subjects):
+            # Generate new Subject ID: RA{StudyNum}-{SeqNum}
+            # e.g. STU002 -> RA002-001
+            study_num = request.study_id.replace("STU", "")
+            new_seq = current_count + i + 1
+            new_subject_id = f"RA{study_num}-{new_seq:03d}"
+            
+            id_mapping[old_subject_id] = new_subject_id
+            
+            # Extract treatment arm from first record for this subject
+            subject_records = [r for r in request.data if r.SubjectID == old_subject_id]
+            if not subject_records:
+                continue
+                
+            treatment_arm = subject_records[0].TreatmentArm
 
-    # Create subjects if they don't exist
-    subjects_created = 0
-    for subject_id in unique_subjects:
-        if subject_id not in subjects_db:
-            # Extract treatment arm from first record
-            treatment_arm = next(r.TreatmentArm for r in request.data if r.SubjectID == subject_id)
-
-            subject_data = {
-                "subject_id": subject_id,
-                "study_id": request.study_id,
-                "site_id": "Site001",  # Default site
-                "treatment_arm": treatment_arm,
-                "enrollment_date": datetime.utcnow().isoformat(),
-                "status": "enrolled"
-            }
-            subjects_db[subject_id] = subject_data
+            # Create subject in EDC table
+            await db.execute("""
+                INSERT INTO subjects (
+                    subject_id, study_id, site_id, treatment_arm, 
+                    enrollment_date, status, created_at
+                ) VALUES ($1, $2, $3, $4, NOW(), 'enrolled', NOW())
+            """, new_subject_id, request.study_id, "Site001", treatment_arm)
+            
+            # Create patient in Clinical table (for vitals storage)
+            # Check if patient exists (unlikely with new ID, but good practice)
+            patient_exists = await db.fetchval(
+                "SELECT patient_id FROM patients WHERE subject_number = $1", 
+                new_subject_id
+            )
+            
+            if not patient_exists:
+                await db.execute("""
+                    INSERT INTO patients (tenant_id, subject_number, site_id, protocol_id, enrollment_date, treatment_arm)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                """, "DEFAULT_TENANT", new_subject_id, "Site001", request.study_id, datetime.utcnow().date(), treatment_arm)
+            
             subjects_created += 1
 
-    # Update study subject count
-    studies_db[request.study_id]["subjects_enrolled"] = len(
-        [s for s in subjects_db.values() if s["study_id"] == request.study_id]
-    )
+        # 2. Import Vitals Data
+        for record in request.data:
+            if record.SubjectID not in id_mapping:
+                continue
+                
+            new_subject_id = id_mapping[record.SubjectID]
+            
+            # Get patient_id
+            patient_id = await db.fetchval(
+                "SELECT patient_id FROM patients WHERE subject_number = $1", 
+                new_subject_id
+            )
+            
+            if patient_id:
+                await db.execute("""
+                    INSERT INTO vital_signs (
+                        tenant_id, patient_id, visit_date, measurement_time,
+                        systolic_bp, diastolic_bp, heart_rate, temperature,
+                        data_batch
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                """,
+                    "DEFAULT_TENANT",
+                    patient_id,
+                    datetime.utcnow().date(),
+                    datetime.utcnow(),
+                    record.SystolicBP,
+                    record.DiastolicBP,
+                    record.HeartRate,
+                    record.Temperature,
+                    json.dumps({
+                        "visit_name": record.VisitName, 
+                        "treatment_arm": record.TreatmentArm,
+                        "original_subject_id": record.SubjectID
+                    })
+                )
+                observations_imported += 1
 
-    return ImportSyntheticResponse(
-        subjects_imported=subjects_created,
-        observations_imported=len(request.data),
-        message=f"Successfully imported {len(request.data)} observations for {subjects_created} subjects from {request.source}"
-    )
+        # Update study subject count
+        if subjects_created > 0:
+            await db.execute("""
+                UPDATE studies 
+                SET subjects_enrolled = (SELECT COUNT(*) FROM subjects WHERE study_id = $1)
+                WHERE study_id = $1
+            """, request.study_id)
+
+        return ImportSyntheticResponse(
+            subjects_imported=subjects_created,
+            observations_imported=observations_imported,
+            message=f"Successfully imported {observations_imported} observations for {subjects_created} subjects. IDs remapped."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to import data: {str(e)}")
 
 
 # ============================================================================
@@ -482,6 +627,42 @@ class QueryRespondRequest(BaseModel):
 
 class QueryCloseRequest(BaseModel):
     resolution_notes: str
+
+class QueryCreate(BaseModel):
+    study_id: str
+    subject_id: str
+    query_text: str
+    field: Optional[str] = None
+    severity: str = "Major"
+    opened_by: int = 1  # Default system user
+
+@app.post("/queries")
+async def create_query(query: QueryCreate):
+    """Create a new query (manually or from Quality Service)"""
+    try:
+        # Verify subject exists
+        subject_exists = await db.fetchval("SELECT 1 FROM subjects WHERE subject_id = $1", query.subject_id)
+        if not subject_exists:
+            raise HTTPException(status_code=404, detail="Subject not found")
+
+        query_id = await db.fetchval("""
+            INSERT INTO queries (
+                study_id, subject_id, query_text, field, severity, 
+                status, opened_by, opened_at
+            ) VALUES ($1, $2, $3, $4, $5, 'open', $6, NOW())
+            RETURNING query_id
+        """, query.study_id, query.subject_id, query.query_text, query.field, query.severity, query.opened_by)
+
+        # Add history
+        await db.execute("""
+            INSERT INTO query_history (query_id, action, user_id, notes)
+            VALUES ($1, 'opened', $2, 'Query created')
+        """, query_id, query.opened_by)
+
+        return {"query_id": query_id, "message": "Query created successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create query: {str(e)}")
+
 
 @app.get("/queries")
 async def list_queries(
@@ -633,6 +814,153 @@ async def close_query(query_id: int, request: QueryCloseRequest, user_id: int = 
     """, query_id, user_id, request.resolution_notes)
 
     return {"query_id": query_id, "status": "closed"}
+
+
+@app.get("/queries/{query_id}/context")
+async def get_query_context(query_id: int):
+    """
+    Get query with full subject and vitals context
+    
+    Returns query details along with subject information and recent vitals data
+    for display in DataEntry screen
+    """
+    try:
+        # Get query details
+        query = await db.fetchrow("SELECT * FROM queries WHERE query_id = $1", query_id)
+        if not query:
+            raise HTTPException(status_code=404, detail="Query not found")
+        
+        # Get subject details
+        subject = await db.fetchrow("SELECT * FROM subjects WHERE subject_id = $1", query['subject_id'])
+        if not subject:
+            raise HTTPException(status_code=404, detail="Subject not found")
+        
+        # Get recent vitals for this subject
+        vitals = await db.fetch("""
+            SELECT 
+                vs.vital_id,
+                vs.visit_date,
+                vs.systolic_bp,
+                vs.diastolic_bp,
+                vs.heart_rate,
+                vs.temperature,
+                vs.data_batch
+            FROM vital_signs vs
+            JOIN patients p ON vs.patient_id = p.patient_id
+            WHERE p.subject_number = $1
+            ORDER BY vs.visit_date DESC
+            LIMIT 20
+        """, query['subject_id'])
+        
+        return {
+            "query": dict(query),
+            "subject": dict(subject),
+            "vitals": [dict(v) for v in vitals] if vitals else []
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get query context: {str(e)}")
+
+
+@app.post("/queries/{query_id}/repair")
+async def trigger_repair_from_query(query_id: int):
+    """
+    Trigger auto-repair for vitals data related to a query
+    
+    Fetches subject's vitals data, applies auto-repair logic,
+    updates database, and logs the action in query history
+    """
+    try:
+        # Get query details
+        query = await db.fetchrow("SELECT * FROM queries WHERE query_id = $1", query_id)
+        if not query:
+            raise HTTPException(status_code=404, detail="Query not found")
+        
+        subject_id = query['subject_id']
+        
+        # Fetch subject vitals as DataFrame
+        vitals = await db.fetch("""
+            SELECT 
+                p.subject_number as SubjectID,
+                vs.visit_date as VisitName,
+                p.treatment_arm as TreatmentArm,
+                vs.systolic_bp as SystolicBP,
+                vs.diastolic_bp as DiastolicBP,
+                vs.heart_rate as HeartRate,
+                vs.temperature as Temperature,
+                vs.vital_id
+            FROM vital_signs vs
+            JOIN patients p ON vs.patient_id = p.patient_id
+            WHERE p.subject_number = $1
+            ORDER BY vs.visit_date
+        """, subject_id)
+        
+        if not vitals or len(vitals) == 0:
+            raise HTTPException(status_code=404, detail="No vitals data found for subject")
+        
+        # Convert to DataFrame
+        vitals_dict = [dict(v) for v in vitals]
+        df = pd.DataFrame(vitals_dict)
+        
+        # Rename columns to match auto_repair expectations (PascalCase)
+        df = df.rename(columns={
+            'subjectid': 'SubjectID',
+            'visitname': 'VisitName',
+            'treatmentarm': 'TreatmentArm',
+            'systolicbp': 'SystolicBP',
+            'diastolicbp': 'DiastolicBP',
+            'heartrate': 'HeartRate',
+            'temperature': 'Temperature'
+        })
+        
+        # Apply auto-repair
+        repaired_df = auto_repair_vitals(df)
+        
+        # Update database with repaired values
+        rows_updated = 0
+        for idx, row in repaired_df.iterrows():
+            await db.execute("""
+                UPDATE vital_signs
+                SET systolic_bp = $1,
+                    diastolic_bp = $2,
+                    heart_rate = $3,
+                    temperature = $4
+                WHERE vital_id = $5
+            """, 
+            int(row['SystolicBP']), 
+            int(row['DiastolicBP']), 
+            int(row['HeartRate']), 
+            float(row['Temperature']),
+            row['vital_id'])
+            rows_updated += 1
+        
+        # Add query history entry
+        await db.execute("""
+            INSERT INTO query_history (query_id, action, user_id, notes)
+            VALUES ($1, 'auto_repair_applied', 1, 'System auto-repaired vitals data')
+        """, query_id)
+        
+        # Update query status to 'responded' if it was open
+        if query['status'] == 'open':
+            await db.execute("""
+                UPDATE queries
+                SET status = 'responded',
+                    response_text = 'Auto-repair applied to vitals data',
+                    responded_by = 1,
+                    responded_at = NOW()
+                WHERE query_id = $1
+            """, query_id)
+        
+        return {
+            "message": "Repair applied successfully",
+            "rows_updated": rows_updated,
+            "query_status": "responded"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to repair data: {str(e)}")
 
 # ============================================================================
 # Form Definitions Endpoints
@@ -850,132 +1178,181 @@ async def get_lab_results(subject_id: str):
 
     return {"labs": [dict(l) for l in labs]}
 
-
-# ============================================================================
-# Privacy Assessment Endpoints
-# ============================================================================
-
-class PrivacyAssessmentRequest(BaseModel):
-    data: List[Dict[str, Any]] = Field(..., description="Clinical data to assess for privacy risks")
-    k_anonymity: int = Field(default=5, ge=1, le=20, description="K-anonymity threshold")
-
-class PrivacyAssessmentResponse(BaseModel):
-    privacy_score: float = Field(..., description="Overall privacy score (0-1, higher is better)")
-    k_anonymity_satisfied: bool = Field(..., description="Whether k-anonymity threshold is met")
-    re_identification_risk: float = Field(..., description="Risk of re-identification (0-1, lower is better)")
-    uniqueness_ratio: float = Field(..., description="Ratio of unique records")
-    quasi_identifiers_found: List[str] = Field(..., description="Potential quasi-identifiers detected")
-    recommendations: List[str] = Field(..., description="Privacy improvement recommendations")
-    summary: str = Field(..., description="Human-readable summary")
-
-@app.post("/privacy/assess/comprehensive", response_model=PrivacyAssessmentResponse)
-async def assess_privacy_comprehensive(request: PrivacyAssessmentRequest):
+@app.get("/vitals/all")
+async def get_all_vitals():
     """
-    Comprehensive privacy assessment for clinical trial data
+    Get all vitals observations from the database
 
-    Evaluates privacy risks including:
-    - K-anonymity compliance
-    - Re-identification risk analysis
-    - Quasi-identifier detection
-    - Uniqueness analysis
-
-    **Privacy Metrics:**
-    1. **K-Anonymity**: Ensures each combination of quasi-identifiers appears at least K times
-    2. **Re-identification Risk**: Probability that individuals can be re-identified
-    3. **Uniqueness Ratio**: Proportion of records with unique attribute combinations
-    4. **Quasi-Identifiers**: Attributes that could be combined for re-identification
-
-    **Use Cases:**
-    - HIPAA compliance validation
-    - Data sharing risk assessment
-    - Privacy impact assessments
-    - Regulatory submissions
+    Returns all vitals data for RBQM and analytics purposes
     """
     try:
-        df = pd.DataFrame(request.data)
+        vitals = await db.fetch("""
+            SELECT
+                p.subject_number as SubjectID,
+                v.visit_date,
+                v.systolic_bp as SystolicBP,
+                v.diastolic_bp as DiastolicBP,
+                v.heart_rate as HeartRate,
+                v.temperature as Temperature,
+                v.data_batch::text as data_batch
+            FROM vital_signs v
+            JOIN patients p ON v.patient_id = p.patient_id
+            ORDER BY p.subject_number, v.visit_date
+        """)
 
-        # Potential quasi-identifiers in clinical trial data
-        quasi_identifiers = []
-        for col in df.columns:
-            # Demographics and identifying information
-            if col in ["age", "gender", "race", "ethnicity", "site_id", "enrollment_date"]:
-                quasi_identifiers.append(col)
-            # Check for SubjectID patterns that might leak info
-            elif col.lower() in ["subjectid", "subject_id"]:
-                # SubjectID itself is not included, but we note it exists
-                pass
+        # Convert to list of dictionaries
+        vitals_list = []
+        for v in vitals:
+            record = {
+                "SubjectID": v["subjectid"],
+                "SystolicBP": v["systolicbp"],
+                "DiastolicBP": v["diastolicbp"],
+                "HeartRate": v["heartrate"],
+                "Temperature": float(v["temperature"]) if v["temperature"] else None,
+            }
 
-        # If no quasi-identifiers found in columns, use visit patterns
-        if not quasi_identifiers:
-            # For vitals data, we'll use treatment arm and visit patterns as weak quasi-identifiers
-            available_cols = [c for c in ["TreatmentArm", "VisitName"] if c in df.columns]
-            quasi_identifiers = available_cols if available_cols else []
+            # Extract visit info and treatment arm from data_batch if available
+            if v["data_batch"]:
+                try:
+                    batch_data = json.loads(v["data_batch"])
+                    record["VisitName"] = batch_data.get("visit_name", "Unknown")
+                    record["TreatmentArm"] = batch_data.get("treatment_arm", "Unknown")
+                except:
+                    record["VisitName"] = "Unknown"
+                    record["TreatmentArm"] = "Unknown"
+            else:
+                record["VisitName"] = "Unknown"
+                record["TreatmentArm"] = "Unknown"
 
-        # Calculate uniqueness ratio
-        if quasi_identifiers:
-            # Group by quasi-identifiers
-            grouped = df.groupby(quasi_identifiers, dropna=False).size()
-            total_records = len(df)
-            unique_records = (grouped == 1).sum()
-            uniqueness_ratio = float(unique_records / len(grouped)) if len(grouped) > 0 else 0.0
+            vitals_list.append(record)
 
-            # Check k-anonymity
-            min_group_size = int(grouped.min()) if len(grouped) > 0 else 0
-            k_anonymity_satisfied = min_group_size >= request.k_anonymity
-
-            # Re-identification risk (inverse of average group size)
-            avg_group_size = float(grouped.mean()) if len(grouped) > 0 else 1.0
-            re_identification_risk = float(1.0 / avg_group_size) if avg_group_size > 0 else 1.0
-        else:
-            # No quasi-identifiers detected - low risk but also low confidence
-            uniqueness_ratio = 0.0
-            k_anonymity_satisfied = True
-            re_identification_risk = 0.0
-
-        # Calculate overall privacy score
-        # Higher is better (inverse of risk)
-        privacy_score = 1.0 - re_identification_risk
-        privacy_score = max(0.0, min(1.0, privacy_score))
-
-        # Generate recommendations
-        recommendations = []
-        if not k_anonymity_satisfied:
-            recommendations.append(f"Increase data aggregation to meet k={request.k_anonymity} anonymity threshold")
-        if uniqueness_ratio > 0.1:
-            recommendations.append("High uniqueness ratio detected - consider generalization or suppression")
-        if re_identification_risk > 0.2:
-            recommendations.append("Re-identification risk above acceptable threshold - apply additional privacy techniques")
-        if len(quasi_identifiers) > 5:
-            recommendations.append("Multiple quasi-identifiers detected - consider reducing dimensionality")
-        if not quasi_identifiers:
-            recommendations.append("No standard quasi-identifiers found - manual review recommended for domain-specific identifiers")
-
-        if not recommendations:
-            recommendations.append("Privacy assessment passed - data meets acceptable privacy standards")
-
-        # Generate summary
-        if privacy_score >= 0.8:
-            summary = f"✅ EXCELLENT - Privacy score: {privacy_score:.2f}. Low re-identification risk. Data is well-protected."
-        elif privacy_score >= 0.6:
-            summary = f"⚠️ GOOD - Privacy score: {privacy_score:.2f}. Moderate privacy protection. Review recommendations."
-        else:
-            summary = f"❌ NEEDS IMPROVEMENT - Privacy score: {privacy_score:.2f}. High re-identification risk. Apply privacy-enhancing techniques."
-
-        return PrivacyAssessmentResponse(
-            privacy_score=round(privacy_score, 3),
-            k_anonymity_satisfied=k_anonymity_satisfied,
-            re_identification_risk=round(re_identification_risk, 3),
-            uniqueness_ratio=round(uniqueness_ratio, 3),
-            quasi_identifiers_found=quasi_identifiers,
-            recommendations=recommendations,
-            summary=summary
-        )
+        return vitals_list
 
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Privacy assessment failed: {str(e)}"
+        # If database is empty or not initialized, return empty array
+        return []
+
+
+# ============================================================================
+# Medical Imaging Endpoints
+# ============================================================================
+
+@app.post("/imaging/upload")
+async def upload_medical_image(
+    file: UploadFile = File(...),
+    subject_id: str = Form(...),
+    visit_name: str = Form(default="Screening"),
+    image_type: str = Form(default="X-Ray")
+):
+    """
+    Upload and process a medical image
+    """
+    if not IMAGING_AVAILABLE:
+        raise HTTPException(status_code=501, detail="Imaging module not available")
+
+    try:
+        # Read file content
+        content = await file.read()
+        
+        # Process image (extract metadata, anonymize)
+        result = process_medical_image(
+            image_data=content,
+            subject_id=subject_id,
+            image_type=image_type
         )
+        
+        # Store metadata in DB
+        image_id = await db.fetchval("""
+            INSERT INTO medical_images (
+                subject_id, visit_name, image_type, file_name, 
+                file_size, mime_type, metadata, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING image_id
+        """, subject_id, visit_name, image_type, file.filename, 
+           len(content), file.content_type, json.dumps(result['metadata']))
+        
+        # Store file content (in real app, use S3/Blob storage)
+        # For demo, we'll store in a local directory
+        os.makedirs("data/images", exist_ok=True)
+        file_path = f"data/images/{image_id}_{file.filename}"
+        with open(file_path, "wb") as f:
+            f.write(content)
+            
+        # Update DB with path
+        await db.execute("UPDATE medical_images SET file_path = $1 WHERE image_id = $2", file_path, image_id)
+        
+        return {
+            "image_id": image_id,
+            "subject_id": subject_id,
+            "analysis": result['analysis'],
+            "message": "Image uploaded and processed successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
+
+@app.get("/imaging/subject/{subject_id}")
+async def get_subject_images(subject_id: str):
+    """Get all images for a subject"""
+    images = await db.fetch("""
+        SELECT * FROM medical_images 
+        WHERE subject_id = $1 
+        ORDER BY created_at DESC
+    """, subject_id)
+    
+    return {
+        "images": [
+            {
+                "image_id": img["image_id"],
+                "visit_name": img["visit_name"],
+                "image_type": img["image_type"],
+                "file_name": img["file_name"],
+                "created_at": img["created_at"].isoformat() if img["created_at"] else None,
+                "metadata": json.loads(img["metadata"]) if img["metadata"] else {}
+            }
+            for img in images
+        ]
+    }
+
+@app.get("/imaging/{image_id}/{type}")
+async def get_image_file(image_id: int, type: str):
+    """Get image file content (file or thumbnail)"""
+    image = await db.fetchrow("SELECT file_path, mime_type FROM medical_images WHERE image_id = $1", image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+        
+    file_path = image["file_path"]
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Image file missing")
+        
+    # For thumbnail, we'd resize here. For now, return original.
+    with open(file_path, "rb") as f:
+        content = f.read()
+        
+    return Response(content=content, media_type=image["mime_type"])
+
+@app.delete("/imaging/{image_id}")
+async def delete_image(image_id: int):
+    """Delete an image"""
+    image = await db.fetchrow("SELECT file_path FROM medical_images WHERE image_id = $1", image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+        
+    # Delete file
+    if os.path.exists(image["file_path"]):
+        os.remove(image["file_path"])
+        
+    # Delete DB record
+    await db.execute("DELETE FROM medical_images WHERE image_id = $1", image_id)
+    
+    return {"message": "Image deleted successfully"}
+
+@app.get("/imaging/status")
+async def get_imaging_status():
+    """Check if imaging module is available"""
+    return {
+        "imaging_available": IMAGING_AVAILABLE,
+        "message": "Imaging module ready" if IMAGING_AVAILABLE else "Imaging module missing dependencies"
+    }
 
 
 if __name__ == "__main__":

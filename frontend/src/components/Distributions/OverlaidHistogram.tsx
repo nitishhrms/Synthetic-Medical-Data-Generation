@@ -41,14 +41,14 @@ export const OverlaidHistogram: React.FC<OverlaidHistogramProps> = ({
   const chartOption = useMemo(() => {
     // Combine all datasets to get shared bin edges
     const allData = datasets.flatMap(d => d.data);
-    const { edges, centers, width } = makeBins(allData, binCount);
+    const { edges, centers } = makeBins(allData, binCount);
 
     if (edges.length === 0) {
       return null;
     }
 
     // Calculate histogram values for each dataset
-    const series = datasets.map((dataset, idx) => {
+    const series = datasets.map((dataset) => {
       const values = useDensity
         ? histDensity(dataset.data, edges)
         : histCounts(dataset.data, edges);

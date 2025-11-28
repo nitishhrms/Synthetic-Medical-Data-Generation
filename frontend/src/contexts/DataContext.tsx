@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import type {
   VitalsRecord,
   Week12StatsResponse,
@@ -6,6 +7,29 @@ import type {
   PCAComparisonResponse,
   ValidationResponse,
 } from "@/types";
+
+// Planning Scenario Type
+export interface PlanningScenario {
+  id?: string;
+  name?: string;
+  timestamp?: string;
+  // Feasibility Parameters
+  nPerArm?: number;
+  targetEffect?: number;
+  power?: number;
+  alpha?: number;
+  stdDev?: number;
+  dropoutRate?: number;
+  allocationRatio?: number;
+  testType?: "two-sided" | "one-sided";
+  // Results
+  requiredN?: number;
+  cohensD?: number;
+  feasibilityGrade?: string;
+  // Source
+  source?: "feasibility" | "what-if" | "virtual-control" | "template";
+}
+import { dataGenerationApi } from "@/services/api";
 
 interface DataContextType {
   // Generated Data
@@ -34,6 +58,10 @@ interface DataContextType {
   validationResults: ValidationResponse | null;
   setValidationResults: (results: ValidationResponse | null) => void;
 
+  // Planning Scenario
+  planningScenario: PlanningScenario | null;
+  setPlanningScenario: (scenario: PlanningScenario | null) => void;
+
   // Helper function to clear all data
   clearAllData: () => void;
 }
@@ -41,7 +69,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [generatedData, setGeneratedData] = useState<VitalsRecord[] | null>(null);
+  const [generatedData, setGeneratedDataState] = useState<VitalsRecord[] | null>(null);
   const [generationMethod, setGenerationMethod] = useState<string | null>(null);
   const [repairedData, setRepairedData] = useState<VitalsRecord[] | null>(null);
   const [pilotData, setPilotData] = useState<VitalsRecord[] | null>(null);
@@ -49,9 +77,45 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [qualityMetrics, setQualityMetrics] = useState<QualityAssessmentResponse | null>(null);
   const [pcaComparison, setPcaComparison] = useState<PCAComparisonResponse | null>(null);
   const [validationResults, setValidationResults] = useState<ValidationResponse | null>(null);
+  const [planningScenario, setPlanningScenario] = useState<PlanningScenario | null>(null);
+
+  // Load persisted data on mount
+  useEffect(() => {
+    loadPersistedData();
+  }, []);
+
+  const loadPersistedData = async () => {
+    try {
+      const result = await dataGenerationApi.loadLatestData("vitals");
+      if (result && result.data) {
+        setGeneratedDataState(result.data);
+        if (result.metadata?.method) {
+          setGenerationMethod(result.metadata.method);
+        }
+        console.log("Loaded persisted data:", result.dataset_name);
+      }
+    } catch (err) {
+      console.log("No persisted data found or failed to load");
+    }
+  };
+
+  const setGeneratedData = (data: VitalsRecord[] | null) => {
+    setGeneratedDataState(data);
+
+    // Persist data when it's updated (and not null)
+    if (data && data.length > 0) {
+      const methodName = generationMethod || "unknown";
+      dataGenerationApi.saveGeneratedData(
+        `Generated ${methodName} ${new Date().toISOString()}`,
+        "vitals",
+        data,
+        { method: methodName, count: data.length }
+      ).catch((err: unknown) => console.error("Failed to persist data:", err));
+    }
+  };
 
   const clearAllData = () => {
-    setGeneratedData(null);
+    setGeneratedDataState(null);
     setGenerationMethod(null);
     setRepairedData(null);
     setPilotData(null);
@@ -59,6 +123,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setQualityMetrics(null);
     setPcaComparison(null);
     setValidationResults(null);
+    setPlanningScenario(null);
   };
 
   return (
@@ -80,6 +145,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setPcaComparison,
         validationResults,
         setValidationResults,
+        planningScenario,
+        setPlanningScenario,
         clearAllData,
       }}
     >
