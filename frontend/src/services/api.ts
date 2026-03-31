@@ -40,7 +40,7 @@ const ANALYTICS_SERVICE = import.meta.env.VITE_ANALYTICS_URL || "http://localhos
 const EDC_SERVICE = import.meta.env.VITE_EDC_URL || "http://localhost:8001";
 const SECURITY_SERVICE = import.meta.env.VITE_SECURITY_URL || "http://localhost:8005";
 const QUALITY_SERVICE = import.meta.env.VITE_QUALITY_URL || "http://localhost:8004";
-const AI_MONITOR_SERVICE = import.meta.env.VITE_AI_MONITOR_URL || "http://localhost:8008";
+const AI_MONITOR_SERVICE = import.meta.env.VITE_AI_MONITOR_URL || "http://localhost:8004/ai-monitor";
 
 // ============================================================================
 // Helper Functions

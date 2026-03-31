@@ -950,16 +950,117 @@ def parse_llm_response(llm_output: str, subject_id: str) -> List[AIFinding]:
     return findings
 
 
+async def fetch_subject_context(subject_id: str) -> dict:
+    """Fetch enriched clinical context for a subject from EDC.
+    Best-effort: returns whatever data is available, never fails the review."""
+    import httpx
+    context = {}
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        # Demographics
+        try:
+            resp = await client.get(f"{EDC_SERVICE_URL}/demographics/{subject_id}")
+            if resp.status_code == 200:
+                context["demographics"] = resp.json()
+        except Exception:
+            pass
+
+        # Labs (most recent results)
+        try:
+            resp = await client.get(f"{EDC_SERVICE_URL}/labs/{subject_id}")
+            if resp.status_code == 200:
+                labs = resp.json().get("labs", [])
+                if labs:
+                    context["labs"] = labs[:5]  # Latest 5 results
+        except Exception:
+            pass
+
+        # Vitals (filter from global endpoint)
+        try:
+            resp = await client.get(f"{EDC_SERVICE_URL}/vitals/all")
+            if resp.status_code == 200:
+                all_vitals = resp.json()
+                subject_vitals = [v for v in all_vitals if v.get("SubjectID") == subject_id]
+                if subject_vitals:
+                    context["vitals"] = subject_vitals
+        except Exception:
+            pass
+
+        # Existing queries for this subject
+        try:
+            resp = await client.get(f"{EDC_SERVICE_URL}/queries", params={"subject_id": subject_id})
+            if resp.status_code == 200:
+                queries = resp.json()
+                if queries:
+                    context["existing_queries"] = queries[:5]
+        except Exception:
+            pass
+
+    return context
+
+
+def build_enriched_prompt(subject_data: dict, context: dict, brief: bool = False) -> str:
+    """Build an enriched LLM prompt from subject metadata + clinical context.
+    If brief=True, produces a shorter prompt suitable for batch study reviews."""
+    subject_id = subject_data.get('subject_id', 'Unknown')
+
+    prompt = f"""Review the following clinical trial subject data and identify any issues:
+
+Subject ID: {subject_id}
+Study: {subject_data.get('study_id', 'Unknown')}
+Site: {subject_data.get('site_id', 'Unknown')}
+Status: {subject_data.get('status', 'Unknown')}
+Treatment Arm: {subject_data.get('treatment_arm', 'Unknown')}
+"""
+
+    # Add demographics if available
+    if context.get("demographics"):
+        d = context["demographics"]
+        prompt += f"""\nDemographics:
+  Age: {d.get('age', '?')} | Gender: {d.get('gender', '?')} | BMI: {d.get('bmi', '?')}
+  Smoking: {d.get('smoking_status', '?')} | Race: {d.get('race', '?')}
+"""
+
+    # Add vitals if available
+    if context.get("vitals"):
+        prompt += "\nVitals (by visit):\n"
+        prompt += "  Visit | SBP | DBP | HR | Temp\n"
+        for v in context["vitals"]:
+            prompt += f"  {v.get('VisitName', '?')} | {v.get('SystolicBP', '?')} | {v.get('DiastolicBP', '?')} | {v.get('HeartRate', '?')} | {v.get('Temperature', '?')}\n"
+
+    # Add labs if available
+    if context.get("labs"):
+        prompt += "\nLab Results (most recent):\n"
+        for lab in context["labs"][:2]:  # Top 2 to stay within token limits
+            prompt += f"  Visit: {lab.get('visit_name', '?')} | Creatinine: {lab.get('creatinine', '?')} | ALT: {lab.get('alt', '?')} | AST: {lab.get('ast', '?')} | Glucose: {lab.get('glucose', '?')}\n"
+
+    # Add existing queries if available
+    if context.get("existing_queries"):
+        prompt += f"\nExisting queries ({len(context['existing_queries'])} found):\n"
+        for q in context["existing_queries"][:3]:
+            prompt += f"  - [{q.get('severity', '')}] {q.get('query_text', '')}\n"
+
+    if brief:
+        prompt += "\nIdentify issues (1-2 sentences max). Focus on data quality and safety."
+    else:
+        prompt += """\nIdentify clinical concerns, data quality issues, or safety signals.
+Focus on: cross-field inconsistencies, temporal trends, out-of-range values.
+Format each finding on a new line."""
+
+    return prompt
+
+
 @app.post("/ai-monitor/review/subject", response_model=ReviewResponse)
 async def ai_review_subject(request: SubjectReviewRequest):
     """
-   AI reviews a single subject's data
-    
-    Uses LLM (OpenAI or Anthropic) to automatically review clinical trial 
-    subject data and identify potential issues.
+    AI reviews a single subject's data with enriched clinical context
+
+    Fetches demographics, vitals, labs, and existing queries from EDC
+    to give the LLM full clinical context for its review.
     """
     import httpx
-    
+
+    # 1. Fetch subject metadata (required)
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -970,19 +1071,17 @@ async def ai_review_subject(request: SubjectReviewRequest):
             subject_data = response.json()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch subject data: {str(e)}")
-    
-    prompt = f"""Review the following clinical trial subject data:
 
-Subject ID: {subject_data.get('subject_id')}
-Study ID: {subject_data.get('study_id')}
-Site: {subject_data.get('site_id')}
-Status: {subject_data.get('status')}
+    # 2. Fetch enriched clinical context (best-effort)
+    context = await fetch_subject_context(request.subject_id)
 
-Identify any issues, concerns, or data quality problems. Format each finding on a new line."""
-    
+    # 3. Build enriched prompt
+    prompt = build_enriched_prompt(subject_data, context, brief=False)
+
+    # 4. Call LLM and parse findings
     llm_response = await call_llm(prompt)
     findings = parse_llm_response(llm_response, request.subject_id)
-    
+
     return ReviewResponse(
         study_id=request.study_id,
         reviewed_at=datetime.utcnow().isoformat(),
@@ -994,12 +1093,13 @@ Identify any issues, concerns, or data quality problems. Format each finding on 
 @app.post("/ai-monitor/review/study", response_model=ReviewResponse)
 async def ai_review_study(request: StudyReviewRequest):
     """
-    AI reviews all subjects in a study
-    
-    Batch review of multiple subjects using LLM.
+    AI reviews all subjects in a study with enriched clinical context
+
+    Batch review: fetches each subject's clinical data and uses
+    a brief prompt to stay within token limits.
     """
     import httpx
-    
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -1011,19 +1111,23 @@ async def ai_review_study(request: StudyReviewRequest):
             subjects = subjects_data.get("subjects", [])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch subjects: {str(e)}")
-    
+
     subjects = subjects[:request.max_subjects]
     all_findings = []
-    
+
     for subject in subjects:
         subject_id = subject.get("subject_id")
-        prompt = f"""Review subject {subject_id}, Site: {subject.get('site_id')}, Status: {subject.get('status')}. 
-Identify issues (1-2 sentences max)."""
-        
+
+        # Fetch enriched clinical context (best-effort)
+        context = await fetch_subject_context(subject_id)
+
+        # Build brief enriched prompt for batch review
+        prompt = build_enriched_prompt(subject, context, brief=True)
+
         llm_response = await call_llm(prompt)
         findings = parse_llm_response(llm_response, subject_id)
         all_findings.extend(findings)
-    
+
     return ReviewResponse(
         study_id=request.study_id,
         reviewed_at=datetime.utcnow().isoformat(),

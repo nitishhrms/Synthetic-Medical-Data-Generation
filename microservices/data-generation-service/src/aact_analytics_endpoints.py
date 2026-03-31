@@ -167,7 +167,8 @@ async def get_labs_analytics(indication: str = "hypertension", phase: str = "Pha
             {"parameter": "Bilirubin (mg/dL)", "active": "0.7 ± 0.3", "placebo": "0.7 ± 0.3", "normalRange": "0.1-1.2"}
         ]
         
-        # Urinalysis findings        urinalysis = [
+        # Urinalysis findings
+        urinalysis = [
             {"parameter": "pH", "normal": 88, "abnormal": 12},
             {"parameter": "Protein", "normal": 92, "abnormal": 8},
             {"parameter": "Glucose", "normal": 95, "abnormal": 5},
